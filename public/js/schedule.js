@@ -9,9 +9,7 @@
 const pad = n => String(n).padStart(2, '0');
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-function isoDate(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+// isoDate は roomsData.js で定義(共有)
 
 /** 'YYYY-MM-DD' → ローカル日付のDate(タイムゾーンずれを避けるため new Date(iso) は使わない) */
 function parseISODate(iso) {
@@ -23,70 +21,7 @@ function dateLabel(d) {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${WDAYS[d.getDay()]})`;
 }
 
-// ---- 会議室マスタ(実データ。Exchangeの会議室一覧をそのまま定義。→ CLAUDE.md 参照) ----
-
-const ROOM_COLOR_PALETTE = ['#2e6fc0', '#2e7d52', '#7b5ea8', '#b8571f', '#33718f', '#c05a5a', '#8a6d1f', '#4a90b8', '#5a6a7a'];
-
-const SITES = [
-  { id: 'hirano', name: '平野展示場' },
-  { id: 'hanahaku', name: '花博展示場' },
-  { id: 'nishinomiya', name: '西宮展示場' },
-  { id: 'nakamozu', name: '中百舌鳥展示場' },
-  { id: 'fukuda', name: '福田展示場' }
-];
-
-const ROOM_NAMES_BY_SITE = {
-  hirano: [
-    ['事務所棟3F Aテーブル(EV前)', 'Hirano_room1@yumesumika.com'],
-    ['事務所棟3F Bテーブル(真ん中)', 'Hirano_room2@yumesumika.com'],
-    ['事務所棟3F Cテーブル(ショールーム横)', 'Hirano_room3@yumesumika.com'],
-    ['事務所棟1F MTR', 'Hirano_room4@yumesumika.com'],
-    ['モデル(2F商談室)', 'Hirano_room5@yumesumika.com'],
-    ['モデル(ダイニング)', 'Hirano_room6@yumesumika.com'],
-    ['宿泊モデル(ダイニング)', 'Hirano_room7@yumesumika.com'],
-    ['体感ルーム', 'Hirano_room8@yumesumika.com'],
-    ['宿泊体験', 'Hirano_room9@yumesumika.com']
-  ],
-  hanahaku: [
-    ['1F 6人テーブル(階段横)', 'Hanahaku_room1@yumesumika.com'],
-    ['1F 4人テーブル(キッズ前)', 'Hanahaku_room2@yumesumika.com'],
-    ['1F ダイニングテーブル(玄関前)', 'Hanahaku_room3@yumesumika.com'],
-    ['2F 事務所隣り(MGルーム)', 'Hanahaku_room4@yumesumika.com'],
-    ['モデル(2Fダイニング)', 'Hanahaku_room5@yumesumika.com'],
-    ['モデル(3F展示場横)', 'Hanahaku_room6@yumesumika.com'],
-    ['臨時 2階 リビングソファー', 'Hanahaku_room7@yumesumika.com']
-  ],
-  nishinomiya: [
-    ['1F 個室①(6名テーブル)', 'Nishinomiya_room1@yumesumika.com'],
-    ['1F 個室②(4名テーブル)', 'Nishinomiya_room2@yumesumika.com'],
-    ['1F 個室②横', 'Nishinomiya_room3@yumesumika.com'],
-    ['1F 事務所横', 'Nishinomiya_room4@yumesumika.com'],
-    ['2F 階段側', 'Nishinomiya_room5@yumesumika.com'],
-    ['2F 真ん中', 'Nishinomiya_room6@yumesumika.com'],
-    ['2F 奥', 'Nishinomiya_room7@yumesumika.com'],
-    ['2.5F ダイニングテーブル(LIXIL)', 'Nishinomiya_room8@yumesumika.com'],
-    ['宿泊体験', 'Nishinomiya_room9@yumesumika.com']
-  ],
-  nakamozu: [
-    ['2F キッズコーナー', 'Nakamozu_room1@yumesumika.com'],
-    ['2F 奥の奥', 'Nakamozu_room2@yumesumika.com'],
-    ['2F 奥の手前', 'Nakamozu_room3@yumesumika.com'],
-    ['1F ダイニングテーブル', 'Nakamozu_room4@yumesumika.com'],
-    ['1F リビングソファー', 'Nakamozu_room5@yumesumika.com'],
-    ['1F 和室', 'Nakamozu_room6@yumesumika.com']
-  ],
-  fukuda: [
-    ['1階', 'Fukuda_room1@yumesumika.com'],
-    ['2階', 'Fukuda_room2@yumesumika.com']
-  ]
-};
-
-const ROOMS = SITES.flatMap(s => ROOM_NAMES_BY_SITE[s.id].map(([name, email], i) => ({
-  id: `${s.id}${i + 1}`, site: s.id, name, email, color: ROOM_COLOR_PALETTE[i % ROOM_COLOR_PALETTE.length]
-})));
-
-function siteRooms(siteId) { return ROOMS.filter(r => r.site === siteId); }
-function roomById(id) { return ROOMS.find(r => r.id === id); }
+// ---- 会議室マスタは js/roomsData.js で定義(rooms.html と共有。SITES/ROOMS/siteRooms/roomById) ----
 
 const state = {
   date: new Date(),

@@ -17,8 +17,8 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 
 - `server.js` — 全API(config/me/content/admin CRUD/users検索/bookings CRUD/layout)+ 静的配信 + entraモードのトークン検証
 - `src/db.js` — スキーマ + ハンドオフ準拠のシードデータ
-- `public/js/roomsData.js` — `rooms.js`(デザインサンプル)専用の拠点・会議室マスタ + 曜日パターンのダミー予約(純粋関数 `bookingsFor(roomId, date, extraBookings)`)。**`schedule.js` は使わない**(下記の実データ版を別に持つ)。ユーザーの明示的な指示により、意匠確認用のサンプルとして凍結保存している。実データ化しない
-- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。会議室・予約自体は**デザインサンプルのまま**(`roomsData.js`のダミー会議室。ここでの操作はOutlook側には反映されない)。自分の予約はDB実データ(src/db.jsで初回シード)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(主催者のみ、サーバー側で強制)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
+- `public/js/roomsData.js` — **拠点・会議室マスタの単一の正**(実際のExchange会議室リソース。5拠点33室・email付き)。`rooms.js` と `schedule.js` の両方が読み込む(schedule.htmlとrooms.htmlの両方でscriptタグ読込。マスタが増減したらここ1箇所を直す)。あわせて `rooms.js` 用の曜日パターンのダミー予約 `PATTERNS`(サンプル。実会議室IDに対応付けて維持)と純粋関数 `bookingsFor(roomId, date, extraBookings)` を持つ。**schedule.js側で同名のconst(SITES/ROOMS等)を再宣言しないこと**(グローバル衝突でSyntaxErrorになる)
+- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。**拠点・会議室名は実際のExchange会議室(roomsData.jsのマスタ)を表示するが、予約データはデザインサンプルのまま**(曜日パターンのダミー + サーバーSQLite保存。ここでの操作はOutlook側には反映されない)。自分の予約はDB実データ(src/db.jsで初回シード。旧ダミー会議室IDからの移行は db.js の ROOM_ID_MIGRATION)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(主催者のみ、サーバー側で強制)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
 - `public/js/schedule.js` — スケジュール画面。**個人のスケジュール・拠点別の会議室スケジュールとも実データ**。
   - 個人: Graph `/me/calendarView` で表示、`/me/events` で作成
   - 会議室マスタ: ファイル冒頭の `SITES`/`ROOMS_NAMES_BY_SITE` に**実際のExchange会議室リソースをハードコード**(5拠点33室。平野9・花博7・西宮9・中百舌鳥6・福田2。ドメインは`yumesumika.com`)。マスタが増減したら Exchange 管理者に確認しこの配列を直す(`Get-Mailbox -RecipientTypeDetails RoomMailbox` で最新一覧を取得できる)。Graph `Place.Read.All` は使わない設計(ハードコード運用と決定済み)ため不要
@@ -38,10 +38,11 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 3. 動的テキストは必ず `esc()` を通す(XSS対策)
 4. **実データ(Graph)とサンプル(ダミー)を画面上で必ず区別する**(バッジ表示: 「Outlook 連携」「Exchange 連携」= 実データ、「サンプル表示」「デザインサンプル」= ダミー)。ユーザーが誤って「本物」と誤解しないようにするため
 5. `rooms.js`(デザインサンプル)は**ユーザーの明示的な指示により実データ化しない**。会議室の実データ連携が必要な画面は `schedule.js` 側に実装する(2画面で役割が分かれている)
-6. 予約の変更・取消は主催者のみ(サーバー側 `ownBooking` で強制。Exchangeと同じ制約)
-7. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
-8. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
-9. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
+6. **サンプルデータの削除禁止(ユーザー指示・2026-08-20)**: 仮のサンプルデータ(`roomsData.js`、`src/db.js`のシード、rooms.html一式、devモードの各ダミー)は、ユーザーから明示的に依頼されない限り削除しない。リファクタリングでも実データとの並存を維持する
+7. 予約の変更・取消は主催者のみ(サーバー側 `ownBooking` で強制。Exchangeと同じ制約)
+8. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
+9. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
+10. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
 
 ## 今後のロードマップ(統括計画)
 

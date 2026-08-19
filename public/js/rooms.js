@@ -10,8 +10,8 @@ const MEMBER_BAR = '#00d2c6';  // 参加
 let ME = { name: '' };
 const now = new Date();
 const state = {
-  site: 'hq',
-  room: 'a',
+  site: 'hirano',
+  room: 'hirano1',
   ym: { y: now.getFullYear(), m: now.getMonth() },
   week: null,       // 週のみ表示中のインデックス
   day: null,        // 日別ポップアップ対象 {y, m, d}

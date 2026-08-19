@@ -67,6 +67,17 @@ function migrate(db) {
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
+
+  // 会議室マスタを実際のExchange会議室(5拠点33室)に変更した際のID移行(2026-08-20)。
+  // 旧ダミー会議室IDのサンプル予約を、対応する実会議室IDへ付け替える(サンプルデータは削除しない方針のため)。
+  // 冪等: 旧IDはもう新規生成されないので、該当行がなければ何もしない
+  const ROOM_ID_MIGRATION = {
+    a: 'hirano1', b: 'hirano2', hall: 'hirano4', ex: 'hirano5',
+    os1: 'hanahaku1', os2: 'hanahaku2', osex: 'hanahaku4',
+    sd1: 'nakamozu4', sd2: 'nakamozu2', gen: 'fukuda1', gen2: 'fukuda2'
+  };
+  const upd = db.prepare('UPDATE bookings SET room = ? WHERE room = ?');
+  for (const [oldId, newId] of Object.entries(ROOM_ID_MIGRATION)) upd.run(newId, oldId);
 }
 
 // デザインハンドオフのダミーデータをそのまま初期値として投入(初回のみ)
@@ -121,9 +132,9 @@ function seed(db) {
   // ※他人の予約デモは rooms.js の PATTERNS(クライアント側の擬似データ)のまま
   if (count('users') === 0 && count('bookings') === 0) {
     const series = [
-      { room: 'a', dow: 1, start: '10:00', end: '11:00', title: '営業企画 定例MTG' },
-      { room: 'b', dow: 5, start: '16:00', end: '17:00', title: '週次レビュー' },
-      { room: 'os2', dow: 5, start: '13:00', end: '14:00', title: '本社定例(TV会議)' }
+      { room: 'hirano1', dow: 1, start: '10:00', end: '11:00', title: '営業企画 定例MTG' },
+      { room: 'hirano2', dow: 5, start: '16:00', end: '17:00', title: '週次レビュー' },
+      { room: 'hanahaku2', dow: 5, start: '13:00', end: '14:00', title: '本社定例(TV会議)' }
     ];
     const ins = db.prepare(
       'INSERT INTO bookings (room, date, start, end, title, owner, owner_email) VALUES (?, ?, ?, ?, ?, ?, ?)'
