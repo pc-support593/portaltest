@@ -2,8 +2,8 @@
 
 ## 概要
 
-社員向け社内ポータル。4画面: ポータルトップ(お知らせ・クイックリンク・予定)/ 会議室予約(拠点別カレンダー、サンプル)/ スケジュール(個人の実データ + 拠点別会議室のサンプルを1画面に)/ 管理画面(コンテンツCRUD)。
-Claude Design のハンドオフ([design/README.md](design/README.md))を移植。**統括方針「Entra ID SSO + ポータル」構成のMS365実環境検証が目的**(→ ベンダー要件提示の説得材料)。Entra IDアプリ登録・サインイン・Graphでの個人予定連携は**実装済み・稼働中**。
+社員向け社内ポータル。4画面: ポータルトップ(お知らせ・クイックリンク・予定)/ 会議室予約(拠点別カレンダー、**デザインサンプルのまま**)/ スケジュール(個人 + 拠点別会議室、**両方実データ**)/ 管理画面(コンテンツCRUD)。
+Claude Design のハンドオフ([design/README.md](design/README.md))を移植。**統括方針「Entra ID SSO + ポータル」構成のMS365実環境検証が目的**(→ ベンダー要件提示の説得材料)。Entra IDアプリ登録・サインイン・Graphでの個人予定連携・**実際のExchange会議室リソースとの連携は実装済み・稼働中**。
 
 ## 技術スタック
 
@@ -17,9 +17,16 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 
 - `server.js` — 全API(config/me/content/admin CRUD/users検索/bookings CRUD/layout)+ 静的配信 + entraモードのトークン検証
 - `src/db.js` — スキーマ + ハンドオフ準拠のシードデータ
-- `public/js/roomsData.js` — 拠点・会議室マスタ + 曜日パターンのダミー予約(純粋関数 `bookingsFor(roomId, date, extraBookings)`)。`rooms.js` と `schedule.js` の両方が読み込む共有データ。**マスタを変更するときはここ1箇所を直す**
-- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。会議室・予約自体は**サンプル表示のまま**(Exchangeの会議室リソースが未整備のため、ここでの操作はOutlook側には反映されない)。自分の予約はDB実データ(src/db.jsで初回シード)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(主催者のみ、サーバー側で強制)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
-- `public/js/schedule.js` — スケジュール画面。**個人のスケジュールは実データ**(Graph `/me/calendarView` で表示、`/me/events` で作成)。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`で検索・選択、メール確定→Outlookの`attendees`として招待)と「外部参加者」(`rooms.js`と同じくフリーワードの自由入力。メール不要のため招待はできず、Outlook予定の本文にメモとして記載)を分けて入力する。「会議室を使用する」をチェックすると拠点・会議室を選べ、`rooms.js`と同じ仕組み(サーバーSQLite保存・サンプル)で会議室を確保してからOutlookに反映する(重複時は409エラーで作成を中止。Outlook側の作成に失敗した場合は確保済みの会議室予約を`DELETE /api/bookings/:id`で自動的に取り消してロールバックする)。拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面と予定作成モーダルの両方から呼ぶ共有関数
+- `public/js/roomsData.js` — `rooms.js`(デザインサンプル)専用の拠点・会議室マスタ + 曜日パターンのダミー予約(純粋関数 `bookingsFor(roomId, date, extraBookings)`)。**`schedule.js` は使わない**(下記の実データ版を別に持つ)。ユーザーの明示的な指示により、意匠確認用のサンプルとして凍結保存している。実データ化しない
+- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。会議室・予約自体は**デザインサンプルのまま**(`roomsData.js`のダミー会議室。ここでの操作はOutlook側には反映されない)。自分の予約はDB実データ(src/db.jsで初回シード)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(主催者のみ、サーバー側で強制)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
+- `public/js/schedule.js` — スケジュール画面。**個人のスケジュール・拠点別の会議室スケジュールとも実データ**。
+  - 個人: Graph `/me/calendarView` で表示、`/me/events` で作成
+  - 会議室マスタ: ファイル冒頭の `SITES`/`ROOMS_NAMES_BY_SITE` に**実際のExchange会議室リソースをハードコード**(5拠点33室。平野9・花博7・西宮9・中百舌鳥6・福田2。ドメインは`yumesumika.com`)。マスタが増減したら Exchange 管理者に確認しこの配列を直す(`Get-Mailbox -RecipientTypeDetails RoomMailbox` で最新一覧を取得できる)。Graph `Place.Read.All` は使わない設計(ハードコード運用と決定済み)ため不要
+  - 空き状況: `fetchRoomBusy()` が `POST /me/calendar/getSchedule` を33室ぶんまとめて1回で呼び、`state.roomBusy`(roomId→busy配列)に格納。件名(`subject`)はExchangeの既定の空き時間共有設定により**表示されない場合がある**(取得できた場合のみ表示。取得できなくても時間帯は正しい)
+  - 予約作成: 「会議室を使用する」チェック時、選択した会議室を `attendees` に `type: "resource"` で追加して `POST /me/events`。**Exchange側が空きなら自動承諾・埋まっていれば自動辞退する本物の予約**(サンプルではない。サーバー側のSQLite保存は使わない)。場所は `locationEmailAddress` で会議室本体と紐づける(文字列だけだと自動承諾時に場所が二重表記になる)
+  - 重複の事前チェック: 送信直前に `fetchRoomBusy` で最新の空き状況を取り直し、重複していたら**予定自体を作らずエラー表示**(変更時は自分の元の時間帯を重複扱いしない)。すり抜けた場合の最終判定はExchange(自動辞退。ただし主催者の予定表には残る=Outlook標準挙動)
+  - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(getScheduleの `tentative`)。全33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)
+  - 拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面と予定作成モーダルの両方から呼ぶ共有関数。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力、Outlook本文にメモ記載)を分けて入力する
 - `public/js/portal.js` — トップ画面。「今日の予定」も実データ(Graph `/me/calendarView`)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
 - `public/js/auth.js` — 認証アダプタ(MSAL.js v5、SPA + PKCE)。`getGraphToken(scopes)` でGraph用トークンを取得
 - `public/js/common.js` — 全画面共通ユーティリティ(`api()` / `esc()` 等)。`searchMembers(q)`(社内メンバー検索。entraモードはGraph `/users`実データ、devモードはダミー名簿`/api/users`)を`rooms.js`と`schedule.js`で共用
@@ -29,11 +36,11 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 1. **デザインは design/README.md が正**(色・余白・挙動は確定値)。見た目を変えるときは必ず照合する。ZIP内プロトタイプはREADMEより古い版なので仕様の根拠にしない
 2. マークアップはプロトタイプ準拠のインラインスタイル + hover/focusのみ `css/portal.css` のクラス。この方式を維持する
 3. 動的テキストは必ず `esc()` を通す(XSS対策)
-4. **実データ(Graph)とサンプル(ダミー)を画面上で必ず区別する**(バッジ表示: 「Outlook 連携」= 実データ、「サンプル表示」= ダミー)。ユーザーが誤って「本物」と誤解しないようにするため
-5. 会議室予約(`rooms.js`)を実データ化する際は、Exchangeに実際の会議室リソースメールボックスが存在することを先に確認すること。存在しない状態でGraph連携すると空リストになるか失敗する
+4. **実データ(Graph)とサンプル(ダミー)を画面上で必ず区別する**(バッジ表示: 「Outlook 連携」「Exchange 連携」= 実データ、「サンプル表示」「デザインサンプル」= ダミー)。ユーザーが誤って「本物」と誤解しないようにするため
+5. `rooms.js`(デザインサンプル)は**ユーザーの明示的な指示により実データ化しない**。会議室の実データ連携が必要な画面は `schedule.js` 側に実装する(2画面で役割が分かれている)
 6. 予約の変更・取消は主催者のみ(サーバー側 `ownBooking` で強制。Exchangeと同じ制約)
 7. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
-8. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
+8. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
 9. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
 
 ## 今後のロードマップ(統括計画)
@@ -42,6 +49,6 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 2. ✅ テスト用 Entra ID アプリ登録(台帳記録: Yoshimura-Portal)
 3. ✅ MSALログイン有効化(`AUTH_MODE=entra`)+ サーバー側トークン検証(jose)
 4. ✅ 個人の予定表連携(表示: `/me/calendarView`、作成: `/me/events`。会議室を含まない予定のみ)
-5. 会議室予約の実データ化(Exchangeの会議室リソース整備が前提。§実装ルール5)
+5. ✅ 会議室の実データ化(`schedule.js`。5拠点33室の実Exchangeリソース+`getSchedule`+resource出席者予約)。`rooms.js`はデザインサンプルとして意図的に凍結
 6. ✅ 社内メンバー検索の実データ化(`User.ReadBasic.All` + Graph `/users`。**Azure側でのAPI権限追加+管理者同意が未実施の場合は動作しない**。§0参照)
 7. webinputsystem(経費精算)へのSSO遷移確認
