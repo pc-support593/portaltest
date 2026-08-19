@@ -1,0 +1,215 @@
+
+<helmet>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+
+
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <header style="background:#1e3a5f;padding:0 24px;height:54px;display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="width:30px;height:30px;border-radius:7px;background:#2e6fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">吉</div>
+      <span style="font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap">吉村一建設 ポータル</span>
+      <span style="font-size:13px;color:#7f96b3">｜</span>
+      <span style="font-size:13px;color:#a8bdd6;white-space:nowrap">会議室予約</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:18px">
+      <span style="font-size:11px;font-weight:700;color:#bcd4ef;background:rgba(255,255,255,0.12);border-radius:4px;padding:3px 9px;white-space:nowrap">Exchange 連携</span>
+      <a href="portal_v2.html" style="font-size:13px;color:#a8bdd6;white-space:nowrap" style-hover="color:#ffffff;text-decoration:none">← ポータルへ戻る</a>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">佐</div>
+        <div style="display:flex;flex-direction:column;line-height:1.3">
+          <span style="font-size:12px;font-weight:700;color:#ffffff;white-space:nowrap">佐藤 美咲</span>
+          <span style="font-size:10px;color:#a8bdd6;white-space:nowrap">営業企画部</span>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div style="max-width:1560px;width:100%;margin:0 auto;padding:18px 24px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">拠点</span>
+    <sc-for list="{{ sites }}" as="s" hint-placeholder-count="4">
+      <button sc-camel-on-click="{{ s.select }}" style="display:flex;align-items:baseline;gap:8px;border:1px solid {{ s.border }};background:{{ s.bg }};color:{{ s.color }};font-weight:700;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit" style-hover="border-color:#1e5fa8">
+        <span>{{ s.name }}</span>
+        <span style="font-size:11px;font-weight:500;color:{{ s.subColor }}">{{ s.count }}</span>
+      </button>
+    </sc-for>
+  </div>
+  <div style="max-width:1560px;width:100%;margin:0 auto;padding:12px 24px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">会議室</span>
+    <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="4">
+      <button sc-camel-on-click="{{ r.select }}" style="display:flex;align-items:center;gap:9px;border:1px solid {{ r.border }};background:{{ r.bg }};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit" style-hover="border-color:#c8dcf0">
+        <span style="width:10px;height:10px;border-radius:3px;background:{{ r.color }};flex-shrink:0"></span>
+        <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+          <span style="font-size:13px;font-weight:700;color:#1c2b3a">{{ r.name }}</span>
+          <span style="font-size:11px;color:#6b7d8f">{{ r.meta }}</span>
+        </span>
+      </button>
+    </sc-for>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#5a6a7a;border-left:4px solid #f5b301"></span>自分の予約</span>
+      <span style="font-size:11px;color:#8a99a8">塗りの色は会議室ごと</span>
+    </span>
+  </div>
+  <div style="max-width:1560px;width:100%;margin:0 auto;padding:16px 24px 28px;display:flex;flex-direction:column;gap:18px;flex:1" class="room-layout">
+
+    <section data-screen-label="月間カレンダー" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:9px">
+          <span style="width:12px;height:12px;border-radius:4px;background:{{ activeColor }}"></span>
+          <h2 style="margin:0;font-size:16px;font-weight:700;white-space:nowrap">{{ activeName }}</h2>
+          <span style="font-size:12px;color:#6b7d8f;white-space:nowrap">{{ activeMeta }}</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
+          <button sc-camel-on-click="{{ prevMonth }}" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit" style-hover="background:#e9f1fa">‹</button>
+          <span style="font-size:15px;font-weight:700;min-width:118px;text-align:center;white-space:nowrap">{{ monthLabel }}</span>
+          <button sc-camel-on-click="{{ nextMonth }}" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit" style-hover="background:#e9f1fa">›</button>
+          <button sc-camel-on-click="{{ thisMonth }}" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;margin-left:6px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit" style-hover="background:#f5f8fb">今月</button>
+        </span>
+      </div>
+      <sc-if value="{{ weekMode }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:#eef4fb;border-bottom:1px solid #dbe7f4">
+          <span style="font-size:12px;font-weight:700;color:#1e5fa8">{{ weekModeLabel }}</span>
+          <button sc-camel-on-click="{{ exitWeek }}" style="margin-left:auto;border:1px solid #c8dcf0;background:#ffffff;border-radius:7px;padding:5px 14px;cursor:pointer;color:#1e5fa8;font-size:12px;font-weight:700;font-family:inherit" style-hover="background:#e9f1fa">月間表示に戻る</button>
+        </div>
+      </sc-if>
+      <div style="display:grid;grid-template-columns:46px repeat(7,1fr);border-bottom:1px solid #e8edf3">
+        <span></span>
+        <sc-for list="{{ weekdays }}" as="w" hint-placeholder-count="7">
+          <span style="padding:9px 0;text-align:center;font-size:12px;font-weight:700;color:{{ w.color }}">{{ w.label }}</span>
+        </sc-for>
+      </div>
+      <sc-for list="{{ weeks }}" as="wk" hint-placeholder-count="5">
+      <div style="display:grid;grid-template-columns:46px repeat(7,1fr)">
+        <button sc-camel-on-click="{{ wk.toggle }}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;border-right:1px solid #e8edf3;border-bottom:1px solid #f2f5f9;background:{{ wk.bg }};cursor:pointer;font-family:inherit;padding:6px 2px" style-hover="background:#e3edf8">
+          <span style="font-size:11px;font-weight:700;color:{{ wk.color }};writing-mode:vertical-rl;letter-spacing:0.08em">{{ wk.label }}</span>
+        </button>
+        <sc-for list="{{ wk.days }}" as="c" hint-placeholder-count="7">
+          <button sc-camel-on-click="{{ c.open }}" style="display:flex;flex-direction:column;gap:4px;align-items:stretch;min-height:118px;border:none;border-right:1px solid #f2f5f9;border-bottom:1px solid #f2f5f9;background:{{ c.bg }};padding:7px 8px;cursor:pointer;text-align:left;font-family:inherit" style-hover="background:#f2f6fb">
+            <span style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:13px;font-weight:700;color:{{ c.dateColor }};background:{{ c.dateBg }};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center">{{ c.day }}</span>
+              <span style="font-size:10px;color:#a8b5c2;margin-left:auto">{{ c.countLabel }}</span>
+            </span>
+            <sc-for list="{{ c.bookings }}" as="b" hint-placeholder-count="0">
+              <span style="display:flex;flex-direction:column;background:{{ b.bg }};border-left:4px solid {{ b.bar }};border-radius:4px;padding:4px 7px;line-height:1.35">
+                <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  <span style="font-size:10px;font-weight:700;color:{{ b.timeColor }}">{{ b.time }}</span>
+                  <span style="font-size:10px;font-weight:700;color:{{ b.timeColor }};word-break:normal;overflow-wrap:break-word">{{ b.roomTag }}</span>
+                </span>
+                <span style="font-size:11px;font-weight:500;color:{{ b.titleColor }};word-break:normal;overflow-wrap:break-word">{{ b.title }}</span>
+              </span>
+            </sc-for>
+          </button>
+        </sc-for>
+      </div>
+      </sc-for>
+      <div style="padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:#8a99a8">左端の「第N週」ボタンでその週だけを表示できます。日付クリックで時間帯別の空き状況を確認できます。</span>
+        <span style="margin-left:auto;font-size:12px;color:#8a99a8">最終同期 {{ syncTime }}</span>
+      </div>
+    </section>
+  </div>
+
+  <sc-if value="{{ dayOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeDay }}" style="position:fixed;inset:0;background:rgba(20,40,65,0.45);display:flex;align-items:center;justify-content:center;padding:24px;z-index:100">
+      <div sc-camel-on-click="{{ stopClick }}" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:600px;width:100%;max-height:82vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:20px 26px 16px;border-bottom:1px solid #e4ebf2">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <span style="display:flex;align-items:center;gap:9px">
+              <span style="width:10px;height:10px;border-radius:3px;background:{{ activeColor }}"></span>
+              <span style="font-size:12px;color:#6b7d8f">{{ activeName }} ・ {{ activeMeta }}</span>
+            </span>
+            <h3 style="margin:0;font-size:19px;font-weight:700">{{ dayTitle }}</h3>
+          </div>
+          <button sc-camel-on-click="{{ closeDay }}" style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0" style-hover="background:#e4ebf2">✕</button>
+        </div>
+        <div style="padding:16px 26px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ slots }}" as="s" hint-placeholder-count="10">
+            <div style="display:flex;align-items:center;gap:14px;background:{{ s.bg }};border-left:6px solid {{ s.bar }};border-radius:8px;padding:10px 14px">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:700;color:{{ s.subColor }}">{{ s.time }}</span>
+                  <sc-if value="{{ s.hasRoom }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:12px;color:{{ s.subColor }}">/</span>
+                      <span style="font-size:12px;font-weight:700;color:{{ s.chipColor }};background:{{ s.chipBg }};border-radius:5px;padding:2px 8px">{{ s.roomLabel }}</span>
+                    </span>
+                  </sc-if>
+                  <sc-if value="{{ s.mineTag }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:2px 7px;white-space:nowrap">自分の予約</span>
+                  </sc-if>
+                </span>
+                <span style="font-size:13px;font-weight:{{ s.weight }};color:{{ s.textColor }}">{{ s.label }}</span>
+              </span>
+              <span style="margin-left:auto;flex-shrink:0;display:flex;gap:8px">
+                <sc-if value="{{ s.free }}" hint-placeholder-val="{{ false }}">
+                  <button sc-camel-on-click="{{ s.book }}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit" style-hover="background:#e9f1fa">予約する</button>
+                </sc-if>
+                <sc-if value="{{ s.cancelable }}" hint-placeholder-val="{{ false }}">
+                  <button sc-camel-on-click="{{ s.cancel }}" style="font-size:12px;font-weight:500;color:#a8b5c2;background:#ffffff;border:1px solid #e4eaf1;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit" style-hover="background:#fbeeee;color:#c05a5a;border-color:#f0d5d5">取消</button>
+                </sc-if>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex;align-items:center;gap:10px">
+          <span style="font-size:12px;color:#8a99a8">予約は Outlook の予定表に反映されます</span>
+          <span style="margin-left:auto;display:flex;gap:10px">
+            <sc-if value="{{ canQuickBook }}" hint-placeholder-val="{{ false }}">
+              <button sc-camel-on-click="{{ quickBook }}" style="border:none;background:#1e5fa8;color:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit" style-hover="background:#16497f">＋ 時間を指定して予約</button>
+            </sc-if>
+            <button sc-camel-on-click="{{ closeDay }}" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit" style-hover="background:#f5f8fb">閉じる</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ formOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ cancelForm }}" style="position:fixed;inset:0;background:rgba(20,40,65,0.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:110">
+      <div sc-camel-on-click="{{ stopClick }}" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:520px;width:100%;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid #e4ebf2">
+          <h3 style="margin:0;font-size:17px;font-weight:700">会議室を予約</h3>
+          <button sc-camel-on-click="{{ cancelForm }}" style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0" style-hover="background:#e4ebf2">✕</button>
+        </div>
+        <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:10px;background:#f5f8fb;border-radius:9px;padding:11px 15px">
+            <span style="font-size:13px;font-weight:700">{{ formSite }} {{ formRoom }}</span>
+            <span style="margin-left:auto;font-size:13px;color:#6b7d8f">{{ formDate }}</span>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
+            <input value="{{ formTitle }}" sc-camel-on-change="{{ setFormTitle }}" placeholder="例: 営業企画 定例MTG" style="border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:14px;background:#f9fbfd;font-family:inherit" style-focus="border-color:#1e5fa8;outline:none;background:#ffffff">
+          </label>
+          <div style="display:flex;gap:12px;align-items:flex-end">
+            <label style="display:flex;flex-direction:column;gap:5px;flex:1">
+              <span style="font-size:12px;font-weight:700;color:#6b7d8f">開始</span>
+              <sc-raw-select value="{{ formStart }}" sc-camel-on-change="{{ setFormStart }}" style="border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:14px;background:#f9fbfd;font-family:inherit" style-focus="border-color:#1e5fa8;outline:none">
+                <sc-for list="{{ hourOptions }}" as="h" hint-placeholder-count="4">
+                  <option value="{{ h }}">{{ h }}</option>
+                </sc-for>
+              </sc-raw-select>
+            </label>
+            <span style="font-size:14px;color:#8a99a8;padding-bottom:10px">〜</span>
+            <label style="display:flex;flex-direction:column;gap:5px;flex:1">
+              <span style="font-size:12px;font-weight:700;color:#6b7d8f">終了</span>
+              <sc-raw-select value="{{ formEnd }}" sc-camel-on-change="{{ setFormEnd }}" style="border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:14px;background:#f9fbfd;font-family:inherit" style-focus="border-color:#1e5fa8;outline:none">
+                <sc-for list="{{ hourOptions }}" as="h" hint-placeholder-count="4">
+                  <option value="{{ h }}">{{ h }}</option>
+                </sc-for>
+              </sc-raw-select>
+            </label>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:12px;font-weight:700;color:#6b7d8f">参加者・メモ(任意)</span>
+            <input value="{{ formPeople }}" sc-camel-on-change="{{ setFormPeople }}" placeholder="例: 工事部 3名" style="border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:14px;background:#f9fbfd;font-family:inherit" style-focus="border-color:#1e5fa8;outline:none;background:#ffffff">
+          </label>
+          <span style="font-size:12px;color:#c05a5a">{{ formError }}</span>
+        </div>
+        <div style="padding:16px 26px;border-top:1px solid #e4ebf2;display:flex;gap:10px;justify-content:flex-end">
+          <button sc-camel-on-click="{{ cancelForm }}" style="border:1px solid #dfe8f0;background:#ffffff;color:#6b7d8f;font-weight:500;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit" style-hover="background:#f5f8fb">キャンセル</button>
+          <button sc-camel-on-click="{{ submitForm }}" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 24px;font-size:13px;cursor:pointer;font-family:inherit" style-hover="background:#16497f">予約する</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>

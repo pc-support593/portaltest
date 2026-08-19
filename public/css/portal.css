@@ -1,0 +1,59 @@
+/* デザインハンドオフ準拠の共通スタイル。
+   個別要素の見た目はプロトタイプに合わせてインラインスタイルで持ち、
+   ここでは基礎スタイルと hover/focus(プロトタイプの style-hover 相当)のみ定義する。 */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #eef1f5;
+  font-family: 'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+  color: #1c2b3a;
+}
+a { color: #1e5fa8; text-decoration: none; }
+a:hover { color: #16497f; text-decoration: underline; }
+input::placeholder, textarea::placeholder { color: #8fa3bd; }
+
+/* ヘッダー */
+.nav-link { font-size: 13px; color: #a8bdd6; white-space: nowrap; }
+.nav-link:hover { color: #ffffff; text-decoration: none; }
+.nav-link.active { color: #ffffff; font-weight: 500; }
+.nav-link.active:hover { color: #bcd4ef; }
+.header-search:focus { outline: none; background: rgba(255,255,255,0.2); }
+
+/* 行ボタン(お知らせ・スケジュール等) */
+.hv-row:hover { background: #f5f8fb; }
+/* クイックリンクのタイル */
+.hv-tile:hover { background: #f5f8fb; text-decoration: none; border-color: #c8dcf0 !important; }
+/* 淡色ボタン(確認・月送り・予約する 等) */
+.hv-btn-light:hover { background: #e9f1fa; text-decoration: none; }
+/* 白ボタン(今月・閉じる・キャンセル 等) */
+.hv-btn-plain:hover { background: #f5f8fb; }
+/* プライマリボタン */
+.hv-btn-primary:hover { background: #16497f !important; }
+/* 危険操作(削除・取消) */
+.hv-btn-danger:hover { background: #fbeeee !important; color: #c05a5a !important; border-color: #f0d5d5 !important; }
+/* モーダルの✕ */
+.hv-close:hover { background: #e4ebf2 !important; }
+/* 拠点・タブボタン / 会議室ボタン */
+.hv-site:hover { border-color: #1e5fa8 !important; }
+.hv-room:hover { border-color: #c8dcf0 !important; }
+/* カレンダーの週選択・日セル */
+.hv-week:hover { background: #e3edf8 !important; }
+.hv-cell:hover { background: #f2f6fb !important; }
+/* メンバー検索の候補行 */
+.hv-cand:hover { background: #f5f8fb; }
+
+/* 入力欄 */
+.in-input {
+  border: 1px solid #dfe8f0; border-radius: 8px; padding: 9px 12px;
+  font-size: 14px; background: #f9fbfd; font-family: inherit; color: #1c2b3a;
+}
+.in-input:focus { border-color: #1e5fa8; outline: none; background: #ffffff; }
+
+/* トップ画面のセクション並び替え(ドラッグ&ドロップ) */
+.drag-handle:active { cursor: grabbing !important; }
+[data-section].dragging { opacity: 0.4; }
+
+/* レスポンシブ(デザイン指定値) */
+@media (max-width: 1100px) { .portal-search { display: none; } }
+@media (max-width: 760px) { .portal-nav { display: none !important; } }
