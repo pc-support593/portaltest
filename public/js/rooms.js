@@ -71,8 +71,7 @@ function renderRoomTabs() {
   const isAll = state.room === '__all';
   // 「全ての会議室」だけは従来デザインのまま(白地+色ドット・2行分の高さ)
   const allTabHtml = `
-      <button class="hv-room" data-room="__all" style="display:flex;align-items:center;gap:9px;border:1px solid ${isAll ? '#2e6fc0' : '#eef1f5'};background:${isAll ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
-        <span style="width:10px;height:10px;border-radius:3px;background:#5a6a7a;flex-shrink:0"></span>
+      <button class="hv-room" data-room="__all" style="display:flex;align-items:center;border:1px solid ${isAll ? '#2e6fc0' : '#eef1f5'};background:${isAll ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
         <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
           <span style="font-size:13px;font-weight:700;color:#1c2b3a">全ての会議室</span>
           <span style="font-size:11px;color:#6b7d8f">${rooms.length}室をまとめて表示</span>
