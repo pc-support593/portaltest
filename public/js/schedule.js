@@ -208,8 +208,10 @@ async function loadAndRenderSiteGrid() {
 // ---- 予定作成モーダル(個人の予定。任意で実際の会議室を出席者として追加) ----
 
 function hourOptions() {
+  // 予約可能時間は 8:00〜21:00(30分刻み)
   const opts = [];
   for (let h = 8; h <= 20; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
+  opts.push('21:00');
   return opts;
 }
 

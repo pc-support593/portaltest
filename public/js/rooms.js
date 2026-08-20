@@ -308,7 +308,8 @@ function renderDayModal() {
   } else {
     const bks = bookingsFor(state.room, dd, state.bookings);
     const parts = [];
-    for (let h = 8; h <= 18; h++) {
+    // 予約可能時間 8:00〜21:00(最終スロットは 20:00–21:00)
+    for (let h = 8; h <= 20; h++) {
       const label = `${pad(h)}:00`;
       // 区間重なり判定(30分単位の予約も正しく扱う。ゼロ埋めHH:MMなので文字列比較でよい)
       const slotEnd = `${pad(h + 1)}:00`;
@@ -384,8 +385,10 @@ function slotRow(s) {
 // ---- 予約フォーム ----
 
 function hourOptions() {
+  // 予約可能時間は 8:00〜21:00(30分刻み)
   const opts = [];
   for (let h = 8; h <= 20; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
+  opts.push('21:00');
   return opts;
 }
 
