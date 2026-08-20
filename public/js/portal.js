@@ -141,11 +141,15 @@ function renderNews(news) {
 
 function renderLinks(links) {
   const el = document.getElementById('quick-links');
-  el.innerHTML = links.map((l, i) => `
-    <a href="${esc(l.url || '#')}" class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
+  el.innerHTML = links.map((l, i) => {
+    // 外部システム(http/https)へのリンクは新しいタブで開く。ポータル内の遷移(rooms.html等)は同じタブのまま
+    const external = /^https?:\/\//i.test(l.url || '');
+    return `
+    <a href="${esc(l.url || '#')}"${external ? ' target="_blank" rel="noopener"' : ''} class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
       <span style="width:38px;height:38px;border-radius:10px;background:${LINK_COLORS[i % LINK_COLORS.length]};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">${esc(l.char)}</span>
       <span style="font-size:13px;font-weight:500">${esc(l.label)}</span>
-    </a>`).join('');
+    </a>`;
+  }).join('');
 }
 
 function renderTodayEvents(events) {
