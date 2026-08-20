@@ -43,6 +43,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 8. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
 9. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
 10. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
+11. **自動リフレッシュの共通方針(ユーザー承認・2026-08-20)**: 動的データの表示は「2分間隔で裏側から再取得・モーダル表示中と非表示タブ(document.hidden)はスキップ・差分があるときだけ静かに差し替え(自動更新時はローディング表示を出さない)・失敗は静かに無視して次回再試行」。実装済み: portal.js(今日の予定)・schedule.js(個人+拠点別)・rooms.js(サンプル予約)。**今後、動的表示を新設するときも同方針を適用する**
 
 ## 今後のロードマップ(統括計画)
 

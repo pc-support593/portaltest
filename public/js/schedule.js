@@ -584,6 +584,27 @@ async function render() {
   await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid()]);
 }
 
+// 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
+async function autoRefresh() {
+  if (formState || document.hidden) return;
+  const dateKey = isoDate(state.date); // 取得中に日付が切り替わったら結果を破棄するためのガード
+  try {
+    const [events, busy] = await Promise.all([
+      fetchPersonalEvents(state.date),
+      fetchRoomBusy(state.date)
+    ]);
+    if (formState || isoDate(state.date) !== dateKey) return;
+    if (JSON.stringify(events) !== JSON.stringify(state.personalEvents)) {
+      state.personalEvents = events;
+      renderPersonalEvents(events);
+    }
+    if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
+      state.roomBusy = busy;
+      document.getElementById('site-grid').innerHTML = siteGridHtml(busy);
+    }
+  } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
+}
+
 (async function init() {
   try {
     await Auth.init();
@@ -605,6 +626,8 @@ async function render() {
     }
 
     await render();
+
+    if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {
     console.error(e);
     document.getElementById('personal-events').innerHTML =

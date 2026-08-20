@@ -295,11 +295,27 @@ function initDragAndDrop() {
   initDragAndDrop();
 
   // 予定表はニュース等と独立して失敗しうるため(権限未同意など)、別枠でエラー表示する
+  let lastTodayEvents = [];
   try {
-    renderTodayEvents(await fetchTodayEvents());
+    lastTodayEvents = await fetchTodayEvents();
+    renderTodayEvents(lastTodayEvents);
   } catch (e) {
     console.error(e);
     document.getElementById('today-events').innerHTML =
       `<p style="margin:0;padding:6px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
+  }
+
+  // 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
+  if (Auth.mode === 'entra') {
+    setInterval(async () => {
+      if (document.hidden || modalData) return;
+      try {
+        const events = await fetchTodayEvents();
+        if (JSON.stringify(events) !== JSON.stringify(lastTodayEvents)) {
+          lastTodayEvents = events;
+          renderTodayEvents(events);
+        }
+      } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
+    }, 2 * 60 * 1000);
   }
 })();

@@ -662,11 +662,24 @@ function render() {
   renderModals();
 }
 
+// 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
+async function autoRefresh() {
+  if (state.day || state.form || document.hidden) return;
+  try {
+    const prev = JSON.stringify(state.bookings);
+    await loadBookings();
+    if (state.day || state.form) return; // 取得中にモーダルが開いたら描き替えない(次回に反映)
+    if (JSON.stringify(state.bookings) !== prev) render();
+  } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
+}
+
 (async function init() {
   try {
     ME = await Auth.init();
     await loadBookings();
     render();
+
+    setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {
     console.error(e);
     document.getElementById('calendar-card').innerHTML =
