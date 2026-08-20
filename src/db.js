@@ -124,7 +124,7 @@ function seed(db) {
       ['工', '工事台帳', 'https://www.dandoli.jp/login?nextPage=/'],
       ['図', '図面管理', '#'],
       ['名', '社員名簿', '#'],
-      ['IT', 'ITサポート', '#']
+      ['S', 'SalesForce', 'https://yumesumika.my.salesforce.com/']
     ].forEach(r => ins.run(...r));
   }
 
