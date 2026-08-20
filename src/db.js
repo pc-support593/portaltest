@@ -117,7 +117,7 @@ function seed(db) {
   if (count('links') === 0) {
     const ins = db.prepare('INSERT INTO links (char, label, url) VALUES (?, ?, ?)');
     [
-      ['勤', '勤怠管理', '#'],
+      ['勤', '勤怠管理', 'http://192.168.1.235/zaionnex/'],
       ['経', '経費精算', '#'],
       ['申', '各種申請', '#'],
       ['会', '会議室予約', 'rooms.html'],
