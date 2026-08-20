@@ -21,7 +21,25 @@ const Auth = {
     }
     this.me = await api('/api/me');
     fillMe(this.me);
+    this._initLogoutLink();
     return this.me;
+  },
+
+  /** ヘッダーの「ログアウト」リンク(id="logout-link")を有効化する。devモードでは非表示のまま */
+  _initLogoutLink() {
+    const link = document.getElementById('logout-link');
+    if (!link || this.mode !== 'entra') return;
+    link.style.display = '';
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      this.logout();
+    });
+  },
+
+  /** Entra ID からサインアウトする(このブラウザのMicrosoftサインインセッションも終了する) */
+  logout() {
+    if (this.mode !== 'entra' || !this._msal) return;
+    this._msal.logoutRedirect({ postLogoutRedirectUri: window.location.origin });
   },
 
   async _initEntra() {
