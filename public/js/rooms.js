@@ -73,14 +73,25 @@ function renderRoomTabs() {
     id: '__all', name: '全ての会議室', meta: `${rooms.length}室をまとめて表示`, color: '#5a6a7a', sel: isAll
   }].concat(rooms.map(r => ({ id: r.id, name: r.name, meta: r.meta, color: r.color, sel: r.id === state.room })));
   el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">会議室</span>' +
-    tabs.map(t => `
+    tabs.map(t => {
+      // 「全ての会議室」だけは従来デザインのまま(白地+色ドット)
+      if (t.id === '__all') return `
       <button class="hv-room" data-room="${t.id}" style="display:flex;align-items:center;gap:9px;border:1px solid ${t.sel ? '#2e6fc0' : '#eef1f5'};background:${t.sel ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
         <span style="width:10px;height:10px;border-radius:3px;background:${t.color};flex-shrink:0"></span>
         <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
           <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(t.name)}</span>
           <span style="font-size:11px;color:#6b7d8f">${esc(t.meta)}</span>
         </span>
-      </button>`).join('') +
+      </button>`;
+      // 各会議室は識別色で全面塗りつぶし+白文字。選択中は濃紺の枠で示す
+      return `
+      <button class="hv-roomfill" data-room="${t.id}" style="display:flex;align-items:center;gap:9px;border:2px solid ${t.sel ? '#1c2b3a' : 'transparent'};background:${t.color};border-radius:9px;padding:${t.meta ? '9px 16px' : '13px 16px'};cursor:pointer;text-align:left;font-family:inherit">
+        <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+          <span style="font-size:13px;font-weight:700;color:#ffffff">${esc(t.name)}</span>
+          ${t.meta ? `<span style="font-size:11px;color:rgba(255,255,255,0.85)">${esc(t.meta)}</span>` : ''}
+        </span>
+      </button>`;
+    }).join('') +
     `<span style="margin-left:auto;display:flex;align-items:center;gap:14px">
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#f5b301"></span>主催</span>
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#00d2c6"></span>参加</span>

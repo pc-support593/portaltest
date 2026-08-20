@@ -37,6 +37,8 @@ input::placeholder, textarea::placeholder { color: #8fa3bd; }
 /* 拠点・タブボタン / 会議室ボタン */
 .hv-site:hover { border-color: #1e5fa8 !important; }
 .hv-room:hover { border-color: #c8dcf0 !important; }
+/* 会議室タブ(識別色で全面塗りつぶし)のhover */
+.hv-roomfill:hover { filter: brightness(0.9); }
 /* カレンダーの週選択・日セル */
 .hv-week:hover { background: #e3edf8 !important; }
 .hv-cell:hover { background: #f2f6fb !important; }
