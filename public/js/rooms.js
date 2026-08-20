@@ -69,29 +69,27 @@ function renderRoomTabs() {
   const el = document.getElementById('room-tabs');
   const rooms = siteRooms(state.site);
   const isAll = state.room === '__all';
-  const tabs = [{
-    id: '__all', name: '全ての会議室', meta: `${rooms.length}室をまとめて表示`, color: '#5a6a7a', sel: isAll
-  }].concat(rooms.map(r => ({ id: r.id, name: r.name, meta: r.meta, color: r.color, sel: r.id === state.room })));
+  // 「全ての会議室」だけは従来デザインのまま(白地+色ドット・2行分の高さ)
+  const allTabHtml = `
+      <button class="hv-room" data-room="__all" style="display:flex;align-items:center;gap:9px;border:1px solid ${isAll ? '#2e6fc0' : '#eef1f5'};background:${isAll ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="width:10px;height:10px;border-radius:3px;background:#5a6a7a;flex-shrink:0"></span>
+        <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+          <span style="font-size:13px;font-weight:700;color:#1c2b3a">全ての会議室</span>
+          <span style="font-size:11px;color:#6b7d8f">${rooms.length}室をまとめて表示</span>
+        </span>
+      </button>`;
+  // 各会議室は識別色で全面塗りつぶし+白文字。「全ての会議室」タブの高さに収まる2段組みで並べる
+  // (grid-auto-flow:column + 2行。align-self:stretch で隣の全ての会議室タブと同じ高さに揃える)
+  const roomBtnsHtml = rooms.map(r => {
+    const sel = r.id === state.room;
+    return `
+      <button class="hv-roomfill" data-room="${r.id}" style="display:flex;align-items:center;border:2px solid ${sel ? '#1c2b3a' : 'transparent'};background:${r.color};border-radius:8px;padding:0 14px;cursor:pointer;font-family:inherit;white-space:nowrap">
+        <span style="font-size:12px;font-weight:700;color:#ffffff">${esc(r.name)}</span>
+      </button>`;
+  }).join('');
   el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">会議室</span>' +
-    tabs.map(t => {
-      // 「全ての会議室」だけは従来デザインのまま(白地+色ドット)
-      if (t.id === '__all') return `
-      <button class="hv-room" data-room="${t.id}" style="display:flex;align-items:center;gap:9px;border:1px solid ${t.sel ? '#2e6fc0' : '#eef1f5'};background:${t.sel ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
-        <span style="width:10px;height:10px;border-radius:3px;background:${t.color};flex-shrink:0"></span>
-        <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
-          <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(t.name)}</span>
-          <span style="font-size:11px;color:#6b7d8f">${esc(t.meta)}</span>
-        </span>
-      </button>`;
-      // 各会議室は識別色で全面塗りつぶし+白文字。選択中は濃紺の枠で示す
-      return `
-      <button class="hv-roomfill" data-room="${t.id}" style="display:flex;align-items:center;gap:9px;border:2px solid ${t.sel ? '#1c2b3a' : 'transparent'};background:${t.color};border-radius:9px;padding:${t.meta ? '9px 16px' : '13px 16px'};cursor:pointer;text-align:left;font-family:inherit">
-        <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
-          <span style="font-size:13px;font-weight:700;color:#ffffff">${esc(t.name)}</span>
-          ${t.meta ? `<span style="font-size:11px;color:rgba(255,255,255,0.85)">${esc(t.meta)}</span>` : ''}
-        </span>
-      </button>`;
-    }).join('') +
+    allTabHtml +
+    `<div style="display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,1fr);gap:6px;align-self:stretch;overflow-x:auto;max-width:100%">${roomBtnsHtml}</div>` +
     `<span style="margin-left:auto;display:flex;align-items:center;gap:14px">
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#f5b301"></span>主催</span>
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#00d2c6"></span>参加</span>
