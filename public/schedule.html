@@ -39,25 +39,31 @@
       <button id="today-btn" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今日</button>
     </div>
 
-    <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
-      <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
-        <span style="color:#1e5fa8;font-size:14px">▤</span>
-        <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">個人のスケジュール</h2>
-        <span id="personal-badge" style="font-size:11px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:2px 8px;white-space:nowrap">Outlook 連携</span>
-        <button id="create-event" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit">＋ 予定を作成</button>
-      </div>
-      <div id="personal-events" style="padding:14px 20px;display:flex;flex-direction:column;gap:10px"></div>
-    </section>
+    <!-- 個人と拠点別を横並び(2カラム。ポータルトップと同じくauto-fitで狭い画面では自動的に1カラム化) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;align-items:start">
 
-    <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
-      <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
-        <span style="color:#1e5fa8;font-size:14px">◔</span>
-        <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">拠点別 会議室のスケジュール</h2>
-        <span id="site-badge" style="font-size:11px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:2px 8px;white-space:nowrap">Exchange 連携</span>
-        <a href="rooms.html" style="margin-left:auto;font-size:12px;white-space:nowrap">会議室予約(デザインサンプル)へ</a>
-      </div>
-      <div id="site-grid" style="padding:18px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"></div>
-    </section>
+      <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+          <span style="color:#1e5fa8;font-size:14px">▤</span>
+          <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">個人のスケジュール</h2>
+          <span id="personal-badge" style="font-size:11px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:2px 8px;white-space:nowrap">Outlook 連携</span>
+          <button id="create-event" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit">＋ 予定を作成</button>
+        </div>
+        <div id="personal-events" style="padding:14px 20px;display:flex;flex-direction:column;gap:10px"></div>
+      </section>
+
+      <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+          <span style="color:#1e5fa8;font-size:14px">◔</span>
+          <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">拠点別 会議室のスケジュール</h2>
+          <span id="site-badge" style="font-size:11px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:2px 8px;white-space:nowrap">Exchange 連携</span>
+          <a href="rooms.html" style="margin-left:auto;font-size:12px;white-space:nowrap">会議室予約(デザインサンプル)へ</a>
+        </div>
+        <!-- 各拠点カードは縦積み -->
+        <div id="site-grid" style="padding:18px 20px;display:flex;flex-direction:column;gap:16px"></div>
+      </section>
+
+    </div>
 
   </div>
   <div id="modal-root"></div>
