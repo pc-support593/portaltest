@@ -39,7 +39,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 4. **実データ(Graph)とサンプル(ダミー)を画面上で必ず区別する**(バッジ表示: 「Outlook 連携」「Exchange 連携」= 実データ、「サンプル表示」「デザインサンプル」= ダミー)。ユーザーが誤って「本物」と誤解しないようにするため
 5. `rooms.js`(デザインサンプル)は**ユーザーの明示的な指示により実データ化しない**。会議室の実データ連携が必要な画面は `schedule.js` 側に実装する(2画面で役割が分かれている)
 6. **サンプルデータの削除禁止(ユーザー指示・2026-08-20)**: 仮のサンプルデータ(`roomsData.js`、`src/db.js`のシード、rooms.html一式、devモードの各ダミー)は、ユーザーから明示的に依頼されない限り削除しない。リファクタリングでも実データとの並存を維持する
-7. 予約の変更・取消は主催者のみ(サーバー側 `ownBooking` で強制。Exchangeと同じ制約)
+7. サンプル画面(rooms.html)の予約は**一旦、サインイン済みなら誰でも変更・取消可能**(ユーザー指示 2026-08-20。シードされたサンプル予約も編集できるようにするため。サーバー側 `ownBooking` の主催者チェックをコメントアウト中)。実データ化する際は主催者のみに戻す。スケジュール画面(実データ)の変更・削除は主催者のみ(Graph/Exchange側で強制される)
 8. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
 9. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
 10. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)

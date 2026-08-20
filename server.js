@@ -309,8 +309,9 @@ app.post('/api/bookings', (req, res) => {
 function ownBooking(req, res) {
   const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(Number(req.params.id));
   if (!row) { res.status(404).json({ error: 'not found' }); return null; }
-  // 変更・取消は主催者のみ(Exchangeと同じ制約)。同一性はメールで判定(同姓同名対策)
-  if (row.owner_email !== me(req).email) { res.status(403).json({ error: '主催者のみ変更・取消できます' }); return null; }
+  // この予約データはデザインサンプル(rooms.html)専用のため、一旦サインイン済みユーザーなら
+  // 誰でも変更・取消できるようにしている(ユーザー指示 2026-08-20。シードされたサンプル予約も編集可能にするため)。
+  // 実データ化する際は主催者のみに戻すこと: if (row.owner_email !== me(req).email) → 403
   return row;
 }
 

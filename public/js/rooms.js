@@ -157,7 +157,8 @@ function renderCalendar() {
       const dateColor = !inMonth ? '#c5cfda' : isToday ? '#ffffff' : dow === 0 ? '#c05a5a' : dow === 6 ? '#2f6f8f' : '#1c2b3a';
       const chips = bks.map(b => {
         const rc = b.roomColor || room.color;
-        const own = b.user && b.owner_email === ME.email;
+        // デザインサンプルのため、サーバー保存の予約は誰でも編集可能(ユーザー指示 2026-08-20。実データ化時は owner_email === ME.email に戻す)
+        const own = !!b.user;
         return `
         <span ${own ? `data-chip-edit="${b.id}" title="クリックで変更・取消" ` : ''}style="display:flex;flex-direction:column;background:${rc};border-left:4px solid ${barColor(b, rc)};border-radius:4px;padding:4px 7px;line-height:1.35${own ? ';cursor:pointer' : ''}">
           <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -300,7 +301,7 @@ function renderDayModal() {
     slotsHtml = all.length ? all.map(b => slotRow({
       time: `${b.start}–${b.end}`, label: b.title, owner: b.owner, booked: true,
       bg: b.roomColor, bar: barColor(b, b.roomColor), roomLabel: b.roomName, badge: statusBadge(b),
-      editable: b.user && b.owner_email === ME.email, id: b.id
+      editable: !!b.user, id: b.id
     })).join('') : `
       <div style="display:flex;align-items:center;gap:14px;background:#fbfcfd;border-left:6px solid #e8edf3;border-radius:8px;padding:10px 14px">
         <span style="font-size:13px;font-weight:500;color:#8a99a8">この日の予約はありません</span>
@@ -318,7 +319,7 @@ function renderDayModal() {
         ? slotRow({
             time: label, label: hit.title, owner: hit.owner, booked: true,
             bg: room.color, bar: barColor(hit, room.color), roomLabel: room.name, badge: statusBadge(hit),
-            editable: hit.user && hit.owner_email === ME.email, id: hit.id
+            editable: !!hit.user, id: hit.id
           })
         : slotRow({ time: label, label: '空き', booked: false, hour: h }));
     }

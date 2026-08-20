@@ -368,9 +368,12 @@ function renderModal() {
         </label>
         <span id="f-error" style="font-size:12px;color:#c05a5a">${esc(f.error)}</span>
       </div>
-      <div style="padding:16px 26px;border-top:1px solid #e4ebf2;display:flex;gap:10px;justify-content:flex-end">
-        <button class="hv-btn-plain" data-close style="border:1px solid #dfe8f0;background:#ffffff;color:#6b7d8f;font-weight:500;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit">キャンセル</button>
-        <button id="f-submit" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 24px;font-size:13px;cursor:pointer;font-family:inherit">${f.eventId ? '変更を保存' : '作成する'}</button>
+      <div style="padding:16px 26px;border-top:1px solid #e4ebf2;display:flex;gap:10px;align-items:center">
+        ${f.eventId ? '<button id="f-delete" class="hv-btn-danger" style="border:1px solid #f0d5d5;background:#fbeeee;color:#c05a5a;font-weight:500;border-radius:9px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit">この予定を削除</button>' : ''}
+        <span style="margin-left:auto;display:flex;gap:10px">
+          <button class="hv-btn-plain" data-close style="border:1px solid #dfe8f0;background:#ffffff;color:#6b7d8f;font-weight:500;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit">キャンセル</button>
+          <button id="f-submit" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 24px;font-size:13px;cursor:pointer;font-family:inherit">${f.eventId ? '変更を保存' : '作成する'}</button>
+        </span>
       </div>
     </div>
   </div>`;
@@ -390,6 +393,8 @@ function renderModal() {
   if (placeInput) placeInput.addEventListener('input', e => { f.place = e.target.value; });
   root.querySelector('#f-guests').addEventListener('input', e => { f.guests = e.target.value; });
   root.querySelector('#f-submit').addEventListener('click', submitCreateForm);
+  const deleteBtn = root.querySelector('#f-delete');
+  if (deleteBtn) deleteBtn.addEventListener('click', deleteEvent);
 
   root.querySelector('#f-use-room').addEventListener('change', e => {
     f.useRoom = e.target.checked;
@@ -529,6 +534,35 @@ async function submitCreateForm() {
     errEl.textContent = e.message || String(e);
     submitBtn.disabled = false;
     submitBtn.textContent = f.eventId ? '変更を保存' : '作成する';
+  }
+}
+
+/** 編集中の予定をOutlookから削除する(主催者のみ。会議室・参加者にはキャンセル通知が送られる) */
+async function deleteEvent() {
+  const f = formState;
+  if (!f || !f.eventId) return;
+  if (!confirm('この予定を削除しますか?(会議室や参加者には取消の通知が送られます)')) return;
+
+  const deleteBtn = document.getElementById('f-delete');
+  const errEl = document.getElementById('f-error');
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = '削除中…';
+  try {
+    const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/events/${f.eventId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok && res.status !== 404) { // 404 = 既に削除済み。成功扱いにする
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error?.message || `予定の削除に失敗しました(HTTP ${res.status})`);
+    }
+    closeForm();
+    render();
+  } catch (e) {
+    errEl.textContent = e.message || String(e);
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = 'この予定を削除';
   }
 }
 
