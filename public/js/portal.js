@@ -278,6 +278,11 @@ function initDragAndDrop() {
   try {
     const user = await Auth.init();
     renderGreeting(user);
+    // 「管理」リンクはPortal.Adminロールを持つユーザーのみ表示(実際のCRUD操作はサーバー側requireAdminでも強制済み)
+    if ((user.roles || []).includes('Portal.Admin')) {
+      const adminLink = document.getElementById('admin-nav-link');
+      if (adminLink) adminLink.style.display = '';
+    }
     renderTasks();
     const content = await api('/api/content');
     renderNews(content.news);

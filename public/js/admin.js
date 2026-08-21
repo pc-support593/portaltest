@@ -191,7 +191,14 @@ function render() {
 
 (async function init() {
   try {
-    await Auth.init();
+    const user = await Auth.init();
+    // URLを直接開かれた場合の保護(表示のみ。実際のCRUD操作はサーバー側requireAdminで強制済み)
+    if (!(user.roles || []).includes('Portal.Admin')) {
+      document.getElementById('tab-row').style.display = 'none';
+      document.querySelector('#tab-row').parentElement.querySelector('section').innerHTML =
+        '<div style="padding:48px 24px;text-align:center;font-size:14px;color:#6b7d8f">この画面は Entra ID のアプリロール「Portal.Admin」を持つユーザーのみ利用できます。</div>';
+      return;
+    }
     await loadAll();
     render();
   } catch (e) {
