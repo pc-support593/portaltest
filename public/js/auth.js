@@ -91,12 +91,18 @@ const Auth = {
     if (this.mode !== 'entra' || !this._msal) return null;
     try {
       const r = await this._msal.acquireTokenSilent({ scopes });
+      if (!r || !r.accessToken) throw new Error('トークンが取得できませんでした');
       return r.accessToken;
     } catch (e) {
       // ユーザー操作が必要な失敗のみリダイレクトで再認証(ページ遷移するため戻らない)。
       // ネットワークエラー等まで無条件にリダイレクトするとループの恐れがあるため区別する
       if (e instanceof msal.InteractionRequiredAuthError) {
-        return this._msal.acquireTokenRedirect({ scopes });
+        // acquireTokenRedirectはページ遷移するだけでトークン文字列を返さないため、
+        // ここで待ち受けると呼び出し元が空のトークンでAPIを呼んでしまう(Graph側で
+        // InvalidAuthenticationToken/Access token is emptyになる)。遷移は裏で開始しつつ、
+        // 呼び出し元には明確なエラーを投げて空トークンでのAPI呼び出しを防ぐ
+        this._msal.acquireTokenRedirect({ scopes });
+        throw new Error('サインインの有効期限が切れました。再度サインインしています…');
       }
       throw e;
     }
