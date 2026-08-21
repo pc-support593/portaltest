@@ -31,7 +31,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
   - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(getScheduleの `tentative`)。全33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)
   - **既知の制約(2026-08-21確認)**: Exchange側が**過去日時の会議室予約を処理しない**(会議室が出席者として一切追加されず、`getSchedule`でも常に空きのまま)。ポータル側のコードには過去日時を防ぐ処理がなく、検証時は必ず未来の時間帯で予約すること
   - 拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面用。予定作成モーダル内は `freeRoomsHtml`(選択中の拠点・時間帯で**空いている会議室だけ**をチップ表示・縦スクロール。クリックで選択、開始/終了/拠点の変更に追随。ユーザー指示 2026-08-21)。**会議室のプルダウンは無し**: 「会議室」欄は読み取り専用の表示欄で、チップのクリックでのみ選択される(直接入力・自動選択なし。拠点を切り替えると選択はクリアされる)。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力、Outlook本文にメモ記載)を分けて入力する
-- `public/js/portal.js` — トップ画面。「今日の予定」も実データ(Graph `/me/calendarView`)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
+- `public/js/portal.js` — トップ画面。「今日の予定」も実データ(Graph `/me/calendarView`)。お知らせは**掲載日が今日以降のものだけトップに表示**し、過ぎたものは「すべて見る」の一覧モーダル(`openNewsListModal`。全件・新しい順)から見る(ユーザー指示 2026-08-21。日付なしのお知らせは表示継続)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
 - `public/js/auth.js` — 認証アダプタ(MSAL.js v5、SPA + PKCE)。`getGraphToken(scopes)` でGraph用トークンを取得
 - `public/js/common.js` — 全画面共通ユーティリティ(`api()` / `esc()` 等)。`searchMembers(q)`(社内メンバー検索。entraモードはGraph `/users`実データ、devモードはダミー名簿`/api/users`)を`rooms.js`と`schedule.js`で共用
 

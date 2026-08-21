@@ -121,8 +121,19 @@ function renderGreeting(user) {
   document.getElementById('today').textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${w})`;
 }
 
+/** お知らせ1件の詳細モーダルを開く */
+function openNewsDetail(n) {
+  const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
+  openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部' });
+}
+
+/** トップのお知らせ欄: 掲載日が今日以降のものだけ表示。過ぎたものは「すべて見る」から(ユーザー指示 2026-08-21) */
 function renderNews(news) {
   const el = document.getElementById('news-list');
+  if (!news.length) {
+    el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">現在表示中のお知らせはありません(過去のお知らせは「すべて見る」から確認できます)</p>';
+    return;
+  }
   el.innerHTML = news.map((n, i) => {
     const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
     return `
@@ -133,9 +144,44 @@ function renderNews(news) {
     </button>`;
   }).join('');
   el.querySelectorAll('[data-news]').forEach(btn => btn.addEventListener('click', () => {
-    const n = news[Number(btn.dataset.news)];
-    const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
-    openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部' });
+    openNewsDetail(news[Number(btn.dataset.news)]);
+  }));
+}
+
+/** 「すべて見る」: 過去分も含む全お知らせの一覧モーダル。行クリックで詳細を開く */
+function openNewsListModal(allNews) {
+  const root = document.getElementById('modal-root');
+  modalData = { _list: true }; // 自動リフレッシュのスキップ判定(modalData)に乗せるためのダミー
+  const sorted = allNews.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  root.innerHTML = `
+  <div id="modal-overlay" style="position:fixed;inset:0;background:rgba(20,40,65,0.45);display:flex;align-items:center;justify-content:center;padding:24px;z-index:100">
+    <div id="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid #e4ebf2">
+        <h3 style="margin:0;font-size:17px;font-weight:700">すべてのお知らせ</h3>
+        <span style="font-size:12px;color:#8a99a8">${sorted.length}件(過去の掲載分を含む)</span>
+        <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
+      </div>
+      <div style="overflow-y:auto;display:flex;flex-direction:column">
+        ${sorted.length ? sorted.map((n, i) => {
+          const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
+          return `
+          <button class="hv-row" data-all-news="${i}" style="display:flex;align-items:center;gap:12px;padding:12px 26px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
+            <span style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
+            <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>
+            <span style="margin-left:auto;font-size:12px;color:#8a99a8;white-space:nowrap">${esc(fmtMD(n.date))}</span>
+          </button>`;
+        }).join('') : '<p style="margin:0;padding:24px 26px;font-size:13px;color:#8a99a8">お知らせはありません</p>'}
+      </div>
+      <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex">
+        <button class="hv-btn-plain" data-close style="margin-left:auto;border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+  root.querySelector('#modal-overlay').addEventListener('click', closeModal);
+  root.querySelector('#modal-box').addEventListener('click', e => e.stopPropagation());
+  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
+  root.querySelectorAll('[data-all-news]').forEach(btn => btn.addEventListener('click', () => {
+    openNewsDetail(sorted[Number(btn.dataset.allNews)]);
   }));
 }
 
@@ -285,7 +331,16 @@ function initDragAndDrop() {
     }
     renderTasks();
     const content = await api('/api/content');
-    renderNews(content.news);
+    // 掲載日が過ぎたお知らせはトップに出さない(日付なしは表示継続)。全件は「すべて見る」から
+    const pad = n => String(n).padStart(2, '0');
+    const now = new Date();
+    const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    renderNews(content.news.filter(n => !n.date || n.date >= todayIso));
+    const allLink = document.getElementById('news-all-link');
+    if (allLink) allLink.addEventListener('click', e => {
+      e.preventDefault();
+      openNewsListModal(content.news);
+    });
     renderSchedule(content.schedule);
     renderLinks(content.links);
   } catch (e) {
