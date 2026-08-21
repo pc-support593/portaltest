@@ -306,7 +306,7 @@ function openCreateForm() {
     eventId: null, orig: null,
     date: isoDate(d),
     start: '10:00', end: '11:00', title: '', place: '', members: [], guests: '', error: '',
-    useRoom: false, site: firstSite.id, room: (siteRooms(firstSite.id)[0] || {}).id || '',
+    useRoom: false, site: firstSite.id, room: '', // 会議室は空き一覧のチップから選ぶ(自動選択しない)
     // 選択中の日と主画面の日が同じなら取得済みのroomBusyを再利用、違えば読み込み中から始める
     roomBusy: isoDate(d) === isoDate(state.date) ? state.roomBusy : null
   };
@@ -339,7 +339,7 @@ function openEditForm(ev) {
     place: matchedRoom ? '' : ev.place, members, guests: guestsMatch ? guestsMatch[1].trim() : '', error: '',
     useRoom: !!matchedRoom,
     site: matchedRoom ? matchedRoom.site : SITES[0].id,
-    room: matchedRoom ? matchedRoom.id : (siteRooms(SITES[0].id)[0] || {}).id || '',
+    room: matchedRoom ? matchedRoom.id : '',
     roomBusy: isoDate(parseISODate(ev.date)) === isoDate(state.date) ? state.roomBusy : null
   };
   memberCandidates = [];
@@ -392,6 +392,7 @@ function renderModal() {
       <button data-rm-member="${i}" style="border:none;background:transparent;cursor:pointer;color:#6b7d8f;font-size:11px;padding:0 2px">✕</button>
     </span>`).join('');
 
+  const selectedRoom = f.room ? roomById(f.room) : null;
   const roomSection = f.useRoom ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       <label style="display:flex;flex-direction:column;gap:5px">
@@ -400,14 +401,16 @@ function renderModal() {
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
         <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室</span>
-        <select id="f-room" class="in-input">${siteRooms(f.site).map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+        <input id="f-room-display" class="in-input" readonly tabindex="-1"
+          value="${esc(selectedRoom ? selectedRoom.name : '')}" placeholder="下の空き一覧から選択してください"
+          style="background:${selectedRoom ? '#eef4fb' : '#f5f8fb'};cursor:default;${selectedRoom ? 'font-weight:700;color:#1c2b3a' : ''}">
       </label>
     </div>
     <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden">
       <div style="padding:9px 15px;background:#f7fafd;border-bottom:1px solid #eef1f5;font-size:12px;font-weight:700;color:#6b7d8f">
         ${esc((SITES.find(s => s.id === f.site) || {}).name || '')} の空いている会議室(${esc(f.date.split('-').slice(1).map(Number).join('/'))} ${esc(f.start)}–${esc(f.end)})
       </div>
-      <div style="padding:10px 15px;max-height:220px;overflow-y:auto">${freeRoomsHtml(f)}</div>
+      <div style="padding:10px 15px;max-height:220px;overflow-y:scroll">${freeRoomsHtml(f)}</div>
     </div>` : '';
 
   root.innerHTML = `
@@ -502,21 +505,16 @@ function renderModal() {
 
   root.querySelector('#f-use-room').addEventListener('change', e => {
     f.useRoom = e.target.checked;
-    if (f.useRoom) {
-      if (!f.room) f.room = (siteRooms(f.site)[0] || {}).id || '';
-      if (f.roomBusy == null && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
-    }
+    if (f.useRoom && f.roomBusy == null && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
     renderModal();
   });
   const siteSel = root.querySelector('#f-site');
   if (siteSel) siteSel.addEventListener('change', e => {
     f.site = e.target.value;
-    f.room = (siteRooms(f.site)[0] || {}).id || '';
+    f.room = ''; // 拠点を切り替えたら会議室は空き一覧から選び直す
     renderModal();
   });
-  const roomSel = root.querySelector('#f-room');
-  if (roomSel) roomSel.addEventListener('change', e => { f.room = e.target.value; renderModal(); });
-  // 空いている会議室チップのクリックで会議室を選択(プルダウンにも反映)
+  // 空いている会議室チップのクリックで会議室を選択(「会議室」欄に反映。欄自体は読み取り専用で直接入力不可)
   root.querySelectorAll('[data-pick-room]').forEach(b => b.addEventListener('click', () => {
     f.room = b.dataset.pickRoom;
     renderModal();
