@@ -214,8 +214,18 @@ function renderTodayEvents(events) {
     </div>`).join('');
 }
 
+/** 全社スケジュール1件の詳細モーダルを開く */
+function openScheduleDetail(s) {
+  openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: `${fmtMD(s.date)} ・ ${s.sub}`, title: s.title, body: s.body, owner: '総務部' });
+}
+
+/** トップの全社スケジュール欄: 今月のものだけ表示。前月以前・翌月以降は「年間予定表」から(ユーザー指示 2026-08-21) */
 function renderSchedule(schedule) {
   const el = document.getElementById('schedule-list');
+  if (!schedule.length) {
+    el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">今月の全社スケジュールはありません(他の月の予定は「年間予定表」から確認できます)</p>';
+    return;
+  }
   el.innerHTML = schedule.map((s, i) => {
     const [month, day] = fmtMD(s.date).split('/');
     return `
@@ -232,8 +242,58 @@ function renderSchedule(schedule) {
     </button>`;
   }).join('');
   el.querySelectorAll('[data-sch]').forEach(btn => btn.addEventListener('click', () => {
-    const s = schedule[Number(btn.dataset.sch)];
-    openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: `${fmtMD(s.date)} ・ ${s.sub}`, title: s.title, body: s.body, owner: '総務部' });
+    openScheduleDetail(schedule[Number(btn.dataset.sch)]);
+  }));
+}
+
+/** 「年間予定表」: 全期間の全社スケジュールを月ごとにまとめた一覧モーダル。行クリックで詳細を開く */
+function openScheduleListModal(allSchedule) {
+  const root = document.getElementById('modal-root');
+  modalData = { _list: true }; // 自動リフレッシュのスキップ判定(modalData)に乗せるためのダミー
+  const sorted = allSchedule.slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  let lastYm = null;
+  const rowsHtml = sorted.map((s, i) => {
+    const ym = String(s.date || '').slice(0, 7); // YYYY-MM
+    const [y, mo] = ym.split('-').map(Number);
+    const header = ym && ym !== lastYm
+      ? `<div style="padding:10px 26px 6px;background:#f7fafd;border-bottom:1px solid #eef1f5;font-size:12px;font-weight:700;color:#1e5fa8">${y}年 ${mo}月</div>`
+      : '';
+    lastYm = ym || lastYm;
+    const [month, day] = fmtMD(s.date).split('/');
+    return header + `
+    <button class="hv-row" data-all-sch="${i}" style="display:flex;align-items:center;gap:14px;padding:10px 26px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
+      <span style="display:flex;flex-direction:column;align-items:center;background:#eef3f9;border-radius:8px;padding:5px 0;width:46px;line-height:1.25;flex-shrink:0">
+        <span style="font-size:10px;color:#6b7d8f">${esc(month)}月</span>
+        <span style="font-size:16px;font-weight:700;color:#1e5fa8">${esc(day || '')}</span>
+      </span>
+      <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(s.title)}</span>
+        <span style="font-size:12px;color:#6b7d8f">${esc(s.sub)}</span>
+      </span>
+      <span style="margin-left:auto;color:#b5c3d1;font-size:13px">›</span>
+    </button>`;
+  }).join('');
+  root.innerHTML = `
+  <div id="modal-overlay" style="position:fixed;inset:0;background:rgba(20,40,65,0.45);display:flex;align-items:center;justify-content:center;padding:24px;z-index:100">
+    <div id="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid #e4ebf2">
+        <h3 style="margin:0;font-size:17px;font-weight:700">年間予定表</h3>
+        <span style="font-size:12px;color:#8a99a8">${sorted.length}件(全期間)</span>
+        <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
+      </div>
+      <div style="overflow-y:auto;display:flex;flex-direction:column">
+        ${sorted.length ? rowsHtml : '<p style="margin:0;padding:24px 26px;font-size:13px;color:#8a99a8">全社スケジュールはありません</p>'}
+      </div>
+      <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex">
+        <button class="hv-btn-plain" data-close style="margin-left:auto;border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+  root.querySelector('#modal-overlay').addEventListener('click', closeModal);
+  root.querySelector('#modal-box').addEventListener('click', e => e.stopPropagation());
+  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
+  root.querySelectorAll('[data-all-sch]').forEach(btn => btn.addEventListener('click', () => {
+    openScheduleDetail(sorted[Number(btn.dataset.allSch)]);
   }));
 }
 
@@ -342,7 +402,14 @@ function initDragAndDrop() {
       e.preventDefault();
       openNewsListModal(content.news);
     });
-    renderSchedule(content.schedule);
+    // 全社スケジュールは今月分だけトップに表示(日付なしは表示継続)。全期間は「年間予定表」から
+    const thisYm = todayIso.slice(0, 7);
+    renderSchedule(content.schedule.filter(s => !s.date || String(s.date).slice(0, 7) === thisYm));
+    const schAllLink = document.getElementById('schedule-all-link');
+    if (schAllLink) schAllLink.addEventListener('click', e => {
+      e.preventDefault();
+      openScheduleListModal(content.schedule);
+    });
     renderLinks(content.links);
   } catch (e) {
     console.error(e);
