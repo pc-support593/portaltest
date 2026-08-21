@@ -423,6 +423,8 @@ function openEditBooking(id) {
 function formError(f) {
   if (!f.room) return '会議室を選択してください';
   if (f.start >= f.end) return '終了時刻は開始時刻より後にしてください';
+  // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
+  if (f.date <= SAMPLE_HISTORY_END) return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
   return '';
 }
 

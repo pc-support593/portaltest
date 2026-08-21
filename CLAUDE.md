@@ -17,8 +17,11 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 
 - `server.js` — 全API(config/me/content/admin CRUD/users検索/bookings CRUD/layout)+ 静的配信 + entraモードのトークン検証
 - `src/db.js` — スキーマ + ハンドオフ準拠のシードデータ
-- `public/js/roomsData.js` — **拠点・会議室マスタの単一の正**(実際のExchange会議室リソース。5拠点33室・email付き)。`rooms.js` と `schedule.js` の両方が読み込む(schedule.htmlとrooms.htmlの両方でscriptタグ読込。マスタが増減したらここ1箇所を直す)。あわせて `rooms.js` 用の曜日パターンのダミー予約 `PATTERNS`(サンプル。実会議室IDに対応付けて維持)と純粋関数 `bookingsFor(roomId, date, extraBookings)` を持つ。**schedule.js側で同名のconst(SITES/ROOMS等)を再宣言しないこと**(グローバル衝突でSyntaxErrorになる)
-- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。**拠点・会議室名は実際のExchange会議室(roomsData.jsのマスタ)を表示するが、予約データはデザインサンプルのまま**(曜日パターンのダミー + サーバーSQLite保存。ここでの操作はOutlook側には反映されない)。自分の予約はDB実データ(src/db.jsで初回シード。旧ダミー会議室IDからの移行は db.js の ROOM_ID_MIGRATION)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(主催者のみ、サーバー側で強制)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
+- `public/js/roomsData.js` — **拠点・会議室マスタの単一の正**(実際のExchange会議室リソース。5拠点33室・email付き)。`rooms.js` と `schedule.js` の両方が読み込む(schedule.htmlとrooms.htmlの両方でscriptタグ読込。マスタが増減したらここ1箇所を直す)。あわせて `rooms.js` 用のダミー予約データと純粋関数 `bookingsFor(roomId, date, extraBookings)` を持つ。**schedule.js側で同名のconst(SITES/ROOMS等)を再宣言しないこと**(グローバル衝突でSyntaxErrorになる)。`bookingsFor` の期間別の返り値(ユーザー指示・2026-08-21):
+  - **〜2026-06-30**: 曜日パターンのダミー `PATTERNS` + 実予約(サーバーSQLite)
+  - **2026-07-01〜2026-08-23**: `SAMPLE_HISTORY`(1日1〜5件・固定シードで一度だけ生成したフローズンなランダムサンプル。再生成しない)**のみ**。実予約は反映せず、`rooms.js`側のフォームでも予約操作不可(`formError`でブロック)
+  - **2026-08-24〜**: 実予約(サーバーSQLite)**のみ**。曜日パターンのダミーは適用しない(=この日以降は実際に作成・変更・取消した予約がそのまま反映される)
+- `public/js/rooms.js` — 会議室予約の全ロジック(カレンダー、予約フォーム、CSV出力)。**拠点・会議室名は実際のExchange会議室(roomsData.jsのマスタ)を表示**。予約データは上記`bookingsFor`の期間別ルールに従う(**Outlook/Exchangeへは連携しない。あくまでポータル内のSQLite保存**。rule 5参照)。自分の予約はDB実データ(src/db.jsで初回シード。旧ダミー会議室IDからの移行は db.js の ROOM_ID_MIGRATION)で、カレンダーチップのクリックまたは日別ポップアップから変更・取消できる(2026-08-24以降の日付のみ。8/23以前はサンプル期間のため操作不可)。予約フォームの参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する
 - `public/js/schedule.js` — スケジュール画面。**個人のスケジュール・拠点別の会議室スケジュールとも実データ**。
   - 個人: Graph `/me/calendarView` で表示、`/me/events` で作成
   - 会議室マスタ: ファイル冒頭の `SITES`/`ROOMS_NAMES_BY_SITE` に**実際のExchange会議室リソースをハードコード**(5拠点33室。平野9・花博7・西宮9・中百舌鳥6・福田2。ドメインは`yumesumika.com`)。マスタが増減したら Exchange 管理者に確認しこの配列を直す(`Get-Mailbox -RecipientTypeDetails RoomMailbox` で最新一覧を取得できる)。Graph `Place.Read.All` は使わない設計(ハードコード運用と決定済み)ため不要
@@ -26,6 +29,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
   - 予約作成: 「会議室を使用する」チェック時、選択した会議室を `attendees` に `type: "resource"` で追加して `POST /me/events`。**Exchange側が空きなら自動承諾・埋まっていれば自動辞退する本物の予約**(サンプルではない。サーバー側のSQLite保存は使わない)。場所は `locationEmailAddress` で会議室本体と紐づける(文字列だけだと自動承諾時に場所が二重表記になる)
   - 重複の事前チェック: 送信直前に `fetchRoomBusy` で最新の空き状況を取り直し、重複していたら**予定自体を作らずエラー表示**(変更時は自分の元の時間帯を重複扱いしない)。すり抜けた場合の最終判定はExchange(自動辞退。ただし主催者の予定表には残る=Outlook標準挙動)
   - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(getScheduleの `tentative`)。全33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)
+  - **既知の制約(2026-08-21確認)**: Exchange側が**過去日時の会議室予約を処理しない**(会議室が出席者として一切追加されず、`getSchedule`でも常に空きのまま)。ポータル側のコードには過去日時を防ぐ処理がなく、検証時は必ず未来の時間帯で予約すること
   - 拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面と予定作成モーダルの両方から呼ぶ共有関数。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力、Outlook本文にメモ記載)を分けて入力する
 - `public/js/portal.js` — トップ画面。「今日の予定」も実データ(Graph `/me/calendarView`)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
 - `public/js/auth.js` — 認証アダプタ(MSAL.js v5、SPA + PKCE)。`getGraphToken(scopes)` でGraph用トークンを取得
