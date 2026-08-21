@@ -67,6 +67,8 @@ function migrate(db) {
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
+  // お知らせのトップ掲載期限(2026-08-21)。空文字は「期限なし=掲載日ベースの既定ルール」
+  try { db.exec("ALTER TABLE news ADD COLUMN expires TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
 
   // 会議室マスタを実際のExchange会議室(5拠点33室)に変更した際のID移行(2026-08-20)。
   // 旧ダミー会議室IDのサンプル予約を、対応する実会議室IDへ付け替える(サンプルデータは削除しない方針のため)。

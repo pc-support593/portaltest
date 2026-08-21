@@ -5,13 +5,14 @@
 const CONFIG = {
   news: {
     label: 'お知らせ', hasBody: true,
-    h1: 'カテゴリ', h2: 'タイトル', h3: '掲載日',
+    h1: 'カテゴリ', h2: 'タイトル', h3: '掲載日 / トップ掲載期限',
     fields: [
       { key: 'tag', label: 'カテゴリ', ph: '例: 重要 / 総務 / 安全' },
       { key: 'title', label: 'タイトル', ph: '例: 夏季休業期間のお知らせ' },
-      { key: 'date', label: '掲載日', type: 'date' }
+      { key: 'date', label: '掲載日', type: 'date' },
+      { key: 'expires', label: 'トップ掲載期限(この日まで表示)', type: 'date' }
     ],
-    cells: it => [it.tag, it.title, fmtMD(it.date)]
+    cells: it => [it.tag, it.title, `${fmtMD(it.date)}${it.expires ? ` 〜 ${fmtMD(it.expires)}` : ''}`]
   },
   schedule: {
     label: '全社スケジュール', hasBody: true,

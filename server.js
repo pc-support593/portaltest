@@ -103,7 +103,7 @@ app.get('/api/me', (req, res) => {
 // ---- 管理コンテンツ(お知らせ / 全社スケジュール / クイックリンク) ----
 
 const KINDS = {
-  news: ['tag', 'title', 'date', 'body'],
+  news: ['tag', 'title', 'date', 'expires', 'body'],
   schedule: ['date', 'title', 'sub', 'body'],
   links: ['char', 'label', 'url']
 };

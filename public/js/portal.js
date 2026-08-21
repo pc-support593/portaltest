@@ -331,11 +331,12 @@ function initDragAndDrop() {
     }
     renderTasks();
     const content = await api('/api/content');
-    // 掲載日が過ぎたお知らせはトップに出さない(日付なしは表示継続)。全件は「すべて見る」から
+    // トップのお知らせ表示ルール: 掲載期限(expires)が入力されていればその日まで表示。
+    // 未入力なら従来どおり掲載日が過ぎたら非表示(日付なしは表示継続)。全件は「すべて見る」から
     const pad = n => String(n).padStart(2, '0');
     const now = new Date();
     const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    renderNews(content.news.filter(n => !n.date || n.date >= todayIso));
+    renderNews(content.news.filter(n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso)));
     const allLink = document.getElementById('news-all-link');
     if (allLink) allLink.addEventListener('click', e => {
       e.preventDefault();
