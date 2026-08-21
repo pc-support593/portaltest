@@ -41,9 +41,10 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 6. **サンプルデータの削除禁止(ユーザー指示・2026-08-20)**: 仮のサンプルデータ(`roomsData.js`、`src/db.js`のシード、rooms.html一式、devモードの各ダミー)は、ユーザーから明示的に依頼されない限り削除しない。リファクタリングでも実データとの並存を維持する
 7. サンプル画面(rooms.html)の予約は**一旦、サインイン済みなら誰でも変更・取消可能**(ユーザー指示 2026-08-20。シードされたサンプル予約も編集できるようにするため。サーバー側 `ownBooking` の主催者チェックをコメントアウト中)。実データ化する際は主催者のみに戻す。スケジュール画面(実データ)の変更・削除は主催者のみ(Graph/Exchange側で強制される)
 8. Entra ID アプリ登録の設定を変更したら [_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md) の記録も更新する(統括ルール)
-9. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, 自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
+9. Graph権限は都度最小限を追加する(現在: `User.Read`, `Calendars.ReadWrite`, `User.ReadBasic.All`, `Calendars.ReadWrite.Shared`(拠点代表者の会議室削除機能用。§12参照)、自アプリの `access_as_user`。`Place.Read.All`は不使用)。このテナントは**低リスク権限でも管理者の同意が必須**な設定になっているため、権限追加のたびに管理者に同意実行を依頼する
 10. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
 11. **自動リフレッシュの共通方針(ユーザー承認・2026-08-20)**: 動的データの表示は「2分間隔で裏側から再取得・モーダル表示中と非表示タブ(document.hidden)はスキップ・差分があるときだけ静かに差し替え(自動更新時はローディング表示を出さない)・失敗は静かに無視して次回再試行」。実装済み: portal.js(今日の予定)・schedule.js(個人+拠点別)・rooms.js(サンプル予約)。**今後、動的表示を新設するときも同方針を適用する**
+12. **拠点代表者による会議室予約の削除機能(2026-08-20)**: `schedule.js` 冒頭の `SITE_REPS`(拠点ID→担当者メール配列)を直接編集して運用する。担当拠点は `siteGridHtml` に「担当拠点」バッジ+各予約に削除ボタンが出る。**未完了の前提条件**: ① `SITE_REPS` に実際の担当者メールを入力、② Exchange側で担当者に各会議室カレンダーの編集権限を付与(`Add-MailboxFolderPermission -Identity "<会議室>:\Calendar" -User <担当者> -AccessRights Editor`)、③ Entra側アプリに `Calendars.ReadWrite.Shared`(委任)を追加+管理者の同意。3つとも揃わないと削除ボタンが出ない/押しても失敗する
 
 ## 今後のロードマップ(統括計画)
 

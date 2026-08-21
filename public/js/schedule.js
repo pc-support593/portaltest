@@ -23,10 +23,31 @@ function dateLabel(d) {
 
 // ---- 会議室マスタは js/roomsData.js で定義(rooms.html と共有。SITES/ROOMS/siteRooms/roomById) ----
 
+// 拠点代表者(その拠点の会議室予約を削除できる担当者)。メールアドレスを拠点IDに対応付ける。
+// 担当者が変わったら、この対応表を直接編集する(大文字小文字は区別しない)。
+// 実際に削除できるようにするには、あわせて Exchange 側でその担当者に各会議室カレンダーの
+// 編集権限(Add-MailboxFolderPermission -Identity "<会議室>:\Calendar" -User <担当者> -AccessRights Editor)
+// を付与し、Entra ID のアプリに Calendars.ReadWrite.Shared 権限を追加(管理者の同意)する必要がある。
+const SITE_REPS = {
+  hirano: [],       // 例: ['jimu-hirano@yoshimuraichi.com']
+  hanahaku: [],
+  nishinomiya: [],
+  nakamozu: [],
+  fukuda: []
+};
+
+/** 現在サインイン中のユーザーが担当拠点(削除権限あり)を持っていれば、そのIDの配列を返す */
+function myAdminSiteIds() {
+  const email = ((Auth.me && Auth.me.email) || '').toLowerCase();
+  if (!email) return [];
+  return SITES.filter(s => (SITE_REPS[s.id] || []).some(e => e.toLowerCase() === email)).map(s => s.id);
+}
+
 const state = {
   date: new Date(),
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
-  personalEvents: [] // 直近に取得した個人の予定(編集フォームを開く際に参照)
+  personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
+  adminSiteIds: [] // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
 };
 
 // ---- 個人のスケジュール(実データ) ----
@@ -115,71 +136,109 @@ async function loadAndRenderPersonal() {
 
 // ---- 拠点別 会議室スケジュール(実データ。Graph getSchedule) ----
 
-/** 指定日の全会議室の空き状況を1回のGraph呼び出しで取得。devモードは空({})。 */
-async function fetchRoomBusy(date) {
+/** 指定日の全会議室の空き状況を取得。devモードは空({})。
+    adminSiteIds に含まれる拠点の会議室は、削除操作に必要な実データ(予定ID・主催者)を
+    Calendars.ReadWrite.Shared 権限で直接取得する(それ以外はプライバシー保護のため空き状況のみ)。 */
+async function fetchRoomBusy(date, adminSiteIds) {
   if (Auth.mode !== 'entra') return {};
+  adminSiteIds = adminSiteIds || [];
 
   const dateStr = isoDate(date);
-  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="Tokyo Standard Time"' },
-    body: JSON.stringify({
-      schedules: ROOMS.map(r => r.email),
-      startTime: { dateTime: `${dateStr}T00:00:00`, timeZone: 'Tokyo Standard Time' },
-      endTime: { dateTime: `${dateStr}T23:59:59`, timeZone: 'Tokyo Standard Time' },
-      availabilityViewInterval: 30
-    })
-  });
-  if (!res.ok) throw new Error(`会議室の空き状況の取得に失敗しました(HTTP ${res.status})`);
-  const data = await res.json();
-
-  const roomByEmail = new Map(ROOMS.map(r => [r.email.toLowerCase(), r]));
+  const adminRoomIds = new Set(ROOMS.filter(r => adminSiteIds.includes(r.site)).map(r => r.id));
+  const normalRooms = ROOMS.filter(r => !adminRoomIds.has(r.id));
+  const scopes = adminRoomIds.size ? ['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared'] : ['Calendars.ReadWrite'];
+  const token = await Auth.getGraphToken(scopes);
   const map = {};
-  (data.value || []).forEach(v => {
-    const room = roomByEmail.get(String(v.scheduleId || '').toLowerCase());
-    if (!room) return;
-    const items = (v.scheduleItems || [])
-      .filter(it => it.status && it.status !== 'free')
-      .map(it => ({
-        start: it.start.dateTime.slice(11, 16),
-        end: it.end.dateTime.slice(11, 16),
-        subject: it.subject || '',
-        // tentative = 会議室がまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
-        tentative: it.status === 'tentative'
-      }))
-      .sort((a, b) => a.start.localeCompare(b.start));
-    // 同一予定の重複表示を除去(自動承諾処理中は同じ予定が仮+確定で二重に返ることがある。
-    // 件名・状態まで同じもののみ除去し、異なる予定が同時刻にある場合は両方表示する)
-    const seen = new Set();
-    map[room.id] = items.filter(it => {
-      const key = `${it.start}-${it.end}-${it.tentative}-${it.subject}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+
+  if (normalRooms.length) {
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="Tokyo Standard Time"' },
+      body: JSON.stringify({
+        schedules: normalRooms.map(r => r.email),
+        startTime: { dateTime: `${dateStr}T00:00:00`, timeZone: 'Tokyo Standard Time' },
+        endTime: { dateTime: `${dateStr}T23:59:59`, timeZone: 'Tokyo Standard Time' },
+        availabilityViewInterval: 30
+      })
     });
-  });
+    if (!res.ok) throw new Error(`会議室の空き状況の取得に失敗しました(HTTP ${res.status})`);
+    const data = await res.json();
+
+    const roomByEmail = new Map(normalRooms.map(r => [r.email.toLowerCase(), r]));
+    (data.value || []).forEach(v => {
+      const room = roomByEmail.get(String(v.scheduleId || '').toLowerCase());
+      if (!room) return;
+      const items = (v.scheduleItems || [])
+        .filter(it => it.status && it.status !== 'free')
+        .map(it => ({
+          start: it.start.dateTime.slice(11, 16),
+          end: it.end.dateTime.slice(11, 16),
+          subject: it.subject || '',
+          // tentative = 会議室がまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
+          tentative: it.status === 'tentative'
+        }))
+        .sort((a, b) => a.start.localeCompare(b.start));
+      // 同一予定の重複表示を除去(自動承諾処理中は同じ予定が仮+確定で二重に返ることがある。
+      // 件名・状態まで同じもののみ除去し、異なる予定が同時刻にある場合は両方表示する)
+      const seen = new Set();
+      map[room.id] = items.filter(it => {
+        const key = `${it.start}-${it.end}-${it.tentative}-${it.subject}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    });
+  }
+
+  // 担当拠点の会議室: getScheduleではなく会議室自身の予定表を直接取得(削除に必要な予定ID・主催者が得られる)
+  for (const room of ROOMS.filter(r => adminRoomIds.has(r.id))) {
+    try {
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
+        `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
+        `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
+        '&$select=id,subject,start,end,organizer&$orderby=start/dateTime';
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      map[room.id] = (d.value || []).map(ev => ({
+        start: ev.start.dateTime.slice(11, 16),
+        end: ev.end.dateTime.slice(11, 16),
+        subject: ev.subject || '(件名なし)',
+        eventId: ev.id,
+        roomEmail: room.email,
+        organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || ''
+      }));
+    } catch (e) {
+      console.error(`会議室「${room.name}」の予定表取得に失敗しました`, e);
+      map[room.id] = [];
+    }
+  }
+
   return map;
 }
 
-/** 拠点別カードのHTML。roomBusyMap が null なら読み込み中表示。純粋関数。 */
-function siteGridHtml(roomBusyMap) {
+/** 拠点別カードのHTML。roomBusyMap が null なら読み込み中表示。adminSiteIds の拠点には削除ボタンを出す。 */
+function siteGridHtml(roomBusyMap, adminSiteIds) {
   if (!roomBusyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  adminSiteIds = adminSiteIds || [];
   return SITES.map(s => {
+    const isAdmin = adminSiteIds.includes(s.id);
     const rooms = siteRooms(s.id);
     const rows = rooms.flatMap(r => (roomBusyMap[r.id] || []).map(b => ({ ...b, room: r })))
       .sort((a, b) => a.start.localeCompare(b.start))
       .map(b => `
       <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
         <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
-        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}</span>
+        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
         ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
+        ${isAdmin && b.eventId ? `<button data-delete-booking="${esc(b.roomEmail)}|${esc(b.eventId)}" title="この予約を削除" style="border:none;background:rgba(255,255,255,0.25);color:#ffffff;border-radius:5px;width:20px;height:20px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;line-height:1">✕</button>` : ''}
       </div>`);
     const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
     return `
     <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
       <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
         <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(s.name)}</span>
+        ${isAdmin ? '<span style="font-size:10px;font-weight:700;color:#1e5fa8;background:#e9f1fa;border-radius:4px;padding:1px 7px;white-space:nowrap">担当拠点</span>' : ''}
         <span style="font-size:11px;color:#8a99a8;margin-left:auto">${rooms.length}室</span>
       </div>
       <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
@@ -196,13 +255,35 @@ async function loadAndRenderSiteGrid() {
   }
   el.innerHTML = siteGridHtml(null);
   try {
-    state.roomBusy = await fetchRoomBusy(state.date);
-    el.innerHTML = siteGridHtml(state.roomBusy);
+    state.roomBusy = await fetchRoomBusy(state.date, state.adminSiteIds);
+    el.innerHTML = siteGridHtml(state.roomBusy, state.adminSiteIds);
+    bindSiteGridActions(el);
   } catch (e) {
     console.error(e);
     state.roomBusy = {};
     el.innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
+}
+
+/** 拠点別カード内の削除ボタン(担当拠点の会議室予約を管理者権限で削除)を有効化する */
+function bindSiteGridActions(root) {
+  root.querySelectorAll('[data-delete-booking]').forEach(btn => btn.addEventListener('click', async () => {
+    const [roomEmail, eventId] = btn.dataset.deleteBooking.split('|');
+    if (!confirm('この会議室予約を削除しますか?(主催者に取消の通知が送られます)')) return;
+    btn.disabled = true;
+    try {
+      const token = await Auth.getGraphToken(['Calendars.ReadWrite.Shared']);
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(roomEmail)}/events/${encodeURIComponent(eventId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok && res.status !== 404) throw new Error(`削除に失敗しました(HTTP ${res.status})`);
+      await loadAndRenderSiteGrid();
+    } catch (e) {
+      alert(e.message || String(e));
+      btn.disabled = false;
+    }
+  }));
 }
 
 // ---- 予定作成モーダル(個人の予定。任意で実際の会議室を出席者として追加) ----
@@ -591,7 +672,7 @@ async function autoRefresh() {
   try {
     const [events, busy] = await Promise.all([
       fetchPersonalEvents(state.date),
-      fetchRoomBusy(state.date)
+      fetchRoomBusy(state.date, state.adminSiteIds)
     ]);
     if (formState || isoDate(state.date) !== dateKey) return;
     if (JSON.stringify(events) !== JSON.stringify(state.personalEvents)) {
@@ -600,7 +681,9 @@ async function autoRefresh() {
     }
     if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
       state.roomBusy = busy;
-      document.getElementById('site-grid').innerHTML = siteGridHtml(busy);
+      const grid = document.getElementById('site-grid');
+      grid.innerHTML = siteGridHtml(busy, state.adminSiteIds);
+      bindSiteGridActions(grid);
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }
@@ -608,6 +691,7 @@ async function autoRefresh() {
 (async function init() {
   try {
     await Auth.init();
+    state.adminSiteIds = myAdminSiteIds();
 
     document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
