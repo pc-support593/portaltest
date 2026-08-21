@@ -362,6 +362,23 @@ async function refreshFormRoomBusy() {
   if (formState === f) { f.roomBusy = busy; renderModal(); }
 }
 
+/** 予定作成フォーム内: 選択中の拠点・時間帯で空いている会議室だけをチップ表示(クリックで選択)。
+    変更時は自分の元の予約時間帯を「埋まっている」扱いにしない(submitCreateFormの重複チェックと同じ基準)。 */
+function freeRoomsHtml(f) {
+  if (!f.roomBusy) return '<p style="margin:0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  if (f.start >= f.end) return '<p style="margin:0;font-size:13px;color:#c05a5a">終了時刻は開始時刻より後にしてください</p>';
+  const isOwnOriginalSlot = (roomId, it) => f.orig && f.orig.room === roomId && f.orig.date === f.date
+    && it.start === f.orig.start && it.end === f.orig.end;
+  const free = siteRooms(f.site).filter(r =>
+    !(f.roomBusy[r.id] || []).some(it => it.start < f.end && it.end > f.start && !isOwnOriginalSlot(r.id, it))
+  );
+  if (!free.length) return '<p style="margin:0;font-size:13px;color:#c05a5a">この時間帯に空いている会議室はありません。時間帯または拠点を変更してください</p>';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${free.map(r => `
+    <button data-pick-room="${r.id}" class="hv-roomfill" style="border:2px solid ${r.id === f.room ? '#1c2b3a' : 'transparent'};background:${r.color};border-radius:8px;padding:7px 12px;cursor:pointer;font-family:inherit">
+      <span style="font-size:12px;font-weight:700;color:#ffffff">${esc(r.name)}</span>
+    </button>`).join('')}</div>`;
+}
+
 function renderModal() {
   const root = document.getElementById('modal-root');
   if (!formState) { root.innerHTML = ''; return; }
@@ -388,9 +405,9 @@ function renderModal() {
     </div>
     <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden">
       <div style="padding:9px 15px;background:#f7fafd;border-bottom:1px solid #eef1f5;font-size:12px;font-weight:700;color:#6b7d8f">
-        拠点の空き状況(${esc(f.date.split('-').slice(1).map(Number).join('/'))})
+        ${esc((SITES.find(s => s.id === f.site) || {}).name || '')} の空いている会議室(${esc(f.date.split('-').slice(1).map(Number).join('/'))} ${esc(f.start)}–${esc(f.end)})
       </div>
-      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto">${siteGridHtml(f.roomBusy)}</div>
+      <div style="padding:10px 15px;max-height:220px;overflow-y:auto">${freeRoomsHtml(f)}</div>
     </div>` : '';
 
   root.innerHTML = `
@@ -468,8 +485,14 @@ function renderModal() {
     if (f.useRoom && Auth.mode === 'entra') refreshFormRoomBusy();
     else renderModal();
   });
-  root.querySelector('#f-start').addEventListener('change', e => { f.start = e.target.value; });
-  root.querySelector('#f-end').addEventListener('change', e => { f.end = e.target.value; });
+  root.querySelector('#f-start').addEventListener('change', e => {
+    f.start = e.target.value;
+    if (f.useRoom) renderModal(); // 空いている会議室の表示を選択時間帯に追随させる
+  });
+  root.querySelector('#f-end').addEventListener('change', e => {
+    f.end = e.target.value;
+    if (f.useRoom) renderModal();
+  });
   const placeInput = root.querySelector('#f-place');
   if (placeInput) placeInput.addEventListener('input', e => { f.place = e.target.value; });
   root.querySelector('#f-guests').addEventListener('input', e => { f.guests = e.target.value; });
@@ -492,7 +515,12 @@ function renderModal() {
     renderModal();
   });
   const roomSel = root.querySelector('#f-room');
-  if (roomSel) roomSel.addEventListener('change', e => { f.room = e.target.value; });
+  if (roomSel) roomSel.addEventListener('change', e => { f.room = e.target.value; renderModal(); });
+  // 空いている会議室チップのクリックで会議室を選択(プルダウンにも反映)
+  root.querySelectorAll('[data-pick-room]').forEach(b => b.addEventListener('click', () => {
+    f.room = b.dataset.pickRoom;
+    renderModal();
+  }));
 
   let memberSearchTimer = null;
   root.querySelector('#f-member-input').addEventListener('input', e => {

@@ -30,7 +30,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
   - 重複の事前チェック: 送信直前に `fetchRoomBusy` で最新の空き状況を取り直し、重複していたら**予定自体を作らずエラー表示**(変更時は自分の元の時間帯を重複扱いしない)。すり抜けた場合の最終判定はExchange(自動辞退。ただし主催者の予定表には残る=Outlook標準挙動)
   - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(getScheduleの `tentative`)。全33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)
   - **既知の制約(2026-08-21確認)**: Exchange側が**過去日時の会議室予約を処理しない**(会議室が出席者として一切追加されず、`getSchedule`でも常に空きのまま)。ポータル側のコードには過去日時を防ぐ処理がなく、検証時は必ず未来の時間帯で予約すること
-  - 拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面と予定作成モーダルの両方から呼ぶ共有関数。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力、Outlook本文にメモ記載)を分けて入力する
+  - 拠点別の会議室スケジュール表示(`siteGridHtml`)はメイン画面用。予定作成モーダル内は `freeRoomsHtml`(選択中の拠点・時間帯で**空いている会議室だけ**をチップ表示。クリックで選択、開始/終了/拠点の変更に追随。ユーザー指示 2026-08-21)。予定作成フォームの参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力、Outlook本文にメモ記載)を分けて入力する
 - `public/js/portal.js` — トップ画面。「今日の予定」も実データ(Graph `/me/calendarView`)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
 - `public/js/auth.js` — 認証アダプタ(MSAL.js v5、SPA + PKCE)。`getGraphToken(scopes)` でGraph用トークンを取得
 - `public/js/common.js` — 全画面共通ユーティリティ(`api()` / `esc()` 等)。`searchMembers(q)`(社内メンバー検索。entraモードはGraph `/users`実データ、devモードはダミー名簿`/api/users`)を`rooms.js`と`schedule.js`で共用
