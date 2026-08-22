@@ -49,6 +49,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 10. 社内メンバー検索(`User.ReadBasic.All`)は基本プロフィールのみで部署(department)は取得できない。表示上も部署欄は空のままにする(過剰な権限要求をしない)
 11. **自動リフレッシュの共通方針(ユーザー承認・2026-08-20)**: 動的データの表示は「2分間隔で裏側から再取得・モーダル表示中と非表示タブ(document.hidden)はスキップ・差分があるときだけ静かに差し替え(自動更新時はローディング表示を出さない)・失敗は静かに無視して次回再試行」。実装済み: portal.js(今日の予定)・schedule.js(個人+拠点別)・rooms.js(サンプル予約)。**今後、動的表示を新設するときも同方針を適用する**
 12. **拠点代表者による会議室予約の削除機能(2026-08-20)**: `schedule.js` 冒頭の `SITE_REPS`(拠点ID→担当者メール配列)を直接編集して運用する。担当拠点は `siteGridHtml` に「担当拠点」バッジ+各予約に削除ボタンが出る。**未完了の前提条件**: ① `SITE_REPS` に実際の担当者メールを入力、② Exchange側で担当者に各会議室カレンダーの編集権限を付与(`Add-MailboxFolderPermission -Identity "<会議室>:\Calendar" -User <担当者> -AccessRights Editor`)、③ Entra側アプリに `Calendars.ReadWrite.Shared`(委任)を追加+管理者の同意。3つとも揃わないと削除ボタンが出ない/押しても失敗する
+13. **白枠(セクション)右上の操作リンク/ボタンの見た目統一(ユーザー指示・2026-08-21)**: 「すべて見る」「年間予定表」「会議室予約へ」のような各セクション右上のリンクは、`schedule.html` の「＋ 予定を作成」ボタンと同じ見た目に統一する: `border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;font-family:inherit`(`<a>`タグの場合は`text-decoration:none`も付ける。class`hv-btn-primary`でホバー時`#16497f`)。**今後、新しいページ・セクションを追加するときもこのボタン見た目を標準として使う**
 
 ## 今後のロードマップ(統括計画)
 
