@@ -112,7 +112,10 @@ function renderRoomTabs() {
     `<span style="margin-left:auto;display:flex;align-items:center;gap:14px">
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#f5b301"></span>主催</span>
       <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7d8f"><span style="width:18px;height:10px;border-radius:3px;background:#00d2c6"></span>参加</span>
-      <button id="new-booking" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 20px;font-size:13px;cursor:pointer;font-family:inherit">＋ 新規予約</button>
+      <span style="display:flex;flex-direction:column;align-items:stretch;gap:6px">
+        <a href="schedule.html" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:9px;padding:8px 20px;font-size:13px;cursor:pointer;font-family:inherit;text-decoration:none;text-align:center;white-space:nowrap">← 戻る</a>
+        <button id="new-booking" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:8px 20px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">＋ 新規予約</button>
+      </span>
     </span>`;
   el.querySelectorAll('[data-room]').forEach(b => b.addEventListener('click', () => {
     state.room = b.dataset.room;
