@@ -296,6 +296,13 @@ function hourOptions() {
   return opts;
 }
 
+/** 'HH:MM' の1時間後を返す(上限21:00)。開始時間選択時の終了時間の自動設定に使う */
+function plusOneHour(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = Math.min(h * 60 + m + 60, 21 * 60);
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
 let formState = null;
 let memberCandidates = []; // 社内メンバー検索の候補
 
@@ -490,7 +497,8 @@ function renderModal() {
   });
   root.querySelector('#f-start').addEventListener('change', e => {
     f.start = e.target.value;
-    if (f.useRoom) renderModal(); // 空いている会議室の表示を選択時間帯に追随させる
+    f.end = plusOneHour(f.start); // 終了時間を開始+1時間に自動設定(ユーザー指示 2026-08-22)
+    renderModal(); // 終了時間の表示と空いている会議室の表示を更新
   });
   root.querySelector('#f-end').addEventListener('change', e => {
     f.end = e.target.value;

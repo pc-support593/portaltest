@@ -1,11 +1,20 @@
-// 会議室予約画面(会議室・予約自体はサンプル表示。Exchangeの会議室リソースは未整備のため実データ連携なし)
-// 拠点・会議室マスタと曜日パターンのダミー予約は js/roomsData.js で定義(schedule.html と共有)。
-// ユーザー作成の予約はサーバー(SQLite)に保存。実データ連携時は README「Microsoft 365 連携(実装方針)」参照。
-// 社内メンバー検索(searchMembers)は entraモードのみ実データ(Graph /users)。外部参加者はサーバー保存なしの自由入力(guests)で別枠管理。
+// 会議室予約画面。2026-07-01〜08-23はフローズンなサンプル表示(操作不可)、
+// 2026-08-24以降はentraモードでは実際のExchangeと連携する予約(schedule.htmlと同じ仕組み。
+// 主催者本人のみ変更・取消可能)、devモードでは従来どおりサーバー(SQLite)保存のサンプル動作。
+// それより前(2026-06-30以前)は曜日パターンのダミー予約+SQLite保存。
+// 拠点・会議室マスタは js/roomsData.js で定義(schedule.html と共有)。
+// 社内メンバー検索(searchMembers)は entraモードのみ実データ(Graph /users)。
 'use strict';
 
 const OWNER_BAR = '#f5b301';   // 主催
 const MEMBER_BAR = '#00d2c6';  // 参加
+
+// 2026-08-24以降の予約をExchangeと連携する(falseにするとSQLite保存の従来動作に戻せる)。
+// 実際に連携が効くのは entraモードのときだけ(devモードはGraphを呼べないため常にSQLite動作)
+const REAL_ROOMS_ENABLED = true;
+const useRealRooms = () => REAL_ROOMS_ENABLED && Auth.mode === 'entra';
+// メールアドレスの大文字小文字を無視して比較する(GraphのSMTPアドレスとEntraのUPNの表記差対策)
+const sameEmail = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 
 let ME = { name: '' };
 const now = new Date();
@@ -15,7 +24,10 @@ const state = {
   ym: { y: now.getFullYear(), m: now.getMonth() },
   week: null,       // 週のみ表示中のインデックス
   day: null,        // 日別ポップアップ対象 {y, m, d}
-  bookings: [],     // サーバー保存の予約
+  legacy: [],       // サーバー(SQLite)保存の予約(サンプル・旧データ)
+  real: [],         // Exchangeから取得した実予約(2026-08-24以降・entraモードのみ)
+  realErrors: [],   // 実予約の取得に失敗した会議室名
+  bookings: [],     // legacy + real を結合した表示用配列(mergeBookings()で更新)
   form: null        // 予約フォーム(editId があれば変更モード)
 };
 let candidates = []; // メンバー検索の候補
@@ -26,9 +38,17 @@ const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 /** 自分の関与: 'owner' | 'member' | null(同一性はメールで判定。パターンのダミーはフラグ) */
 function statusOf(b) {
-  if (b.mine || (b.owner_email && b.owner_email === ME.email)) return 'owner';
-  if (b.part || (b.members || []).some(m => m.email === ME.email)) return 'member';
+  if (b.mine || sameEmail(b.owner_email, ME.email)) return 'owner';
+  if (b.part || (b.members || []).some(m => sameEmail(m.email, ME.email))) return 'member';
   return null;
+}
+
+/** 承諾待ち・自動辞退のバッジ(実予約のみ。会議室側の自動処理の反映待ち表示) */
+function extraBadgeHtml(b) {
+  if (!b.pending) return '';
+  return b.declined
+    ? '<span style="font-size:10px;font-weight:700;color:#ffffff;background:#c05a5a;border-radius:4px;padding:1px 6px;white-space:nowrap">自動辞退</span>'
+    : '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap">承諾待ち</span>';
 }
 
 function barColor(b, roomColor) {
@@ -61,7 +81,7 @@ function renderSiteTabs() {
     state.site = b.dataset.site;
     state.room = (siteRooms(state.site)[0] || {}).id || '__all';
     state.day = null; state.week = null;
-    render();
+    navigate();
   }));
 }
 
@@ -104,7 +124,7 @@ function renderRoomTabs() {
     openForm({
       isNew: true, site: state.site,
       room: state.room !== '__all' ? state.room : (first ? first.id : ''),
-      date: isoDate(new Date()), start: '09:00', end: '10:00',
+      date: defaultBookableDate(), start: '09:00', end: '10:00',
       title: '', members: [], guests: ''
     });
   });
@@ -165,14 +185,15 @@ function renderCalendar() {
       const dateColor = !inMonth ? '#c5cfda' : isToday ? '#ffffff' : dow === 0 ? '#c05a5a' : dow === 6 ? '#2f6f8f' : '#1c2b3a';
       const chips = bks.map(b => {
         const rc = b.roomColor || room.color;
-        // デザインサンプルのため、サーバー保存の予約は誰でも編集可能(ユーザー指示 2026-08-20。実データ化時は owner_email === ME.email に戻す)
-        const own = !!b.user;
+        // デザインサンプル・旧データは誰でも編集可能(ユーザー指示 2026-08-20)。
+        // 2026-08-24以降の実予約(b.editable===false)は主催者本人のみ(Exchangeが強制)
+        const own = !!b.user && b.editable !== false;
         return `
-        <span ${own ? `data-chip-edit="${b.id}" title="クリックで変更・取消" ` : ''}style="display:flex;flex-direction:column;background:${rc};border-left:4px solid ${barColor(b, rc)};border-radius:4px;padding:4px 7px;line-height:1.35${own ? ';cursor:pointer' : ''}">
+        <span ${own ? `data-chip-edit="${esc(b.id)}" title="クリックで変更・取消" ` : ''}style="display:flex;flex-direction:column;background:${rc};border-left:4px solid ${barColor(b, rc)};border-radius:4px;padding:4px 7px;line-height:1.35${own ? ';cursor:pointer' : ''}${b.pending ? ';opacity:0.65' : ''}">
           <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
             <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(b.start)}–${esc(b.end)}</span>
             <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93);word-break:normal;overflow-wrap:break-word">/ ${esc(b.roomName || room.name)}</span>
-            ${statusBadge(b)}
+            ${statusBadge(b)}${extraBadgeHtml(b)}
             <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(surname(b.owner))}</span>
           </span>
           <span style="font-size:11px;font-weight:500;color:#ffffff;word-break:normal;overflow-wrap:break-word">${esc(b.title)}</span>
@@ -223,23 +244,20 @@ function renderCalendar() {
       <span></span>${weekdayRow}
     </div>
     ${weekRows}
-    <div style="padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:12px;color:#8a99a8">左端の「第N週」ボタンでその週だけを表示できます。日付クリックで時間帯別の空き状況を確認できます。</span>
-      <span style="margin-left:auto;font-size:12px;color:#8a99a8">最終同期 ${pad(today.getHours())}:${pad(today.getMinutes())}</span>
-    </div>`;
+    ${calendarFooterHtml()}`;
 
   const shift = n => {
     const d = new Date(y, m + n, 1);
     state.ym = { y: d.getFullYear(), m: d.getMonth() };
     state.day = null; state.week = null;
-    render();
+    navigate();
   };
   el.querySelector('#prev-month').addEventListener('click', () => shift(-1));
   el.querySelector('#next-month').addEventListener('click', () => shift(1));
   el.querySelector('#this-month').addEventListener('click', () => {
     state.ym = { y: today.getFullYear(), m: today.getMonth() };
     state.day = null; state.week = null;
-    render();
+    navigate();
   });
   el.querySelector('#export-csv').addEventListener('click', exportCsv);
   const exitBtn = el.querySelector('#exit-week');
@@ -308,8 +326,8 @@ function renderDayModal() {
     all.sort((x, yb) => x.start.localeCompare(yb.start));
     slotsHtml = all.length ? all.map(b => slotRow({
       time: `${b.start}–${b.end}`, label: b.title, owner: b.owner, booked: true,
-      bg: b.roomColor, bar: barColor(b, b.roomColor), roomLabel: b.roomName, badge: statusBadge(b),
-      editable: !!b.user, id: b.id
+      bg: b.roomColor, bar: barColor(b, b.roomColor), roomLabel: b.roomName, badge: statusBadge(b) + extraBadgeHtml(b),
+      editable: !!b.user && b.editable !== false, id: b.id, pending: !!b.pending
     })).join('') : `
       <div style="display:flex;align-items:center;gap:14px;background:#fbfcfd;border-left:6px solid #e8edf3;border-radius:8px;padding:10px 14px">
         <span style="font-size:13px;font-weight:500;color:#8a99a8">この日の予約はありません</span>
@@ -317,19 +335,19 @@ function renderDayModal() {
   } else {
     const bks = bookingsFor(state.room, dd, state.bookings);
     const parts = [];
-    // 予約可能時間 8:00〜21:00(最終スロットは 20:00–21:00)
-    for (let h = 8; h <= 20; h++) {
-      const label = `${pad(h)}:00`;
-      // 区間重なり判定(30分単位の予約も正しく扱う。ゼロ埋めHH:MMなので文字列比較でよい)
-      const slotEnd = `${pad(h + 1)}:00`;
+    // 予約可能時間 8:00〜21:00。30分単位のスロット表示(ユーザー指示 2026-08-22。最終スロットは 20:30–21:00)
+    for (let min = 8 * 60; min < 21 * 60; min += 30) {
+      const label = `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+      const slotEnd = `${pad(Math.floor((min + 30) / 60))}:${pad((min + 30) % 60)}`;
+      // 区間重なり判定(ゼロ埋めHH:MMなので文字列比較でよい)
       const hit = bks.find(b => b.start < slotEnd && b.end > label);
       parts.push(hit
         ? slotRow({
             time: label, label: hit.title, owner: hit.owner, booked: true,
-            bg: room.color, bar: barColor(hit, room.color), roomLabel: room.name, badge: statusBadge(hit),
-            editable: !!hit.user, id: hit.id
+            bg: room.color, bar: barColor(hit, room.color), roomLabel: room.name, badge: statusBadge(hit) + extraBadgeHtml(hit),
+            editable: !!hit.user && hit.editable !== false, id: hit.id, pending: !!hit.pending
           })
-        : slotRow({ time: label, label: '空き', booked: false, hour: h }));
+        : slotRow({ time: label, label: '空き', booked: false, start: label }));
     }
     slotsHtml = parts.join('');
   }
@@ -362,7 +380,7 @@ function renderDayModal() {
 function slotRow(s) {
   if (s.booked) {
     return `
-    <div style="display:flex;align-items:center;gap:14px;background:${s.bg};border-left:6px solid ${s.bar};border-radius:8px;padding:10px 14px">
+    <div style="display:flex;align-items:center;gap:14px;background:${s.bg};border-left:6px solid ${s.bar};border-radius:8px;padding:10px 14px${s.pending ? ';opacity:0.65' : ''}">
       <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
         <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(s.time)}</span>
@@ -374,8 +392,8 @@ function slotRow(s) {
       </span>
       <span style="margin-left:auto;flex-shrink:0;display:flex;gap:8px">
         ${s.editable ? `
-          <button class="hv-btn-light" data-edit-id="${s.id}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">変更</button>
-          <button class="hv-btn-danger" data-cancel-id="${s.id}" style="font-size:12px;font-weight:500;color:#a8b5c2;background:#ffffff;border:1px solid #e4eaf1;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">取消</button>` : ''}
+          <button class="hv-btn-light" data-edit-id="${esc(s.id)}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">変更</button>
+          <button class="hv-btn-danger" data-cancel-id="${esc(s.id)}" style="font-size:12px;font-weight:500;color:#a8b5c2;background:#ffffff;border:1px solid #e4eaf1;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">取消</button>` : ''}
       </span>
     </div>`;
   }
@@ -386,7 +404,7 @@ function slotRow(s) {
       <span style="font-size:13px;font-weight:500;color:#8a99a8">空き</span>
     </span>
     <span style="margin-left:auto;flex-shrink:0">
-      <button class="hv-btn-light" data-book-hour="${s.hour}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">予約する</button>
+      <button class="hv-btn-light" data-book-start="${esc(s.start)}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">予約する</button>
     </span>
   </div>`;
 }
@@ -399,6 +417,13 @@ function hourOptions() {
   for (let h = 8; h <= 20; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
   opts.push('21:00');
   return opts;
+}
+
+/** 'HH:MM' の1時間後を返す(上限21:00)。開始時間選択時の終了時間の自動設定に使う */
+function plusOneHour(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = Math.min(h * 60 + m + 60, 21 * 60);
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
 
 function openForm(form) {
@@ -416,7 +441,8 @@ function openEditBooking(id) {
   openForm({
     editId: bk.id, site: room ? room.site : state.site, room: bk.room, date: bk.date,
     start: bk.start, end: bk.end, title: bk.title,
-    members: (bk.members || []).slice(), guests: bk.guests || ''
+    members: (bk.members || []).slice(), guests: bk.guests || '',
+    source: bk.source || 'legacy', myEventId: bk.myEventId || null
   });
 }
 
@@ -425,6 +451,14 @@ function formError(f) {
   if (f.start >= f.end) return '終了時刻は開始時刻より後にしてください';
   // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
   if (f.date <= SAMPLE_HISTORY_END) return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
+  // 2026-08-24以降(実予約)は、Exchangeが過去日時の会議室予約を処理しないため作成・変更できない
+  if (useRealRooms()) {
+    const todayIso = isoDate(new Date());
+    const nowHHMM = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    if (f.date < todayIso || (f.date === todayIso && f.end <= nowHHMM)) {
+      return '過去の日時は予約できません(Exchangeが会議室の予約を処理しません)';
+    }
+  }
   return '';
 }
 
@@ -551,7 +585,11 @@ function bindFormEvents(root) {
   on('form-date', 'change', e => { f.date = e.target.value; });
   on('form-title', 'input', e => { f.title = e.target.value; });
   on('form-guests', 'input', e => { f.guests = e.target.value; });
-  on('form-start', 'change', e => { f.start = e.target.value; updateFormError(); });
+  on('form-start', 'change', e => {
+    f.start = e.target.value;
+    f.end = plusOneHour(f.start); // 終了時間を開始+1時間に自動設定(ユーザー指示 2026-08-22)
+    renderModals(); // 終了時間セレクトの表示を更新
+  });
   on('form-end', 'change', e => { f.end = e.target.value; updateFormError(); });
 
   on('member-input', 'input', e => {
@@ -574,6 +612,20 @@ function bindFormEvents(root) {
 
   on('form-submit', 'click', submitForm);
   on('form-delete', 'click', async () => {
+    if (f.source === 'graph') {
+      if (!confirm('この予約を取消しますか?(会議室や参加者には取消の通知が送られます)')) return;
+      try {
+        const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+        const res = await fetch(`https://graph.microsoft.com/v1.0/me/events/${f.myEventId}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok && res.status !== 404) throw new Error(`削除に失敗しました(HTTP ${res.status})`);
+        state.form = null;
+        await loadBookings();
+        render();
+      } catch (err) { alert(err.message || String(err)); }
+      return;
+    }
     if (!confirm('この予約を取消しますか?')) return;
     try {
       await api(`/api/bookings/${f.editId}`, { method: 'DELETE' });
@@ -597,6 +649,22 @@ async function submitForm() {
     if (el) el.textContent = err;
     return;
   }
+  if (useRealRooms() && f.date > SAMPLE_HISTORY_END) await submitRealForm(f);
+  else await submitLegacyForm(f);
+}
+
+/** 保存後は対象の拠点・会議室・月へ切り替えて結果を表示する(モーダルは閉じる) */
+function afterSaveSwitchTo(f) {
+  const room = roomById(f.room);
+  state.site = room ? room.site : state.site;
+  state.room = f.room;
+  const [yy, mm] = f.date.split('-').map(Number);
+  state.ym = { y: yy, m: mm - 1 };
+  state.week = null; state.day = null; state.form = null;
+}
+
+/** サンプル・旧データ(SQLite保存)の作成・変更 */
+async function submitLegacyForm(f) {
   const payload = {
     room: f.room, date: f.date, start: f.start, end: f.end,
     title: f.title, members: f.members, guests: f.guests
@@ -604,19 +672,81 @@ async function submitForm() {
   try {
     if (f.editId) await api(`/api/bookings/${f.editId}`, { method: 'PUT', body: payload });
     else await api('/api/bookings', { method: 'POST', body: payload });
-    // 保存後は対象の拠点・会議室・月へ切り替えて結果を表示
-    const room = roomById(f.room);
-    state.site = room ? room.site : state.site;
-    state.room = f.room;
-    const [yy, mm] = f.date.split('-').map(Number);
-    state.ym = { y: yy, m: mm - 1 };
-    state.week = null; state.day = null; state.form = null;
+    afterSaveSwitchTo(f);
     await loadBookings();
     render();
   } catch (e2) {
     const el = document.getElementById('form-error');
     if (el) el.textContent = e2.message;
   }
+}
+
+/** 2026-08-24以降の実予約(Exchange連携)の作成・変更。schedule.jsのsubmitCreateFormと同じ方式 */
+async function submitRealForm(f) {
+  const errEl = document.getElementById('form-error');
+  const submitBtn = document.getElementById('form-submit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = f.editId ? '保存中…' : '作成中…';
+
+  const room = roomById(f.room);
+  const site = SITES.find(s => s.id === room.site);
+  try {
+    // 重複の事前チェック(最新状況を取り直して判定)。変更時は自分の元の枠を重複扱いしない
+    submitBtn.textContent = '空き状況を確認中…';
+    const { rows: busyRows } = await fetchRealRoomBookings([room], f.date, f.date);
+    const isOwnOriginalSlot = b => f.myEventId && b.myEventId === f.myEventId;
+    const conflict = busyRows.find(b => b.start < f.end && b.end > f.start && !isOwnOriginalSlot(b));
+    if (conflict) {
+      throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または会議室を選択してください`);
+    }
+    submitBtn.textContent = f.editId ? '保存中…' : '作成中…';
+
+    const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+    const attendees = f.members.map(m => ({ emailAddress: { address: m.email }, type: 'required' }));
+    // 会議室は実際のExchangeリソースの出席者として追加する(サンプルではなく本物の予約)
+    attendees.push({ emailAddress: { address: room.email, name: `${site.name} ${room.name}` }, type: 'resource' });
+
+    const body = {
+      subject: f.title.trim(),
+      start: { dateTime: `${f.date}T${f.start}:00`, timeZone: 'Tokyo Standard Time' },
+      end: { dateTime: `${f.date}T${f.end}:00`, timeZone: 'Tokyo Standard Time' },
+      attendees
+    };
+    // locationEmailAddressで会議室本体と紐づける(文字列だけだと自動承諾時に場所が二重表記になる。schedule.jsと同じ対策)
+    const loc = { displayName: `${site.name} ${room.name}`, locationEmailAddress: room.email, locationType: 'conferenceRoom' };
+    body.location = loc;
+    body.locations = [loc];
+    if (f.guests.trim()) body.body = { contentType: 'text', content: `外部参加者: ${f.guests.trim()}` };
+
+    const url = f.myEventId
+      ? `https://graph.microsoft.com/v1.0/me/events/${f.myEventId}`
+      : 'https://graph.microsoft.com/v1.0/me/events';
+    const res = await fetch(url, {
+      method: f.myEventId ? 'PATCH' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error?.message || `予定の${f.myEventId ? '変更' : '作成'}に失敗しました(HTTP ${res.status})`);
+    }
+
+    afterSaveSwitchTo(f);
+    await loadBookings(); // 直後の取得で「承諾待ち」として即座に表示させる
+    render();
+    scheduleDelayedRefresh(); // 会議室側の自動承諾反映(数秒〜数十秒)を待って再取得し、確定表示に切り替える
+  } catch (e) {
+    errEl.textContent = e.message || String(e);
+    submitBtn.disabled = false;
+    submitBtn.textContent = f.editId ? '変更を保存' : '予約する';
+  }
+}
+
+/** 会議室側の自動承諾/辞退の反映待ちで、少し時間を置いて再取得する(モーダルが開いていれば見送る) */
+function scheduleDelayedRefresh() {
+  const refresh = () => loadBookings().then(ok => { if (ok && !state.form) renderCalendar(); }).catch(() => {});
+  setTimeout(refresh, 2500);
+  setTimeout(refresh, 8000);
 }
 
 // ---- モーダルの描画・イベント ----
@@ -633,23 +763,32 @@ function renderModals() {
   root.querySelectorAll('[data-close-day]').forEach(b => b.addEventListener('click', () => { state.day = null; renderModals(); }));
   root.querySelectorAll('[data-close-form]').forEach(b => b.addEventListener('click', () => { state.form = null; renderModals(); }));
 
-  // 日別ポップアップ内の操作
-  root.querySelectorAll('[data-book-hour]').forEach(b => b.addEventListener('click', () => {
-    const h = Number(b.dataset.bookHour);
+  // 日別ポップアップ内の操作(30分単位のスロットから予約。終了は開始+1時間を自動設定)
+  root.querySelectorAll('[data-book-start]').forEach(b => b.addEventListener('click', () => {
+    const start = b.dataset.bookStart;
     const d = state.day;
     openForm({
       site: state.site, room: state.room, date: isoDate(new Date(d.y, d.m, d.d)),
-      start: `${pad(h)}:00`, end: `${pad(h + 1)}:00`, title: '', members: [], guests: ''
+      start, end: plusOneHour(start), title: '', members: [], guests: ''
     });
   }));
   root.querySelectorAll('[data-cancel-id]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('この予約を取消しますか?')) return;
+    const row = state.bookings.find(x => String(x.id) === String(b.dataset.cancelId));
+    if (!confirm(row && row.source === 'graph' ? 'この予約を取消しますか?(会議室や参加者には取消の通知が送られます)' : 'この予約を取消しますか?')) return;
     try {
-      await api(`/api/bookings/${b.dataset.cancelId}`, { method: 'DELETE' });
+      if (row && row.source === 'graph') {
+        const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+        const res = await fetch(`https://graph.microsoft.com/v1.0/me/events/${row.myEventId}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok && res.status !== 404) throw new Error(`削除に失敗しました(HTTP ${res.status})`);
+      } else {
+        await api(`/api/bookings/${b.dataset.cancelId}`, { method: 'DELETE' });
+      }
       await loadBookings();
       render();
       renderModals();
-    } catch (err) { alert(err.message); }
+    } catch (err) { alert(err.message || String(err)); }
   }));
   root.querySelectorAll('[data-edit-id]').forEach(b => b.addEventListener('click', () => {
     openEditBooking(b.dataset.editId);
@@ -659,10 +798,212 @@ function renderModals() {
   if (formRoot) bindFormEvents(formRoot);
 }
 
+// ---- 実データ(Exchange)連携。2026-08-24以降・entraモードのみ有効 ----
+
+/** 'YYYY-MM-DD' の翌日を返す */
+function nextIsoDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return isoDate(new Date(y, m - 1, d + 1));
+}
+
+/** 新規予約フォームの初期日付。今日がサンプル期間中(〜8/23)なら実予約可能な直近日(8/24)に補正する */
+function defaultBookableDate() {
+  const todayIso = isoDate(new Date());
+  if (todayIso >= SAMPLE_HISTORY_START && todayIso <= SAMPLE_HISTORY_END) return nextIsoDate(SAMPLE_HISTORY_END);
+  return todayIso;
+}
+
+/** カレンダーの表示範囲(前月末〜翌月頭の余白日を含む42枠。buildCellsと同じ範囲) */
+function gridRange() {
+  const cells = buildCells();
+  return { from: isoDate(cells[0]), to: isoDate(cells[cells.length - 1]) };
+}
+
+/** fetch + @odata.nextLink 追従(最大5ページ)。GraphのcalendarViewは既定10件/ページのため必須 */
+async function graphGetAll(url, token) {
+  let all = [];
+  let next = url;
+  for (let i = 0; i < 5 && next; i++) {
+    const res = await fetch(next, {
+      headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time", odata.maxpagesize=200' }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    all = all.concat(data.value || []);
+    next = data['@odata.nextLink'] || null;
+  }
+  return all;
+}
+
+/** 終日・複数日の予定はendを'24:00'にクランプする(そのままだと00:00–00:00表示になるため) */
+function clampEventTimes(ev) {
+  const startDate = ev.start.dateTime.slice(0, 10);
+  const endDate = ev.end.dateTime.slice(0, 10);
+  const start = ev.start.dateTime.slice(11, 16);
+  let end = ev.end.dateTime.slice(11, 16);
+  if (ev.isAllDay || endDate > startDate) end = '24:00';
+  return { date: startDate, start, end };
+}
+
+/** Graphのattendeesから「社内メンバー」欄を再構成する(会議室・自分自身を除外) */
+function attendeesToMembers(attendees, myEmail) {
+  const roomEmails = new Set(ROOMS.map(r => r.email.toLowerCase()));
+  return (attendees || [])
+    .filter(a => a.type !== 'resource')
+    .map(a => ({ email: (a.emailAddress && a.emailAddress.address) || '', name: (a.emailAddress && a.emailAddress.name) || '' }))
+    .filter(a => a.email && !roomEmails.has(a.email.toLowerCase()) && !sameEmail(a.email, myEmail));
+}
+
+/** 本文の「外部参加者: ...」表記を復元する(schedule.jsと同じ規約) */
+function guestsFromBody(bodyContent) {
+  const m = /^外部参加者: ([\s\S]*)$/.exec(String(bodyContent || '').trim());
+  return m ? m[1].trim() : '';
+}
+
+/** 自分の予定表から会議室を出席者に含む予定を取得し、iCalUId+開始時刻をキーにしたMapを返す。
+    会議室側のcalendarViewで取れるIDは会議室メールボックス側のコピーのIDで /me/events/{id} には
+    使えないため、自分のコピーのID(myEventId)をここで別途取得して突き合わせる。 */
+async function fetchMyRoomEvents(from, to, token) {
+  const myEmail = (ME && ME.email) || '';
+  const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
+    `?startDateTime=${encodeURIComponent(from + 'T00:00:00')}` +
+    `&endDateTime=${encodeURIComponent(to + 'T23:59:59')}` +
+    '&$select=id,iCalUId,subject,start,end,attendees,body,isAllDay,type,isOrganizer&$orderby=start/dateTime&$top=200';
+  const events = await graphGetAll(url, token);
+  const map = new Map();
+  events.forEach(ev => {
+    const roomAttendee = (ev.attendees || []).find(a => a.type === 'resource');
+    if (!roomAttendee || !ev.iCalUId) return;
+    const roomEmail = (roomAttendee.emailAddress && roomAttendee.emailAddress.address) || '';
+    const room = ROOMS.find(r => sameEmail(r.email, roomEmail));
+    if (!room) return;
+    const { date, start, end } = clampEventTimes(ev);
+    const key = `${ev.iCalUId}|${ev.start.dateTime.slice(0, 16)}`;
+    map.set(key, {
+      id: ev.id, roomId: room.id, isOrganizer: !!ev.isOrganizer, type: ev.type,
+      date, start, end, title: ev.subject || '(件名なし)',
+      members: attendeesToMembers(ev.attendees, myEmail),
+      guests: guestsFromBody(ev.body && ev.body.contentType === 'text' ? ev.body.content : ''),
+      roomResponse: (roomAttendee.status && roomAttendee.status.response) || 'none'
+    });
+  });
+  return map;
+}
+
+/** 指定会議室群の指定期間の実予約(Exchange)を取得する。会議室ごとにtry/catchし、
+    失敗した会議室は空扱い+errorsに名前を記録する(1室の失敗で全体を壊さない)。
+    自分が作成直後で会議室側にまだ反映されていない予約は「承諾待ち」として別途表示する。 */
+async function fetchRealRoomBookings(rooms, from, to) {
+  if (!useRealRooms() || !rooms.length) return { rows: [], errors: [] };
+
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+  const mine = await fetchMyRoomEvents(from, to, token).catch(() => new Map());
+
+  const errors = [];
+  const perRoom = await Promise.all(rooms.map(async room => {
+    try {
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
+        `?startDateTime=${encodeURIComponent(from + 'T00:00:00')}` +
+        `&endDateTime=${encodeURIComponent(to + 'T23:59:59')}` +
+        '&$select=id,iCalUId,subject,start,end,organizer,type,isAllDay&$orderby=start/dateTime&$top=200';
+      const events = await graphGetAll(url, token);
+      return events.map(ev => {
+        const { date, start, end } = clampEventTimes(ev);
+        const key = `${ev.iCalUId}|${ev.start.dateTime.slice(0, 16)}`;
+        const mineEv = mine.get(key);
+        return {
+          id: `graph:${room.id}:${ev.id}`, source: 'graph',
+          room: room.id, date, start, end,
+          title: ev.subject || '(件名なし)',
+          owner: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
+          owner_email: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',
+          members: (mineEv && mineEv.members) || [],
+          guests: (mineEv && mineEv.guests) || '',
+          myEventId: (mineEv && mineEv.id) || null,
+          editable: !!(mineEv && mineEv.id && mineEv.isOrganizer && ev.type === 'singleInstance')
+        };
+      });
+    } catch (e) {
+      console.error(`会議室「${room.name}」の予約取得に失敗しました`, e);
+      errors.push(room.name);
+      return [];
+    }
+  }));
+  const rows = perRoom.flat();
+
+  // 会議室側にまだ反映されていない自分の予約(承諾待ち)を追加する。既に反映済みのものと重複しないようにする
+  const seenKeys = new Set(rows.map(r => `${r.room}|${r.date}|${r.start}|${r.end}`));
+  const roomIdSet = new Set(rooms.map(r => r.id));
+  const pending = [];
+  mine.forEach(mineEv => {
+    if (!roomIdSet.has(mineEv.roomId)) return;
+    if (seenKeys.has(`${mineEv.roomId}|${mineEv.date}|${mineEv.start}|${mineEv.end}`)) return;
+    pending.push({
+      id: `pending:${mineEv.id}`, source: 'graph',
+      room: mineEv.roomId, date: mineEv.date, start: mineEv.start, end: mineEv.end,
+      title: mineEv.title, owner: (ME && ME.name) || '', owner_email: (ME && ME.email) || '',
+      members: mineEv.members, guests: mineEv.guests, myEventId: mineEv.id,
+      editable: mineEv.isOrganizer && mineEv.type === 'singleInstance',
+      pending: true, declined: mineEv.roomResponse === 'declined'
+    });
+  });
+
+  return { rows: rows.concat(pending), errors };
+}
+
+/** 拠点別の「今どういう状態か」の説明文(実データ・サンプルの区別を必ず示す。CLAUDE.mdルール4) */
+function calendarFooterHtml() {
+  const today = new Date();
+  const modeNote = useRealRooms()
+    ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降は実際のExchange予約です(件名・主催者はExchangeから取得)。'
+    : (Auth.mode === 'entra'
+      ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降はEntra IDでのサインイン後に実データ連携が有効になります。'
+      : 'デザインサンプル表示です(Entra IDでサインインすると8/24以降が実データになります)。');
+  const errorNote = (state.realErrors && state.realErrors.length)
+    ? `<div style="width:100%;font-size:12px;color:#c05a5a;background:#fbeeee;border-radius:6px;padding:6px 10px">一部の会議室の予約を取得できませんでした(${esc(state.realErrors.join('、'))})。管理者に会議室カレンダーの参照権限(Reviewer)の付与を依頼してください。</div>`
+    : '';
+  return `
+    <div style="padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:#8a99a8">左端の「第N週」ボタンでその週だけを表示できます。${esc(modeNote)}</span>
+      <span style="margin-left:auto;font-size:12px;color:#8a99a8">最終同期 ${pad(today.getHours())}:${pad(today.getMinutes())}</span>
+      ${errorNote}
+    </div>`;
+}
+
 // ---- 初期化 ----
 
+function mergeBookings() {
+  state.bookings = state.legacy.concat(state.real);
+}
+
+let loadSeq = 0;
+
+/** サンプル・旧データ(SQLite)+ 実予約(Exchange。entraモードかつ8/24以降のみ)を取得する。
+    連続クリック等で追い越された古い呼び出しの結果は捨てる(戻り値falseで判定)。 */
 async function loadBookings() {
-  state.bookings = await api('/api/bookings');
+  const seq = ++loadSeq;
+  const legacyUrl = useRealRooms() ? `/api/bookings?from=2000-01-01&to=${SAMPLE_HISTORY_END}` : '/api/bookings';
+  const { from, to } = gridRange();
+  const rooms = (useRealRooms() && to > SAMPLE_HISTORY_END) ? siteRooms(state.site) : [];
+  const realFrom = from > SAMPLE_HISTORY_END ? from : nextIsoDate(SAMPLE_HISTORY_END);
+
+  const [legacy, real] = await Promise.all([
+    api(legacyUrl),
+    rooms.length ? fetchRealRoomBookings(rooms, realFrom, to) : Promise.resolve({ rows: [], errors: [] })
+  ]);
+  if (seq !== loadSeq) return false; // 追い越された古い結果は捨てる
+  state.legacy = legacy;
+  state.real = real.rows;
+  state.realErrors = real.errors;
+  mergeBookings();
+  return true;
+}
+
+/** 拠点・月の切り替え時: 即座に再描画しつつ、裏で最新データを取得してカレンダーだけ差し替える
+    (render()全体だとフォームモーダルが開いていた場合に消えてしまうため) */
+function navigate() {
+  render();
+  loadBookings().then(ok => { if (ok && !state.form) renderCalendar(); }).catch(() => {});
 }
 
 function render() {
@@ -677,8 +1018,8 @@ async function autoRefresh() {
   if (state.day || state.form || document.hidden) return;
   try {
     const prev = JSON.stringify(state.bookings);
-    await loadBookings();
-    if (state.day || state.form) return; // 取得中にモーダルが開いたら描き替えない(次回に反映)
+    const ok = await loadBookings();
+    if (!ok || state.day || state.form) return; // 取得中にモーダルが開いたら描き替えない(次回に反映)
     if (JSON.stringify(state.bookings) !== prev) render();
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }
@@ -686,6 +1027,11 @@ async function autoRefresh() {
 (async function init() {
   try {
     ME = await Auth.init();
+    const badge = document.getElementById('exchange-badge');
+    if (badge) {
+      badge.textContent = useRealRooms() ? 'Exchange 連携(8/24以降)'
+        : Auth.mode === 'entra' ? 'Exchange 連携(準備中)' : 'デザインサンプル';
+    }
     await loadBookings();
     render();
 
