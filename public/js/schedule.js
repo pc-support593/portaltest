@@ -48,7 +48,8 @@ const state = {
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
-  gridTab: 'sites' // 予約状況の表示切り替え: 'sites'(拠点別) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
+  gridTab: 'sites', // 予約状況の表示切り替え: 'sites'(ゆめすみか展示場) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
+  yoshimuraBusy: null // 吉村一建設会議室の空き状況(yoshimuraタブ表示時に取得)
 };
 
 // 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)。
@@ -148,6 +149,50 @@ async function loadAndRenderPersonal() {
 /** 指定日の全会議室の空き状況を取得。devモードは空({})。
     adminSiteIds に含まれる拠点の会議室は、削除操作に必要な実データ(予定ID・主催者)を
     Calendars.ReadWrite.Shared 権限で直接取得する(それ以外はプライバシー保護のため空き状況のみ)。 */
+/** getScheduleで指定会議室群の1日分の空き状況を取得し、roomId→busy配列のマップを返す(共通処理) */
+async function getScheduleBusy(dateStr, rooms, token) {
+  const map = {};
+  if (!rooms.length) return map;
+  const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="Tokyo Standard Time"' },
+    body: JSON.stringify({
+      schedules: rooms.map(r => r.email),
+      startTime: { dateTime: `${dateStr}T00:00:00`, timeZone: 'Tokyo Standard Time' },
+      endTime: { dateTime: `${dateStr}T23:59:59`, timeZone: 'Tokyo Standard Time' },
+      availabilityViewInterval: 30
+    })
+  });
+  if (!res.ok) throw new Error(`会議室の空き状況の取得に失敗しました(HTTP ${res.status})`);
+  const data = await res.json();
+
+  const roomByEmail = new Map(rooms.map(r => [r.email.toLowerCase(), r]));
+  (data.value || []).forEach(v => {
+    const room = roomByEmail.get(String(v.scheduleId || '').toLowerCase());
+    if (!room) return;
+    const items = (v.scheduleItems || [])
+      .filter(it => it.status && it.status !== 'free')
+      .map(it => ({
+        start: it.start.dateTime.slice(11, 16),
+        end: it.end.dateTime.slice(11, 16),
+        subject: it.subject || '',
+        // tentative = 会議室がまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
+        tentative: it.status === 'tentative'
+      }))
+      .sort((a, b) => a.start.localeCompare(b.start));
+    // 同一予定の重複表示を除去(自動承諾処理中は同じ予定が仮+確定で二重に返ることがある。
+    // 件名・状態まで同じもののみ除去し、異なる予定が同時刻にある場合は両方表示する)
+    const seen = new Set();
+    map[room.id] = items.filter(it => {
+      const key = `${it.start}-${it.end}-${it.tentative}-${it.subject}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
+  return map;
+}
+
 async function fetchRoomBusy(date, adminSiteIds) {
   if (Auth.mode !== 'entra') return {};
   adminSiteIds = adminSiteIds || [];
@@ -157,47 +202,7 @@ async function fetchRoomBusy(date, adminSiteIds) {
   const normalRooms = ROOMS.filter(r => !adminRoomIds.has(r.id));
   const scopes = adminRoomIds.size ? ['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared'] : ['Calendars.ReadWrite'];
   const token = await Auth.getGraphToken(scopes);
-  const map = {};
-
-  if (normalRooms.length) {
-    const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="Tokyo Standard Time"' },
-      body: JSON.stringify({
-        schedules: normalRooms.map(r => r.email),
-        startTime: { dateTime: `${dateStr}T00:00:00`, timeZone: 'Tokyo Standard Time' },
-        endTime: { dateTime: `${dateStr}T23:59:59`, timeZone: 'Tokyo Standard Time' },
-        availabilityViewInterval: 30
-      })
-    });
-    if (!res.ok) throw new Error(`会議室の空き状況の取得に失敗しました(HTTP ${res.status})`);
-    const data = await res.json();
-
-    const roomByEmail = new Map(normalRooms.map(r => [r.email.toLowerCase(), r]));
-    (data.value || []).forEach(v => {
-      const room = roomByEmail.get(String(v.scheduleId || '').toLowerCase());
-      if (!room) return;
-      const items = (v.scheduleItems || [])
-        .filter(it => it.status && it.status !== 'free')
-        .map(it => ({
-          start: it.start.dateTime.slice(11, 16),
-          end: it.end.dateTime.slice(11, 16),
-          subject: it.subject || '',
-          // tentative = 会議室がまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
-          tentative: it.status === 'tentative'
-        }))
-        .sort((a, b) => a.start.localeCompare(b.start));
-      // 同一予定の重複表示を除去(自動承諾処理中は同じ予定が仮+確定で二重に返ることがある。
-      // 件名・状態まで同じもののみ除去し、異なる予定が同時刻にある場合は両方表示する)
-      const seen = new Set();
-      map[room.id] = items.filter(it => {
-        const key = `${it.start}-${it.end}-${it.tentative}-${it.subject}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    });
-  }
+  const map = Object.assign({}, await getScheduleBusy(dateStr, normalRooms, token));
 
   // 担当拠点の会議室: getScheduleではなく会議室自身の予定表を直接取得(削除に必要な予定ID・主催者が得られる)
   for (const room of ROOMS.filter(r => adminRoomIds.has(r.id))) {
@@ -224,6 +229,38 @@ async function fetchRoomBusy(date, adminSiteIds) {
   }
 
   return map;
+}
+
+/** 吉村一建設会議室(10室)の空き状況を取得する。マスタは roomsData.js の YOSHIMURA_ROOMS */
+async function fetchYoshimuraBusy(date) {
+  if (Auth.mode !== 'entra') return {};
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+  return getScheduleBusy(isoDate(date), YOSHIMURA_ROOMS, token);
+}
+
+/** 吉村一建設会議室の区分け(部門)別カードのHTML。busyMap が null なら読み込み中表示 */
+function yoshimuraGridHtml(busyMap) {
+  if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  return YOSHIMURA_GROUPS.map(g => {
+    const rooms = yoshimuraGroupRooms(g.id);
+    const rows = rooms.flatMap(r => (busyMap[r.id] || []).map(b => ({ ...b, room: r })))
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map(b => `
+      <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
+        <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
+        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}</span>
+        ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
+      </div>`);
+    const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
+    return `
+    <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(g.name)}</span>
+        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${rooms.length}室</span>
+      </div>
+      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
+    </div>`;
+  }).join('');
 }
 
 /** 拠点別カードのHTML。roomBusyMap が null なら読み込み中表示。adminSiteIds の拠点には削除ボタンを出す。 */
@@ -279,13 +316,28 @@ function renderGridTabs() {
 async function loadAndRenderSiteGrid() {
   const el = document.getElementById('site-grid');
 
-  // 社用車・吉村一建設会議室はExchange側のリソース登録待ち(準備中の案内のみ表示)
+  // 社用車はExchange側のリソース登録待ち(準備中の案内のみ表示)
   if (state.gridTab === 'cars') {
     el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">社用車の予約状況は準備中です(Exchange側のリソース登録が完了すると、ここに表示されます)</p>';
     return;
   }
+  // 吉村一建設会議室(10室・区分け別カード。実データ)
   if (state.gridTab === 'yoshimura') {
-    el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">吉村一建設 会議室の予約状況は準備中です(Exchange側の会議室登録が完了すると、ここに表示されます)</p>';
+    if (Auth.mode !== 'entra') {
+      el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">devモードでは会議室の空き状況を確認できません(Entra IDでのサインインが必要です)</p>';
+      return;
+    }
+    el.innerHTML = yoshimuraGridHtml(null);
+    try {
+      state.yoshimuraBusy = await fetchYoshimuraBusy(state.date);
+      if (state.gridTab !== 'yoshimura') return; // 取得中にタブが切り替わったら描き替えない
+      el.innerHTML = yoshimuraGridHtml(state.yoshimuraBusy);
+    } catch (e) {
+      console.error(e);
+      state.yoshimuraBusy = {};
+      if (state.gridTab !== 'yoshimura') return;
+      el.innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
+    }
     return;
   }
 
@@ -747,23 +799,30 @@ async function render() {
 async function autoRefresh() {
   if (formState || document.hidden) return;
   const dateKey = isoDate(state.date); // 取得中に日付が切り替わったら結果を破棄するためのガード
+  const tabKey = state.gridTab;       // 取得中にタブが切り替わったら予約状況の描き替えは見送る
   try {
     const [events, busy] = await Promise.all([
       fetchPersonalEvents(state.date),
-      fetchRoomBusy(state.date, state.adminSiteIds)
+      tabKey === 'yoshimura' ? fetchYoshimuraBusy(state.date)
+        : tabKey === 'sites' ? fetchRoomBusy(state.date, state.adminSiteIds)
+        : Promise.resolve(null) // 社用車タブは取得対象なし
     ]);
     if (formState || isoDate(state.date) !== dateKey) return;
     if (JSON.stringify(events) !== JSON.stringify(state.personalEvents)) {
       state.personalEvents = events;
       renderPersonalEvents(events);
     }
-    if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
-      state.roomBusy = busy;
-      if (state.gridTab === 'sites') { // 社用車等の別タブ表示中は描き替えない
-        const grid = document.getElementById('site-grid');
-        grid.innerHTML = siteGridHtml(busy, state.adminSiteIds);
-        bindSiteGridActions(grid);
+    if (state.gridTab !== tabKey || busy == null) return;
+    if (tabKey === 'yoshimura') {
+      if (JSON.stringify(busy) !== JSON.stringify(state.yoshimuraBusy)) {
+        state.yoshimuraBusy = busy;
+        document.getElementById('site-grid').innerHTML = yoshimuraGridHtml(busy);
       }
+    } else if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
+      state.roomBusy = busy;
+      const grid = document.getElementById('site-grid');
+      grid.innerHTML = siteGridHtml(busy, state.adminSiteIds);
+      bindSiteGridActions(grid);
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }

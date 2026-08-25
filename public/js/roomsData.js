@@ -73,6 +73,46 @@ const ROOMS = SITES.flatMap(s => ROOM_NAMES_BY_SITE[s.id].map(([name, email], i)
 function siteRooms(siteId) { return ROOMS.filter(r => r.site === siteId); }
 function roomById(id) { return ROOMS.find(r => r.id === id); }
 
+// ---- 吉村一建設(本社側)の会議室マスタ(2026-08-22追加。実際のExchange会議室リソース) ----
+// schedule.html の「吉村一建設会議室」タブで使用。区分け(部門)ごとにカード表示する。
+// rooms.html(ゆめすみか展示場)では使用しない。マスタが増減したらここ1箇所を直す
+const YOSHIMURA_GROUPS = [
+  { id: 'annex', name: 'アネックスプラザ' },
+  { id: 'guest', name: 'ゲストプラザ' },
+  { id: 'honsha', name: '本社' },
+  { id: 'ceo', name: '社長室' },
+  { id: 'chairman', name: '会長室' }
+];
+
+const YOSHIMURA_ROOM_NAMES_BY_GROUP = {
+  annex: [
+    ['1F会議室', 'Annex_1F@yoshimuraichi.com'],
+    ['2F会議室', 'Annex_2F@yoshimuraichi.com'],
+    ['3F会議室', 'Annex_3F@yoshimuraichi.com']
+  ],
+  guest: [
+    ['1F会議室', 'Guest_1F@yoshimuraichi.com'],
+    ['2F会議室', 'Guest_2F@yoshimuraichi.com'],
+    ['3F会議室', 'Guest_3F@yoshimuraichi.com']
+  ],
+  honsha: [
+    ['1F会議室', 'MainOffice_1F@yoshimuraichi.com'],
+    ['2F会議室', 'MainOffice_2F@yoshimuraichi.com']
+  ],
+  ceo: [
+    ['社長室', 'CEO_room@yoshimuraichi.com']
+  ],
+  chairman: [
+    ['会長室', 'Chairman_room@yoshimuraichi.com']
+  ]
+};
+
+const YOSHIMURA_ROOMS = YOSHIMURA_GROUPS.flatMap(g => (YOSHIMURA_ROOM_NAMES_BY_GROUP[g.id] || []).map(([name, email], i) => ({
+  id: `${g.id}${i + 1}`, group: g.id, name, email, color: ROOM_COLOR_PALETTE[i % ROOM_COLOR_PALETTE.length]
+})));
+
+function yoshimuraGroupRooms(groupId) { return YOSHIMURA_ROOMS.filter(r => r.group === groupId); }
+
 function isoDate(d) {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -187,9 +227,10 @@ const SAMPLE_HISTORY = {
 };
 
 /** 指定会議室・日付の予約一覧(開始時刻順)。純粋関数。
-    2026-07-01〜2026-08-23: 上記の固定サンプルのみ(操作不可・実予約は反映しない)。
-    2026-08-24以降: 実予約(サーバー保存)のみ(曜日パターンのダミーは適用しない)。
-    それより前(2026-06-30以前): 従来どおり曜日パターン + 実予約。 */
+    2026-07-01〜2026-08-23: 上記の固定サンプルのみ(操作不可・extraBookingsは無視)。
+    2026-08-24以降: extraBookingsのみ(曜日パターンのダミーは適用しない)。呼び出し元(rooms.js)が
+    entraモードなら実際のExchange予約(Graph)、devモードならサーバーSQLite保存のサンプルをここに渡す。
+    それより前(2026-06-30以前): 従来どおり曜日パターン + extraBookings(サーバーSQLite保存)。 */
 function bookingsFor(roomId, date, extraBookings) {
   const key = isoDate(date);
   if (key >= SAMPLE_HISTORY_START && key <= SAMPLE_HISTORY_END) {
