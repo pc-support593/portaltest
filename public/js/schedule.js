@@ -832,6 +832,12 @@ async function autoRefresh() {
     await Auth.init();
     state.adminSiteIds = myAdminSiteIds();
 
+    // サインインしたアカウントのドメインで予約状況の初期タブを切り替える(ユーザー指示 2026-08-22)
+    // @yoshimuraichi.com → 吉村一建設会議室 / @yumesumika.com → ゆめすみか展示場
+    const myDomain = ((Auth.me && Auth.me.email) || '').toLowerCase().split('@')[1] || '';
+    if (myDomain === 'yoshimuraichi.com') state.gridTab = 'yoshimura';
+    else if (myDomain === 'yumesumika.com') state.gridTab = 'sites';
+
     document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });
