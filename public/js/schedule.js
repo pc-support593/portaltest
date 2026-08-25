@@ -51,9 +51,10 @@ const state = {
   gridTab: 'sites' // 予約状況の表示切り替え: 'sites'(拠点別) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
 };
 
-// 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)
+// 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)。
+// 見出しは「(選択中タブのlabel)の予約状況」に切り替わる
 const GRID_TABS = [
-  { id: 'sites', label: '拠点別' },
+  { id: 'sites', label: 'ゆめすみか展示場' },
   { id: 'cars', label: '社用車' },
   { id: 'yoshimura', label: '吉村一建設会議室' }
 ];
@@ -254,8 +255,12 @@ function siteGridHtml(roomBusyMap, adminSiteIds) {
   }).join('');
 }
 
-/** 予約状況の表示切り替えタブ(拠点別/社用車/吉村一建設会議室)を描画する */
+/** 予約状況の表示切り替えタブ(ゆめすみか展示場/社用車/吉村一建設会議室)を描画する。
+    見出し(#grid-title)も選択中のタブに合わせて「(タブ名)の予約状況」に切り替える */
 function renderGridTabs() {
+  const title = document.getElementById('grid-title');
+  const current = GRID_TABS.find(t => t.id === state.gridTab) || GRID_TABS[0];
+  if (title) title.textContent = `${current.label}の予約状況`;
   const el = document.getElementById('grid-tabs');
   if (!el) return;
   el.innerHTML = GRID_TABS.map(t => {
