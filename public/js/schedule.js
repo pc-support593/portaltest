@@ -298,6 +298,21 @@ function renderGridTabs() {
   const title = document.getElementById('grid-title');
   const current = GRID_TABS.find(t => t.id === state.gridTab) || GRID_TABS[0];
   if (title) title.textContent = `${current.label}の予約状況`;
+  // 予約ページへのリンクも選択中のタブに連動させる(社用車は構想が決まるまで非表示)
+  const roomsLink = document.getElementById('rooms-link');
+  if (roomsLink) {
+    if (state.gridTab === 'cars') {
+      roomsLink.style.display = 'none';
+    } else if (state.gridTab === 'yoshimura') {
+      roomsLink.style.display = '';
+      roomsLink.href = 'rooms.html?view=yoshimura';
+      roomsLink.textContent = '吉村一建設会議室の予約へ';
+    } else {
+      roomsLink.style.display = '';
+      roomsLink.href = 'rooms.html';
+      roomsLink.textContent = 'ゆめすみか展示場の予約へ';
+    }
+  }
   const el = document.getElementById('grid-tabs');
   if (!el) return;
   el.innerHTML = GRID_TABS.map(t => {

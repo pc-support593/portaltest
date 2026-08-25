@@ -16,11 +16,37 @@ const useRealRooms = () => REAL_ROOMS_ENABLED && Auth.mode === 'entra';
 // メールアドレスの大文字小文字を無視して比較する(GraphのSMTPアドレスとEntraのUPNの表記差対策)
 const sameEmail = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 
+// ---- 表示ビューの切り替え(2026-08-22・共通化) ----
+// このページはURLパラメータで表示対象を切り替える共通の予約カレンダー:
+//   rooms.html                → ゆめすみか展示場(既存。サンプル期間+8/24以降実データ)
+//   rooms.html?view=yoshimura → 吉村一建設会議室(全期間実データ。サンプル・SQLite保存なし)
+// 以降のコードは V_SITES / V_ROOMS / vSiteRooms / vRoomById / viewBookingsFor 経由でマスタを参照する
+const VIEW = new URLSearchParams(location.search).get('view') === 'yoshimura' ? 'yoshimura' : 'yumesumika';
+const V_SITES = VIEW === 'yoshimura' ? YOSHIMURA_GROUPS : SITES;
+// 吉村一建設側は区分け(group)を拠点(site)として扱い、以降のロジックを共通化する
+const V_ROOMS = VIEW === 'yoshimura' ? YOSHIMURA_ROOMS.map(r => ({ ...r, site: r.group })) : ROOMS;
+const V_SITE_LABEL = VIEW === 'yoshimura' ? '区分け' : '拠点';
+function vSiteRooms(siteId) { return V_ROOMS.filter(r => r.site === siteId); }
+function vRoomById(id) { return V_ROOMS.find(r => r.id === id); }
+
+/** ビューに応じた予約一覧。吉村一建設ビューは日付による分岐なし(全期間、渡した実予約のみ)。
+    ゆめすみかビューは roomsData.js の bookingsFor(サンプル期間等の日付分岐)に従う */
+function viewBookingsFor(roomId, date, extraBookings) {
+  if (VIEW === 'yoshimura') {
+    const key = isoDate(date);
+    return (extraBookings || [])
+      .filter(b => b.room === roomId && b.date === key)
+      .map(b => ({ ...b, user: true }))
+      .sort((x, y) => x.start.localeCompare(y.start));
+  }
+  return bookingsFor(roomId, date, extraBookings);
+}
+
 let ME = { name: '' };
 const now = new Date();
 const state = {
-  site: 'hirano',
-  room: 'hirano1',
+  site: V_SITES[0].id,
+  room: (vSiteRooms(V_SITES[0].id)[0] || {}).id || '__all',
   ym: { y: now.getFullYear(), m: now.getMonth() },
   week: null,       // 週のみ表示中のインデックス
   day: null,        // 日別ポップアップ対象 {y, m, d}
@@ -32,7 +58,7 @@ const state = {
 };
 let candidates = []; // メンバー検索の候補
 
-// ---- ユーティリティ(SITES/ROOMS/PATTERNS/siteRooms/roomById/isoDate は roomsData.js で定義) ----
+// ---- ユーティリティ(SITES/ROOMS/YOSHIMURA_GROUPS/YOSHIMURA_ROOMS/PATTERNS/isoDate は roomsData.js で定義) ----
 const pad = n => String(n).padStart(2, '0');
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -67,10 +93,10 @@ function statusBadge(b) {
 
 function renderSiteTabs() {
   const el = document.getElementById('site-tabs');
-  el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">拠点</span>' +
-    SITES.map(s => {
+  el.innerHTML = `<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">${esc(V_SITE_LABEL)}</span>` +
+    V_SITES.map(s => {
       const sel = s.id === state.site;
-      const n = siteRooms(s.id).length;
+      const n = vSiteRooms(s.id).length;
       return `
       <button class="hv-site" data-site="${s.id}" style="display:flex;align-items:baseline;gap:8px;border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit">
         <span>${esc(s.name)}</span>
@@ -79,7 +105,7 @@ function renderSiteTabs() {
     }).join('');
   el.querySelectorAll('[data-site]').forEach(b => b.addEventListener('click', () => {
     state.site = b.dataset.site;
-    state.room = (siteRooms(state.site)[0] || {}).id || '__all';
+    state.room = (vSiteRooms(state.site)[0] || {}).id || '__all';
     state.day = null; state.week = null;
     navigate();
   }));
@@ -87,7 +113,7 @@ function renderSiteTabs() {
 
 function renderRoomTabs() {
   const el = document.getElementById('room-tabs');
-  const rooms = siteRooms(state.site);
+  const rooms = vSiteRooms(state.site);
   const isAll = state.room === '__all';
   // 「全ての会議室」だけは従来デザインのまま(白地+色ドット・2行分の高さ)
   const allTabHtml = `
@@ -123,7 +149,7 @@ function renderRoomTabs() {
     render();
   }));
   el.querySelector('#new-booking').addEventListener('click', () => {
-    const first = siteRooms(state.site)[0];
+    const first = vSiteRooms(state.site)[0];
     openForm({
       isNew: true, site: state.site,
       room: state.room !== '__all' ? state.room : (first ? first.id : ''),
@@ -151,11 +177,11 @@ function buildCells() {
 function renderCalendar() {
   const el = document.getElementById('calendar-card');
   const isAll = state.room === '__all';
-  const rooms = siteRooms(state.site);
-  const site = SITES.find(s => s.id === state.site);
+  const rooms = vSiteRooms(state.site);
+  const site = V_SITES.find(s => s.id === state.site);
   const room = isAll
     ? { name: '全ての会議室', meta: `${rooms.length}室すべての予約を表示`, color: '#5a6a7a' }
-    : roomById(state.room) || rooms[0];
+    : vRoomById(state.room) || rooms[0];
   const { y, m } = state.ym;
   const today = new Date();
 
@@ -178,10 +204,10 @@ function renderCalendar() {
       let bks = [];
       if (inMonth) {
         if (isAll) {
-          rooms.forEach(r => bookingsFor(r.id, d, state.bookings).forEach(b => bks.push({ ...b, roomName: r.name, roomColor: r.color })));
+          rooms.forEach(r => viewBookingsFor(r.id, d, state.bookings).forEach(b => bks.push({ ...b, roomName: r.name, roomColor: r.color })));
           bks.sort((x, yb) => x.start.localeCompare(yb.start));
         } else {
-          bks = bookingsFor(room && roomById(state.room) ? state.room : rooms[0].id, d, state.bookings);
+          bks = viewBookingsFor(room && vRoomById(state.room) ? state.room : rooms[0].id, d, state.bookings);
         }
       }
       const bg = !inMonth ? '#fbfcfd' : dow === 0 ? '#fdf7f7' : dow === 6 ? '#f7fafd' : '#ffffff';
@@ -286,14 +312,14 @@ function renderCalendar() {
 // ---- CSV出力(表示中の拠点・会議室の当月分) ----
 
 function exportCsv() {
-  const site = SITES.find(s => s.id === state.site);
-  const rooms = state.room === '__all' ? siteRooms(state.site) : [roomById(state.room)];
+  const site = V_SITES.find(s => s.id === state.site);
+  const rooms = state.room === '__all' ? vSiteRooms(state.site) : [vRoomById(state.room)];
   const { y, m } = state.ym;
   const last = new Date(y, m + 1, 0).getDate();
   const rows = [['拠点', '会議室', '日付', '曜日', '開始', '終了', '件名', '予約者']];
   for (let d = 1; d <= last; d++) {
     const date = new Date(y, m, d);
-    rooms.forEach(r => bookingsFor(r.id, date, state.bookings).forEach(b => {
+    rooms.forEach(r => viewBookingsFor(r.id, date, state.bookings).forEach(b => {
       rows.push([site.name, r.name, isoDate(date), WDAYS[date.getDay()], b.start, b.end, b.title, b.owner]);
     }));
   }
@@ -316,16 +342,16 @@ function exportCsv() {
 function renderDayModal() {
   if (!state.day) return '';
   const isAll = state.room === '__all';
-  const rooms = siteRooms(state.site);
-  const site = SITES.find(s => s.id === state.site);
-  const room = isAll ? { name: '全ての会議室', meta: `${rooms.length}室すべての予約を表示`, color: '#5a6a7a' } : roomById(state.room);
+  const rooms = vSiteRooms(state.site);
+  const site = V_SITES.find(s => s.id === state.site);
+  const room = isAll ? { name: '全ての会議室', meta: `${rooms.length}室すべての予約を表示`, color: '#5a6a7a' } : vRoomById(state.room);
   const dd = new Date(state.day.y, state.day.m, state.day.d);
   const title = `${state.day.m + 1}月${state.day.d}日(${WDAYS[dd.getDay()]}) の空き状況`;
 
   let slotsHtml = '';
   if (isAll) {
     const all = [];
-    rooms.forEach(r => bookingsFor(r.id, dd, state.bookings).forEach(b => all.push({ ...b, roomName: r.name, roomColor: r.color })));
+    rooms.forEach(r => viewBookingsFor(r.id, dd, state.bookings).forEach(b => all.push({ ...b, roomName: r.name, roomColor: r.color })));
     all.sort((x, yb) => x.start.localeCompare(yb.start));
     slotsHtml = all.length ? all.map(b => slotRow({
       time: `${b.start}–${b.end}`, label: b.title, owner: b.owner, booked: true,
@@ -336,7 +362,7 @@ function renderDayModal() {
         <span style="font-size:13px;font-weight:500;color:#8a99a8">この日の予約はありません</span>
       </div>`;
   } else {
-    const bks = bookingsFor(state.room, dd, state.bookings);
+    const bks = viewBookingsFor(state.room, dd, state.bookings);
     const parts = [];
     // 予約可能時間 8:00〜21:00。30分単位のスロット表示(ユーザー指示 2026-08-22。最終スロットは 20:30–21:00)
     for (let min = 8 * 60; min < 21 * 60; min += 30) {
@@ -439,7 +465,7 @@ function openForm(form) {
 function openEditBooking(id) {
   const bk = state.bookings.find(x => String(x.id) === String(id));
   if (!bk) return;
-  const room = roomById(bk.room);
+  const room = vRoomById(bk.room);
   state.day = null;
   openForm({
     editId: bk.id, site: room ? room.site : state.site, room: bk.room, date: bk.date,
@@ -452,10 +478,15 @@ function openEditBooking(id) {
 function formError(f) {
   if (!f.room) return '会議室を選択してください';
   if (f.start >= f.end) return '終了時刻は開始時刻より後にしてください';
-  // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
-  if (f.date <= SAMPLE_HISTORY_END) return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
-  // 2026-08-24以降(実予約)は、Exchangeが過去日時の会議室予約を処理しないため作成・変更できない
-  if (useRealRooms()) {
+  if (VIEW === 'yoshimura') {
+    // 吉村一建設ビューは全期間実データのみ(サンプル期間・SQLite保存なし)
+    if (Auth.mode !== 'entra') return 'この画面の予約にはMicrosoft 365でのサインインが必要です';
+  } else if (f.date <= SAMPLE_HISTORY_END) {
+    // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
+    return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
+  }
+  // 実予約は、Exchangeが過去日時の会議室予約を処理しないため作成・変更できない
+  if (useRealRooms() && (VIEW === 'yoshimura' || f.date > SAMPLE_HISTORY_END)) {
     const todayIso = isoDate(new Date());
     const nowHHMM = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
     if (f.date < todayIso || (f.date === todayIso && f.end <= nowHHMM)) {
@@ -469,20 +500,20 @@ function renderFormModal() {
   const f = state.form;
   if (!f) return '';
   const isEdit = !!f.editId;
-  const site = SITES.find(s => s.id === (f.site || state.site));
-  const room = roomById(f.room);
+  const site = V_SITES.find(s => s.id === (f.site || state.site));
+  const room = vRoomById(f.room);
   const opts = hourOptions();
   const selOpts = v => opts.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('');
 
   const target = f.isNew ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       <label style="display:flex;flex-direction:column;gap:5px">
-        <span style="font-size:12px;font-weight:700;color:#6b7d8f">展示場</span>
-        <select id="form-site" class="in-input">${SITES.map(s => `<option value="${s.id}" ${s.id === f.site ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${VIEW === 'yoshimura' ? '区分け' : '展示場'}</span>
+        <select id="form-site" class="in-input">${V_SITES.map(s => `<option value="${s.id}" ${s.id === f.site ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
         <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室</span>
-        <select id="form-room" class="in-input">${siteRooms(f.site).map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+        <select id="form-room" class="in-input">${vSiteRooms(f.site).map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
         <span style="font-size:12px;font-weight:700;color:#6b7d8f">日付</span>
@@ -583,7 +614,7 @@ function bindFormEvents(root) {
   const f = state.form;
   const on = (id, ev, fn) => { const el = root.querySelector('#' + id); if (el) el.addEventListener(ev, fn); };
 
-  on('form-site', 'change', e => { f.site = e.target.value; f.room = (siteRooms(f.site)[0] || {}).id || ''; renderModals(); });
+  on('form-site', 'change', e => { f.site = e.target.value; f.room = (vSiteRooms(f.site)[0] || {}).id || ''; renderModals(); });
   on('form-room', 'change', e => { f.room = e.target.value; updateFormError(); });
   on('form-date', 'change', e => { f.date = e.target.value; });
   on('form-title', 'input', e => { f.title = e.target.value; });
@@ -652,13 +683,16 @@ async function submitForm() {
     if (el) el.textContent = err;
     return;
   }
-  if (useRealRooms() && f.date > SAMPLE_HISTORY_END) await submitRealForm(f);
+  // 吉村一建設ビューは常に実予約(devモードはformErrorで既にブロック済み)。
+  // ゆめすみかビューはentraモードかつ8/24以降のみ実予約
+  const isReal = useRealRooms() && (VIEW === 'yoshimura' || f.date > SAMPLE_HISTORY_END);
+  if (isReal) await submitRealForm(f);
   else await submitLegacyForm(f);
 }
 
 /** 保存後は対象の拠点・会議室・月へ切り替えて結果を表示する(モーダルは閉じる) */
 function afterSaveSwitchTo(f) {
-  const room = roomById(f.room);
+  const room = vRoomById(f.room);
   state.site = room ? room.site : state.site;
   state.room = f.room;
   const [yy, mm] = f.date.split('-').map(Number);
@@ -691,8 +725,8 @@ async function submitRealForm(f) {
   submitBtn.disabled = true;
   submitBtn.textContent = f.editId ? '保存中…' : '作成中…';
 
-  const room = roomById(f.room);
-  const site = SITES.find(s => s.id === room.site);
+  const room = vRoomById(f.room);
+  const site = V_SITES.find(s => s.id === room.site);
   try {
     // 重複の事前チェック(最新状況を取り直して判定)。変更時は自分の元の枠を重複扱いしない
     submitBtn.textContent = '空き状況を確認中…';
@@ -809,10 +843,10 @@ function nextIsoDate(iso) {
   return isoDate(new Date(y, m - 1, d + 1));
 }
 
-/** 新規予約フォームの初期日付。今日がサンプル期間中(〜8/23)なら実予約可能な直近日(8/24)に補正する */
+/** 新規予約フォームの初期日付。ゆめすみかビューで今日がサンプル期間中(〜8/23)なら実予約可能な直近日(8/24)に補正する */
 function defaultBookableDate() {
   const todayIso = isoDate(new Date());
-  if (todayIso >= SAMPLE_HISTORY_START && todayIso <= SAMPLE_HISTORY_END) return nextIsoDate(SAMPLE_HISTORY_END);
+  if (VIEW !== 'yoshimura' && todayIso >= SAMPLE_HISTORY_START && todayIso <= SAMPLE_HISTORY_END) return nextIsoDate(SAMPLE_HISTORY_END);
   return todayIso;
 }
 
@@ -850,7 +884,7 @@ function clampEventTimes(ev) {
 
 /** Graphのattendeesから「社内メンバー」欄を再構成する(会議室・自分自身を除外) */
 function attendeesToMembers(attendees, myEmail) {
-  const roomEmails = new Set(ROOMS.map(r => r.email.toLowerCase()));
+  const roomEmails = new Set([...ROOMS, ...YOSHIMURA_ROOMS].map(r => r.email.toLowerCase())); // どちらのマスタの会議室も社内メンバー欄から除外する
   return (attendees || [])
     .filter(a => a.type !== 'resource')
     .map(a => ({ email: (a.emailAddress && a.emailAddress.address) || '', name: (a.emailAddress && a.emailAddress.name) || '' }))
@@ -878,7 +912,7 @@ async function fetchMyRoomEvents(from, to, token) {
     const roomAttendee = (ev.attendees || []).find(a => a.type === 'resource');
     if (!roomAttendee || !ev.iCalUId) return;
     const roomEmail = (roomAttendee.emailAddress && roomAttendee.emailAddress.address) || '';
-    const room = ROOMS.find(r => sameEmail(r.email, roomEmail));
+    const room = V_ROOMS.find(r => sameEmail(r.email, roomEmail));
     if (!room) return;
     const { date, start, end } = clampEventTimes(ev);
     const key = `${ev.iCalUId}|${ev.start.dateTime.slice(0, 16)}`;
@@ -957,7 +991,11 @@ async function fetchRealRoomBookings(rooms, from, to) {
 /** 拠点別の「今どういう状態か」の説明文(実データ・サンプルの区別を必ず示す。CLAUDE.mdルール4) */
 function calendarFooterHtml() {
   const today = new Date();
-  const modeNote = useRealRooms()
+  const modeNote = VIEW === 'yoshimura'
+    ? (Auth.mode === 'entra'
+      ? '実際のExchange予約を表示しています(件名・主催者はExchangeから取得)。'
+      : 'Microsoft 365でサインインすると予約状況が表示されます。')
+    : useRealRooms()
     ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降は実際のExchange予約です(件名・主催者はExchangeから取得)。'
     : (Auth.mode === 'entra'
       ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降はEntra IDでのサインイン後に実データ連携が有効になります。'
@@ -985,15 +1023,23 @@ let loadSeq = 0;
     連続クリック等で追い越された古い呼び出しの結果は捨てる(戻り値falseで判定)。 */
 async function loadBookings() {
   const seq = ++loadSeq;
-  const legacyUrl = useRealRooms() ? `/api/bookings?from=2000-01-01&to=${SAMPLE_HISTORY_END}` : '/api/bookings';
   const { from, to } = gridRange();
-  const rooms = (useRealRooms() && to > SAMPLE_HISTORY_END) ? siteRooms(state.site) : [];
-  const realFrom = from > SAMPLE_HISTORY_END ? from : nextIsoDate(SAMPLE_HISTORY_END);
+  let legacyPromise, realPromise;
+  if (VIEW === 'yoshimura') {
+    // 吉村一建設ビュー: サンプル・SQLite保存は使わず、全期間を実データ(Exchange)から取得
+    legacyPromise = Promise.resolve([]);
+    realPromise = useRealRooms()
+      ? fetchRealRoomBookings(vSiteRooms(state.site), from, to)
+      : Promise.resolve({ rows: [], errors: [] });
+  } else {
+    const legacyUrl = useRealRooms() ? `/api/bookings?from=2000-01-01&to=${SAMPLE_HISTORY_END}` : '/api/bookings';
+    const rooms = (useRealRooms() && to > SAMPLE_HISTORY_END) ? vSiteRooms(state.site) : [];
+    const realFrom = from > SAMPLE_HISTORY_END ? from : nextIsoDate(SAMPLE_HISTORY_END);
+    legacyPromise = api(legacyUrl);
+    realPromise = rooms.length ? fetchRealRoomBookings(rooms, realFrom, to) : Promise.resolve({ rows: [], errors: [] });
+  }
 
-  const [legacy, real] = await Promise.all([
-    api(legacyUrl),
-    rooms.length ? fetchRealRoomBookings(rooms, realFrom, to) : Promise.resolve({ rows: [], errors: [] })
-  ]);
+  const [legacy, real] = await Promise.all([legacyPromise, realPromise]);
   if (seq !== loadSeq) return false; // 追い越された古い結果は捨てる
   state.legacy = legacy;
   state.real = real.rows;
@@ -1029,10 +1075,18 @@ async function autoRefresh() {
 
 (async function init() {
   try {
+    // ビューに応じてページタイトルを切り替える
+    if (VIEW === 'yoshimura') {
+      const titleEl = document.getElementById('page-title');
+      if (titleEl) titleEl.textContent = '吉村一建設 会議室予約';
+      document.title = '吉村一建設 会議室予約 - 吉村一建設 ポータル';
+    }
     ME = await Auth.init();
     const badge = document.getElementById('exchange-badge');
     if (badge) {
-      badge.textContent = useRealRooms() ? 'Exchange 連携(8/24以降)'
+      badge.textContent = VIEW === 'yoshimura'
+        ? (Auth.mode === 'entra' ? 'Exchange 連携' : 'devモード(未接続)')
+        : useRealRooms() ? 'Exchange 連携(8/24以降)'
         : Auth.mode === 'entra' ? 'Exchange 連携(準備中)' : 'デザインサンプル';
     }
     await loadBookings();
