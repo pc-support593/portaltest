@@ -47,8 +47,16 @@ const state = {
   date: new Date(),
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
-  adminSiteIds: [] // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
+  adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
+  gridTab: 'sites' // 予約状況の表示切り替え: 'sites'(拠点別) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
 };
+
+// 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)
+const GRID_TABS = [
+  { id: 'sites', label: '拠点別' },
+  { id: 'cars', label: '社用車' },
+  { id: 'yoshimura', label: '吉村一建設会議室' }
+];
 
 // ---- 個人のスケジュール(実データ) ----
 
@@ -246,8 +254,36 @@ function siteGridHtml(roomBusyMap, adminSiteIds) {
   }).join('');
 }
 
+/** 予約状況の表示切り替えタブ(拠点別/社用車/吉村一建設会議室)を描画する */
+function renderGridTabs() {
+  const el = document.getElementById('grid-tabs');
+  if (!el) return;
+  el.innerHTML = GRID_TABS.map(t => {
+    const sel = t.id === state.gridTab;
+    return `
+    <button class="hv-site" data-grid-tab="${t.id}" style="border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">${esc(t.label)}</button>`;
+  }).join('');
+  el.querySelectorAll('[data-grid-tab]').forEach(b => b.addEventListener('click', () => {
+    if (state.gridTab === b.dataset.gridTab) return;
+    state.gridTab = b.dataset.gridTab;
+    renderGridTabs();
+    loadAndRenderSiteGrid();
+  }));
+}
+
 async function loadAndRenderSiteGrid() {
   const el = document.getElementById('site-grid');
+
+  // 社用車・吉村一建設会議室はExchange側のリソース登録待ち(準備中の案内のみ表示)
+  if (state.gridTab === 'cars') {
+    el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">社用車の予約状況は準備中です(Exchange側のリソース登録が完了すると、ここに表示されます)</p>';
+    return;
+  }
+  if (state.gridTab === 'yoshimura') {
+    el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">吉村一建設 会議室の予約状況は準備中です(Exchange側の会議室登録が完了すると、ここに表示されます)</p>';
+    return;
+  }
+
   if (Auth.mode !== 'entra') {
     el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">devモードでは会議室の空き状況を確認できません(Entra IDでのサインインが必要です)</p>';
     state.roomBusy = {};
@@ -256,11 +292,13 @@ async function loadAndRenderSiteGrid() {
   el.innerHTML = siteGridHtml(null);
   try {
     state.roomBusy = await fetchRoomBusy(state.date, state.adminSiteIds);
+    if (state.gridTab !== 'sites') return; // 取得中にタブが切り替わったら描き替えない
     el.innerHTML = siteGridHtml(state.roomBusy, state.adminSiteIds);
     bindSiteGridActions(el);
   } catch (e) {
     console.error(e);
     state.roomBusy = {};
+    if (state.gridTab !== 'sites') return;
     el.innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
 }
@@ -696,6 +734,7 @@ function shiftDay(n) {
 
 async function render() {
   renderDateNav();
+  renderGridTabs();
   await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid()]);
 }
 
@@ -715,9 +754,11 @@ async function autoRefresh() {
     }
     if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
       state.roomBusy = busy;
-      const grid = document.getElementById('site-grid');
-      grid.innerHTML = siteGridHtml(busy, state.adminSiteIds);
-      bindSiteGridActions(grid);
+      if (state.gridTab === 'sites') { // 社用車等の別タブ表示中は描き替えない
+        const grid = document.getElementById('site-grid');
+        grid.innerHTML = siteGridHtml(busy, state.adminSiteIds);
+        bindSiteGridActions(grid);
+      }
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }
