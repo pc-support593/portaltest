@@ -145,73 +145,20 @@ async function loadAndRenderPersonal() {
   }
 }
 
-// ---- 拠点別 会議室スケジュール(実データ。Graph getSchedule) ----
+// ---- 拠点別 会議室スケジュール(実データ。会議室自身の予定表を直接取得) ----
 
-/** 指定日の全会議室の空き状況を取得。devモードは空({})。
-    adminSiteIds に含まれる拠点の会議室は、削除操作に必要な実データ(予定ID・主催者)を
-    Calendars.ReadWrite.Shared 権限で直接取得する(それ以外はプライバシー保護のため空き状況のみ)。 */
-/** getScheduleで指定会議室群の1日分の空き状況を取得し、roomId→busy配列のマップを返す(共通処理) */
-async function getScheduleBusy(dateStr, rooms, token) {
+/** 指定会議室群(会議室・社用車問わず)の1日分の予定を、各リソース自身の予定表(calendarView)から
+    直接取得する(件名・予約者名・予定IDまで取れる。Calendars.ReadWrite.Shared権限+Reviewer権限が必要。
+    2026-08-22: 全リソースにReviewer権限を付与済みのため、拠点代表者(SITE_REPS)以外でも使える)。
+    1件ずつtry/catchし、失敗したリソースは空扱いにする(1件の失敗で全体を壊さない)。 */
+async function fetchCalendarViewBusy(dateStr, rooms, token) {
   const map = {};
-  if (!rooms.length) return map;
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="Tokyo Standard Time"' },
-    body: JSON.stringify({
-      schedules: rooms.map(r => r.email),
-      startTime: { dateTime: `${dateStr}T00:00:00`, timeZone: 'Tokyo Standard Time' },
-      endTime: { dateTime: `${dateStr}T23:59:59`, timeZone: 'Tokyo Standard Time' },
-      availabilityViewInterval: 30
-    })
-  });
-  if (!res.ok) throw new Error(`会議室の空き状況の取得に失敗しました(HTTP ${res.status})`);
-  const data = await res.json();
-
-  const roomByEmail = new Map(rooms.map(r => [r.email.toLowerCase(), r]));
-  (data.value || []).forEach(v => {
-    const room = roomByEmail.get(String(v.scheduleId || '').toLowerCase());
-    if (!room) return;
-    const items = (v.scheduleItems || [])
-      .filter(it => it.status && it.status !== 'free')
-      .map(it => ({
-        start: it.start.dateTime.slice(11, 16),
-        end: it.end.dateTime.slice(11, 16),
-        subject: it.subject || '',
-        // tentative = 会議室がまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
-        tentative: it.status === 'tentative'
-      }))
-      .sort((a, b) => a.start.localeCompare(b.start));
-    // 同一予定の重複表示を除去(自動承諾処理中は同じ予定が仮+確定で二重に返ることがある。
-    // 件名・状態まで同じもののみ除去し、異なる予定が同時刻にある場合は両方表示する)
-    const seen = new Set();
-    map[room.id] = items.filter(it => {
-      const key = `${it.start}-${it.end}-${it.tentative}-${it.subject}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  });
-  return map;
-}
-
-async function fetchRoomBusy(date, adminSiteIds) {
-  if (Auth.mode !== 'entra') return {};
-  adminSiteIds = adminSiteIds || [];
-
-  const dateStr = isoDate(date);
-  const adminRoomIds = new Set(ROOMS.filter(r => adminSiteIds.includes(r.site)).map(r => r.id));
-  const normalRooms = ROOMS.filter(r => !adminRoomIds.has(r.id));
-  const scopes = adminRoomIds.size ? ['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared'] : ['Calendars.ReadWrite'];
-  const token = await Auth.getGraphToken(scopes);
-  const map = Object.assign({}, await getScheduleBusy(dateStr, normalRooms, token));
-
-  // 担当拠点の会議室: getScheduleではなく会議室自身の予定表を直接取得(削除に必要な予定ID・主催者が得られる)
-  for (const room of ROOMS.filter(r => adminRoomIds.has(r.id))) {
+  await Promise.all(rooms.map(async room => {
     try {
       const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
         `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
         `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
-        '&$select=id,subject,start,end,organizer&$orderby=start/dateTime';
+        '&$select=id,subject,start,end,organizer,showAs&$orderby=start/dateTime';
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
@@ -219,24 +166,32 @@ async function fetchRoomBusy(date, adminSiteIds) {
         start: ev.start.dateTime.slice(11, 16),
         end: ev.end.dateTime.slice(11, 16),
         subject: ev.subject || '(件名なし)',
+        organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
+        // tentative = このリソース側でまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
+        tentative: ev.showAs === 'tentative',
         eventId: ev.id,
-        roomEmail: room.email,
-        organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || ''
+        roomEmail: room.email
       }));
     } catch (e) {
-      console.error(`会議室「${room.name}」の予定表取得に失敗しました`, e);
+      console.error(`「${room.name}」の予定表取得に失敗しました`, e);
       map[room.id] = [];
     }
-  }
-
+  }));
   return map;
 }
 
-/** 吉村一建設会議室(10室)の空き状況を取得する。マスタは roomsData.js の YOSHIMURA_ROOMS */
+/** 指定日の全会議室(33室)の空き状況+予約者名を取得。devモードは空({}) */
+async function fetchRoomBusy(date) {
+  if (Auth.mode !== 'entra') return {};
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+  return fetchCalendarViewBusy(isoDate(date), ROOMS, token);
+}
+
+/** 吉村一建設会議室(10室)の空き状況+予約者名を取得する。マスタは roomsData.js の YOSHIMURA_ROOMS */
 async function fetchYoshimuraBusy(date) {
   if (Auth.mode !== 'entra') return {};
-  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
-  return getScheduleBusy(isoDate(date), YOSHIMURA_ROOMS, token);
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+  return fetchCalendarViewBusy(isoDate(date), YOSHIMURA_ROOMS, token);
 }
 
 /** 吉村一建設会議室の区分け(部門)別カードのHTML。busyMap が null なら読み込み中表示 */
@@ -249,7 +204,7 @@ function yoshimuraGridHtml(busyMap) {
       .map(b => `
       <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
         <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
-        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}</span>
+        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
         ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
       </div>`);
     const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
@@ -264,11 +219,11 @@ function yoshimuraGridHtml(busyMap) {
   }).join('');
 }
 
-/** 社用車(9台)の空き状況を取得する。マスタは roomsData.js の CARS */
+/** 社用車(9台)の空き状況+予約者名を取得する。マスタは roomsData.js の CARS */
 async function fetchCarsBusy(date) {
   if (Auth.mode !== 'entra') return {};
-  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
-  return getScheduleBusy(isoDate(date), CARS, token);
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+  return fetchCalendarViewBusy(isoDate(date), CARS, token);
 }
 
 /** 社用車の部門別カードのHTML。busyMap が null なら読み込み中表示 */
@@ -281,7 +236,7 @@ function carsGridHtml(busyMap) {
       .map(b => `
       <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
         <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
-        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}</span>
+        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
         ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
       </div>`);
     const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
@@ -412,7 +367,7 @@ async function loadAndRenderSiteGrid() {
   }
   el.innerHTML = siteGridHtml(null);
   try {
-    state.roomBusy = await fetchRoomBusy(state.date, state.adminSiteIds);
+    state.roomBusy = await fetchRoomBusy(state.date);
     if (state.gridTab !== 'sites') return; // 取得中にタブが切り替わったら描き替えない
     el.innerHTML = siteGridHtml(state.roomBusy, state.adminSiteIds);
     bindSiteGridActions(el);
@@ -869,7 +824,7 @@ async function autoRefresh() {
       fetchPersonalEvents(state.date),
       tabKey === 'yoshimura' ? fetchYoshimuraBusy(state.date)
         : tabKey === 'cars' ? fetchCarsBusy(state.date)
-        : tabKey === 'sites' ? fetchRoomBusy(state.date, state.adminSiteIds)
+        : tabKey === 'sites' ? fetchRoomBusy(state.date)
         : Promise.resolve(null)
     ]);
     if (formState || isoDate(state.date) !== dateKey) return;
