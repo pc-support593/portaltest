@@ -20,19 +20,27 @@ const sameEmail = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).
 // このページはURLパラメータで表示対象を切り替える共通の予約カレンダー:
 //   rooms.html                → ゆめすみか展示場(既存。サンプル期間+8/24以降実データ)
 //   rooms.html?view=yoshimura → 吉村一建設会議室(全期間実データ。サンプル・SQLite保存なし)
+//   rooms.html?view=cars      → 社用車(全期間実データ。サンプル・SQLite保存なし。2026-08-22追加)
 // 以降のコードは V_SITES / V_ROOMS / vSiteRooms / vRoomById / viewBookingsFor 経由でマスタを参照する
-const VIEW = new URLSearchParams(location.search).get('view') === 'yoshimura' ? 'yoshimura' : 'yumesumika';
-const V_SITES = VIEW === 'yoshimura' ? YOSHIMURA_GROUPS : SITES;
-// 吉村一建設側は区分け(group)を拠点(site)として扱い、以降のロジックを共通化する
-const V_ROOMS = VIEW === 'yoshimura' ? YOSHIMURA_ROOMS.map(r => ({ ...r, site: r.group })) : ROOMS;
-const V_SITE_LABEL = VIEW === 'yoshimura' ? '区分け' : '拠点';
+const VIEW = (() => {
+  const v = new URLSearchParams(location.search).get('view');
+  return v === 'yoshimura' || v === 'cars' ? v : 'yumesumika';
+})();
+const V_SITES = VIEW === 'yoshimura' ? YOSHIMURA_GROUPS : VIEW === 'cars' ? CAR_GROUPS : SITES;
+// 吉村一建設・社用車側は区分け/部門(group)を拠点(site)として扱い、以降のロジックを共通化する
+const V_ROOMS = VIEW === 'yoshimura' ? YOSHIMURA_ROOMS.map(r => ({ ...r, site: r.group }))
+  : VIEW === 'cars' ? CARS.map(r => ({ ...r, site: r.group }))
+  : ROOMS;
+const V_SITE_LABEL = VIEW === 'yoshimura' ? '区分け' : VIEW === 'cars' ? '部門' : '拠点';
+const V_ITEM_LABEL = VIEW === 'cars' ? '社用車' : '会議室'; // 画面表示文言(社用車ビューでは「会議室」を言い換える)
+const V_UNIT = VIEW === 'cars' ? '台' : '室'; // 数え方(社用車は「台」)
 function vSiteRooms(siteId) { return V_ROOMS.filter(r => r.site === siteId); }
 function vRoomById(id) { return V_ROOMS.find(r => r.id === id); }
 
-/** ビューに応じた予約一覧。吉村一建設ビューは日付による分岐なし(全期間、渡した実予約のみ)。
+/** ビューに応じた予約一覧。吉村一建設・社用車ビューは日付による分岐なし(全期間、渡した実予約のみ)。
     ゆめすみかビューは roomsData.js の bookingsFor(サンプル期間等の日付分岐)に従う */
 function viewBookingsFor(roomId, date, extraBookings) {
-  if (VIEW === 'yoshimura') {
+  if (VIEW !== 'yumesumika') {
     const key = isoDate(date);
     return (extraBookings || [])
       .filter(b => b.room === roomId && b.date === key)
@@ -119,8 +127,8 @@ function renderRoomTabs() {
   const allTabHtml = `
       <button class="hv-room" data-room="__all" style="display:flex;align-items:center;border:1px solid ${isAll ? '#2e6fc0' : '#eef1f5'};background:${isAll ? '#eef4fb' : '#ffffff'};border-radius:9px;padding:9px 16px;cursor:pointer;text-align:left;font-family:inherit">
         <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
-          <span style="font-size:13px;font-weight:700;color:#1c2b3a">全ての会議室</span>
-          <span style="font-size:11px;color:#6b7d8f">${rooms.length}室をまとめて表示</span>
+          <span style="font-size:13px;font-weight:700;color:#1c2b3a">全ての${esc(V_ITEM_LABEL)}</span>
+          <span style="font-size:11px;color:#6b7d8f">${rooms.length}${esc(V_UNIT)}をまとめて表示</span>
         </span>
       </button>`;
   // 各会議室は識別色で全面塗りつぶし+白文字。「全ての会議室」タブの高さに収まる2段組みで並べる
@@ -132,7 +140,7 @@ function renderRoomTabs() {
         <span style="font-size:12px;font-weight:700;color:#ffffff">${esc(r.name)}</span>
       </button>`;
   }).join('');
-  el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">会議室</span>' +
+  el.innerHTML = `<span style="font-size:12px;font-weight:700;color:#8a99a8;margin-right:2px">${esc(V_ITEM_LABEL)}</span>` +
     allTabHtml +
     `<div style="display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,1fr);gap:6px;align-self:stretch;overflow-x:auto;max-width:100%">${roomBtnsHtml}</div>` +
     `<span style="margin-left:auto;display:flex;align-items:center;gap:14px">
@@ -180,7 +188,7 @@ function renderCalendar() {
   const rooms = vSiteRooms(state.site);
   const site = V_SITES.find(s => s.id === state.site);
   const room = isAll
-    ? { name: '全ての会議室', meta: `${rooms.length}室すべての予約を表示`, color: '#5a6a7a' }
+    ? { name: `全ての${V_ITEM_LABEL}`, meta: `${rooms.length}${V_UNIT}すべての予約を表示`, color: '#5a6a7a' }
     : vRoomById(state.room) || rooms[0];
   const { y, m } = state.ym;
   const today = new Date();
@@ -257,7 +265,7 @@ function renderCalendar() {
     <div style="display:flex;align-items:center;gap:14px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
       <span style="display:flex;align-items:center;gap:9px">
         <span style="width:12px;height:12px;border-radius:4px;background:${room.color}"></span>
-        <h2 style="margin:0;font-size:16px;font-weight:700;white-space:nowrap">${esc(state.room === '__all' ? `${site.name} ・ 全ての会議室` : `${site.name} ${room.name}`)}</h2>
+        <h2 style="margin:0;font-size:16px;font-weight:700;white-space:nowrap">${esc(state.room === '__all' ? `${site.name} ・ 全ての${V_ITEM_LABEL}` : `${site.name} ${room.name}`)}</h2>
         <span style="font-size:12px;color:#6b7d8f;white-space:nowrap">${esc(room.meta)}</span>
       </span>
       <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
@@ -316,7 +324,7 @@ function exportCsv() {
   const rooms = state.room === '__all' ? vSiteRooms(state.site) : [vRoomById(state.room)];
   const { y, m } = state.ym;
   const last = new Date(y, m + 1, 0).getDate();
-  const rows = [['拠点', '会議室', '日付', '曜日', '開始', '終了', '件名', '予約者']];
+  const rows = [[V_SITE_LABEL, V_ITEM_LABEL, '日付', '曜日', '開始', '終了', '件名', '予約者']];
   for (let d = 1; d <= last; d++) {
     const date = new Date(y, m, d);
     rooms.forEach(r => viewBookingsFor(r.id, date, state.bookings).forEach(b => {
@@ -332,7 +340,7 @@ function exportCsv() {
   const csv = '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `会議室予約_${site.name}_${y}${pad(m + 1)}.csv`;
+  a.download = `${V_ITEM_LABEL}予約_${site.name}_${y}${pad(m + 1)}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -344,7 +352,7 @@ function renderDayModal() {
   const isAll = state.room === '__all';
   const rooms = vSiteRooms(state.site);
   const site = V_SITES.find(s => s.id === state.site);
-  const room = isAll ? { name: '全ての会議室', meta: `${rooms.length}室すべての予約を表示`, color: '#5a6a7a' } : vRoomById(state.room);
+  const room = isAll ? { name: `全ての${V_ITEM_LABEL}`, meta: `${rooms.length}${V_UNIT}すべての予約を表示`, color: '#5a6a7a' } : vRoomById(state.room);
   const dd = new Date(state.day.y, state.day.m, state.day.d);
   const title = `${state.day.m + 1}月${state.day.d}日(${WDAYS[dd.getDay()]}) の空き状況`;
 
@@ -476,21 +484,21 @@ function openEditBooking(id) {
 }
 
 function formError(f) {
-  if (!f.room) return '会議室を選択してください';
+  if (!f.room) return `${V_ITEM_LABEL}を選択してください`;
   if (f.start >= f.end) return '終了時刻は開始時刻より後にしてください';
-  if (VIEW === 'yoshimura') {
-    // 吉村一建設ビューは全期間実データのみ(サンプル期間・SQLite保存なし)
+  if (VIEW !== 'yumesumika') {
+    // 吉村一建設・社用車ビューは全期間実データのみ(サンプル期間・SQLite保存なし)
     if (Auth.mode !== 'entra') return 'この画面の予約にはMicrosoft 365でのサインインが必要です';
   } else if (f.date <= SAMPLE_HISTORY_END) {
     // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
     return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
   }
   // 実予約は、Exchangeが過去日時の会議室予約を処理しないため作成・変更できない
-  if (useRealRooms() && (VIEW === 'yoshimura' || f.date > SAMPLE_HISTORY_END)) {
+  if (useRealRooms() && (VIEW !== 'yumesumika' || f.date > SAMPLE_HISTORY_END)) {
     const todayIso = isoDate(new Date());
     const nowHHMM = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
     if (f.date < todayIso || (f.date === todayIso && f.end <= nowHHMM)) {
-      return '過去の日時は予約できません(Exchangeが会議室の予約を処理しません)';
+      return `過去の日時は予約できません(Exchangeが${V_ITEM_LABEL}の予約を処理しません)`;
     }
   }
   return '';
@@ -508,11 +516,11 @@ function renderFormModal() {
   const target = f.isNew ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       <label style="display:flex;flex-direction:column;gap:5px">
-        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${VIEW === 'yoshimura' ? '区分け' : '展示場'}</span>
+        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${VIEW === 'yumesumika' ? '展示場' : esc(V_SITE_LABEL)}</span>
         <select id="form-site" class="in-input">${V_SITES.map(s => `<option value="${s.id}" ${s.id === f.site ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
-        <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室</span>
+        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${esc(V_ITEM_LABEL)}</span>
         <select id="form-room" class="in-input">${vSiteRooms(f.site).map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
@@ -536,7 +544,7 @@ function renderFormModal() {
   <div data-overlay="form" style="position:fixed;inset:0;background:rgba(20,40,65,0.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:110">
     <div data-stop style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:520px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid #e4ebf2">
-        <h3 style="margin:0;font-size:17px;font-weight:700">${isEdit ? '予約を変更' : '会議室を予約'}</h3>
+        <h3 style="margin:0;font-size:17px;font-weight:700">${isEdit ? '予約を変更' : `${V_ITEM_LABEL}を予約`}</h3>
         <button class="hv-close" data-close-form style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
@@ -647,7 +655,7 @@ function bindFormEvents(root) {
   on('form-submit', 'click', submitForm);
   on('form-delete', 'click', async () => {
     if (f.source === 'graph') {
-      if (!confirm('この予約を取消しますか?(会議室や参加者には取消の通知が送られます)')) return;
+      if (!confirm(`この予約を取消しますか?(${V_ITEM_LABEL}や参加者には取消の通知が送られます)`)) return;
       try {
         const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
         const res = await fetch(`https://graph.microsoft.com/v1.0/me/events/${f.myEventId}`, {
@@ -683,9 +691,9 @@ async function submitForm() {
     if (el) el.textContent = err;
     return;
   }
-  // 吉村一建設ビューは常に実予約(devモードはformErrorで既にブロック済み)。
+  // 吉村一建設・社用車ビューは常に実予約(devモードはformErrorで既にブロック済み)。
   // ゆめすみかビューはentraモードかつ8/24以降のみ実予約
-  const isReal = useRealRooms() && (VIEW === 'yoshimura' || f.date > SAMPLE_HISTORY_END);
+  const isReal = useRealRooms() && (VIEW !== 'yumesumika' || f.date > SAMPLE_HISTORY_END);
   if (isReal) await submitRealForm(f);
   else await submitLegacyForm(f);
 }
@@ -734,7 +742,7 @@ async function submitRealForm(f) {
     const isOwnOriginalSlot = b => f.myEventId && b.myEventId === f.myEventId;
     const conflict = busyRows.find(b => b.start < f.end && b.end > f.start && !isOwnOriginalSlot(b));
     if (conflict) {
-      throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または会議室を選択してください`);
+      throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または${V_ITEM_LABEL}を選択してください`);
     }
     submitBtn.textContent = f.editId ? '保存中…' : '作成中…';
 
@@ -811,7 +819,7 @@ function renderModals() {
   }));
   root.querySelectorAll('[data-cancel-id]').forEach(b => b.addEventListener('click', async () => {
     const row = state.bookings.find(x => String(x.id) === String(b.dataset.cancelId));
-    if (!confirm(row && row.source === 'graph' ? 'この予約を取消しますか?(会議室や参加者には取消の通知が送られます)' : 'この予約を取消しますか?')) return;
+    if (!confirm(row && row.source === 'graph' ? `この予約を取消しますか?(${V_ITEM_LABEL}や参加者には取消の通知が送られます)` : 'この予約を取消しますか?')) return;
     try {
       if (row && row.source === 'graph') {
         const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
@@ -846,7 +854,7 @@ function nextIsoDate(iso) {
 /** 新規予約フォームの初期日付。ゆめすみかビューで今日がサンプル期間中(〜8/23)なら実予約可能な直近日(8/24)に補正する */
 function defaultBookableDate() {
   const todayIso = isoDate(new Date());
-  if (VIEW !== 'yoshimura' && todayIso >= SAMPLE_HISTORY_START && todayIso <= SAMPLE_HISTORY_END) return nextIsoDate(SAMPLE_HISTORY_END);
+  if (VIEW === 'yumesumika' && todayIso >= SAMPLE_HISTORY_START && todayIso <= SAMPLE_HISTORY_END) return nextIsoDate(SAMPLE_HISTORY_END);
   return todayIso;
 }
 
@@ -884,7 +892,7 @@ function clampEventTimes(ev) {
 
 /** Graphのattendeesから「社内メンバー」欄を再構成する(会議室・自分自身を除外) */
 function attendeesToMembers(attendees, myEmail) {
-  const roomEmails = new Set([...ROOMS, ...YOSHIMURA_ROOMS].map(r => r.email.toLowerCase())); // どちらのマスタの会議室も社内メンバー欄から除外する
+  const roomEmails = new Set([...ROOMS, ...YOSHIMURA_ROOMS, ...CARS].map(r => r.email.toLowerCase())); // いずれのマスタの会議室・社用車も社内メンバー欄から除外する
   return (attendees || [])
     .filter(a => a.type !== 'resource')
     .map(a => ({ email: (a.emailAddress && a.emailAddress.address) || '', name: (a.emailAddress && a.emailAddress.name) || '' }))
@@ -991,7 +999,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
 /** 拠点別の「今どういう状態か」の説明文(実データ・サンプルの区別を必ず示す。CLAUDE.mdルール4) */
 function calendarFooterHtml() {
   const today = new Date();
-  const modeNote = VIEW === 'yoshimura'
+  const modeNote = VIEW !== 'yumesumika'
     ? (Auth.mode === 'entra'
       ? '実際のExchange予約を表示しています(件名・主催者はExchangeから取得)。'
       : 'Microsoft 365でサインインすると予約状況が表示されます。')
@@ -1001,7 +1009,7 @@ function calendarFooterHtml() {
       ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降はEntra IDでのサインイン後に実データ連携が有効になります。'
       : 'デザインサンプル表示です(Entra IDでサインインすると8/24以降が実データになります)。');
   const errorNote = (state.realErrors && state.realErrors.length)
-    ? `<div style="width:100%;font-size:12px;color:#c05a5a;background:#fbeeee;border-radius:6px;padding:6px 10px">一部の会議室の予約を取得できませんでした(${esc(state.realErrors.join('、'))})。管理者に会議室カレンダーの参照権限(Reviewer)の付与を依頼してください。</div>`
+    ? `<div style="width:100%;font-size:12px;color:#c05a5a;background:#fbeeee;border-radius:6px;padding:6px 10px">一部の${V_ITEM_LABEL}の予約を取得できませんでした(${esc(state.realErrors.join('、'))})。管理者に${V_ITEM_LABEL}カレンダーの参照権限(Reviewer)の付与を依頼してください。</div>`
     : '';
   return `
     <div style="padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1025,8 +1033,8 @@ async function loadBookings() {
   const seq = ++loadSeq;
   const { from, to } = gridRange();
   let legacyPromise, realPromise;
-  if (VIEW === 'yoshimura') {
-    // 吉村一建設ビュー: サンプル・SQLite保存は使わず、全期間を実データ(Exchange)から取得
+  if (VIEW !== 'yumesumika') {
+    // 吉村一建設・社用車ビュー: サンプル・SQLite保存は使わず、全期間を実データ(Exchange)から取得
     legacyPromise = Promise.resolve([]);
     realPromise = useRealRooms()
       ? fetchRealRoomBookings(vSiteRooms(state.site), from, to)
@@ -1076,15 +1084,16 @@ async function autoRefresh() {
 (async function init() {
   try {
     // ビューに応じてページタイトルを切り替える
-    if (VIEW === 'yoshimura') {
+    const viewPageTitle = VIEW === 'yoshimura' ? '吉村一建設 会議室予約' : VIEW === 'cars' ? '社用車予約' : null;
+    if (viewPageTitle) {
       const titleEl = document.getElementById('page-title');
-      if (titleEl) titleEl.textContent = '吉村一建設 会議室予約';
-      document.title = '吉村一建設 会議室予約 - 吉村一建設 ポータル';
+      if (titleEl) titleEl.textContent = viewPageTitle;
+      document.title = `${viewPageTitle} - 吉村一建設 ポータル`;
     }
     ME = await Auth.init();
     const badge = document.getElementById('exchange-badge');
     if (badge) {
-      badge.textContent = VIEW === 'yoshimura'
+      badge.textContent = VIEW !== 'yumesumika'
         ? (Auth.mode === 'entra' ? 'Exchange 連携' : 'devモード(未接続)')
         : useRealRooms() ? 'Exchange 連携(8/24以降)'
         : Auth.mode === 'entra' ? 'Exchange 連携(準備中)' : 'デザインサンプル';

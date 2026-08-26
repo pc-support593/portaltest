@@ -49,7 +49,8 @@ const state = {
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
   gridTab: 'sites', // 予約状況の表示切り替え: 'sites'(ゆめすみか展示場) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
-  yoshimuraBusy: null // 吉村一建設会議室の空き状況(yoshimuraタブ表示時に取得)
+  yoshimuraBusy: null, // 吉村一建設会議室の空き状況(yoshimuraタブ表示時に取得)
+  carsBusy: null // 社用車の空き状況(carsタブ表示時に取得)
 };
 
 // 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)。
@@ -263,6 +264,38 @@ function yoshimuraGridHtml(busyMap) {
   }).join('');
 }
 
+/** 社用車(9台)の空き状況を取得する。マスタは roomsData.js の CARS */
+async function fetchCarsBusy(date) {
+  if (Auth.mode !== 'entra') return {};
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+  return getScheduleBusy(isoDate(date), CARS, token);
+}
+
+/** 社用車の部門別カードのHTML。busyMap が null なら読み込み中表示 */
+function carsGridHtml(busyMap) {
+  if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  return CAR_GROUPS.map(g => {
+    const cars = carGroupRooms(g.id);
+    const rows = cars.flatMap(r => (busyMap[r.id] || []).map(b => ({ ...b, room: r })))
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map(b => `
+      <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
+        <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
+        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}</span>
+        ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
+      </div>`);
+    const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
+    return `
+    <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(g.name)}</span>
+        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${cars.length}台</span>
+      </div>
+      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
+    </div>`;
+  }).join('');
+}
+
 /** 拠点別カードのHTML。roomBusyMap が null なら読み込み中表示。adminSiteIds の拠点には削除ボタンを出す。 */
 function siteGridHtml(roomBusyMap, adminSiteIds) {
   if (!roomBusyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
@@ -298,11 +331,13 @@ function renderGridTabs() {
   const title = document.getElementById('grid-title');
   const current = GRID_TABS.find(t => t.id === state.gridTab) || GRID_TABS[0];
   if (title) title.textContent = `${current.label}の予約状況`;
-  // 予約ページへのリンクも選択中のタブに連動させる(社用車は構想が決まるまで非表示)
+  // 予約ページへのリンクも選択中のタブに連動させる
   const roomsLink = document.getElementById('rooms-link');
   if (roomsLink) {
     if (state.gridTab === 'cars') {
-      roomsLink.style.display = 'none';
+      roomsLink.style.display = '';
+      roomsLink.href = 'rooms.html?view=cars';
+      roomsLink.textContent = '社用車の予約へ';
     } else if (state.gridTab === 'yoshimura') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=yoshimura';
@@ -331,9 +366,23 @@ function renderGridTabs() {
 async function loadAndRenderSiteGrid() {
   const el = document.getElementById('site-grid');
 
-  // 社用車はExchange側のリソース登録待ち(準備中の案内のみ表示)
+  // 社用車(9台・部門別カード。実データ)
   if (state.gridTab === 'cars') {
-    el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">社用車の予約状況は準備中です(Exchange側のリソース登録が完了すると、ここに表示されます)</p>';
+    if (Auth.mode !== 'entra') {
+      el.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">devモードでは社用車の空き状況を確認できません(Entra IDでのサインインが必要です)</p>';
+      return;
+    }
+    el.innerHTML = carsGridHtml(null);
+    try {
+      state.carsBusy = await fetchCarsBusy(state.date);
+      if (state.gridTab !== 'cars') return; // 取得中にタブが切り替わったら描き替えない
+      el.innerHTML = carsGridHtml(state.carsBusy);
+    } catch (e) {
+      console.error(e);
+      state.carsBusy = {};
+      if (state.gridTab !== 'cars') return;
+      el.innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
+    }
     return;
   }
   // 吉村一建設会議室(10室・区分け別カード。実データ)
@@ -819,8 +868,9 @@ async function autoRefresh() {
     const [events, busy] = await Promise.all([
       fetchPersonalEvents(state.date),
       tabKey === 'yoshimura' ? fetchYoshimuraBusy(state.date)
+        : tabKey === 'cars' ? fetchCarsBusy(state.date)
         : tabKey === 'sites' ? fetchRoomBusy(state.date, state.adminSiteIds)
-        : Promise.resolve(null) // 社用車タブは取得対象なし
+        : Promise.resolve(null)
     ]);
     if (formState || isoDate(state.date) !== dateKey) return;
     if (JSON.stringify(events) !== JSON.stringify(state.personalEvents)) {
@@ -832,6 +882,11 @@ async function autoRefresh() {
       if (JSON.stringify(busy) !== JSON.stringify(state.yoshimuraBusy)) {
         state.yoshimuraBusy = busy;
         document.getElementById('site-grid').innerHTML = yoshimuraGridHtml(busy);
+      }
+    } else if (tabKey === 'cars') {
+      if (JSON.stringify(busy) !== JSON.stringify(state.carsBusy)) {
+        state.carsBusy = busy;
+        document.getElementById('site-grid').innerHTML = carsGridHtml(busy);
       }
     } else if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
       state.roomBusy = busy;

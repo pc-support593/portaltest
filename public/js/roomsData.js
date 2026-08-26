@@ -113,6 +113,48 @@ const YOSHIMURA_ROOMS = YOSHIMURA_GROUPS.flatMap(g => (YOSHIMURA_ROOM_NAMES_BY_G
 
 function yoshimuraGroupRooms(groupId) { return YOSHIMURA_ROOMS.filter(r => r.group === groupId); }
 
+// ---- 社用車マスタ(2026-08-22追加。実際のExchange備品(Equipment)リソース) ----
+// schedule.html の「社用車」タブ・rooms.html?view=cars で使用。所有部門ごとにカード表示する。
+// id は SITES/YOSHIMURA_GROUPS の拠点IDと衝突しないよう c_ を付けている
+const CAR_GROUPS = [
+  { id: 'c_soumu', name: '総務' },
+  { id: 'c_kenchiku', name: '建築営業部' },
+  { id: 'c_sekkei', name: '設計企画部' },
+  { id: 'c_nishinomiya', name: '西宮' },
+  { id: 'c_chihaya', name: '千早赤坂村' },
+  { id: 'c_hirano', name: '平野' }
+];
+
+const CAR_NAMES_BY_GROUP = {
+  c_soumu: [
+    ['ダイハツ タント', 'Car_Soumu1@yoshimuraichi.com'],
+    ['ニッサン セレナ', 'Car_Soumu2@yoshimuraichi.com'],
+    ['ダイハツ軽トラ ハイゼット', 'Car_Soumu3@yoshimuraichi.com']
+  ],
+  c_kenchiku: [
+    ['トヨタ アクア 1230', 'Car_Kenchiku1@yoshimuraichi.com']
+  ],
+  c_sekkei: [
+    ['ヴィッツ1110(トヨタ)', 'Car_Sekkei1@yoshimuraichi.com']
+  ],
+  c_nishinomiya: [
+    ['タイタン・1.5t', 'Car_Nishinomiya1@yoshimuraichi.com'],
+    ['ハイゼット・軽トラ1772', 'Car_Nishinomiya2@yoshimuraichi.com']
+  ],
+  c_chihaya: [
+    ['ハイゼット・軽トラ1439', 'Car_Chihaya1@yoshimuraichi.com']
+  ],
+  c_hirano: [
+    ['バネットトラック(1t)', 'Car_Hirano1@yoshimuraichi.com']
+  ]
+};
+
+const CARS = CAR_GROUPS.flatMap(g => (CAR_NAMES_BY_GROUP[g.id] || []).map(([name, email], i) => ({
+  id: `${g.id}_${i + 1}`, group: g.id, name, email, color: ROOM_COLOR_PALETTE[i % ROOM_COLOR_PALETTE.length]
+})));
+
+function carGroupRooms(groupId) { return CARS.filter(r => r.group === groupId); }
+
 function isoDate(d) {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
