@@ -565,7 +565,6 @@ function renderModal() {
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="f-use-room" ${f.useRoom ? 'checked' : ''}>
           <span style="font-size:13px;font-weight:500;color:#1c2b3a">会議室を使用する</span>
-          <span style="font-size:10px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:1px 7px">Exchange 連携</span>
         </label>
         ${roomSection}
         ${!f.useRoom ? `
@@ -875,8 +874,6 @@ async function autoRefresh() {
       createBtn.title = 'devモードでは予定を作成できません';
       createBtn.style.opacity = '0.5';
       createBtn.style.cursor = 'not-allowed';
-      document.getElementById('personal-badge').textContent = 'devモード(ダミー)';
-      document.getElementById('site-badge').textContent = 'devモード(未接続)';
     }
 
     await render();

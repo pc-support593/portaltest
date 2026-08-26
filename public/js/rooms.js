@@ -1091,13 +1091,6 @@ async function autoRefresh() {
       document.title = `${viewPageTitle} - 吉村一建設 ポータル`;
     }
     ME = await Auth.init();
-    const badge = document.getElementById('exchange-badge');
-    if (badge) {
-      badge.textContent = VIEW !== 'yumesumika'
-        ? (Auth.mode === 'entra' ? 'Exchange 連携' : 'devモード(未接続)')
-        : useRealRooms() ? 'Exchange 連携(8/24以降)'
-        : Auth.mode === 'entra' ? 'Exchange 連携(準備中)' : 'デザインサンプル';
-    }
     await loadBookings();
     render();
 
