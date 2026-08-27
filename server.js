@@ -277,6 +277,7 @@ function bookingFields(b, req) {
     start: b.start,
     end: b.end,
     title: String(b.title).trim(),
+    content: String(b.content || '').trim().slice(0, 2000),
     owner: me(req).name,
     owner_email: me(req).email,
     members: JSON.stringify(Array.isArray(b.members) ? b.members.slice(0, 20).map(m => ({
@@ -301,8 +302,8 @@ app.post('/api/bookings', (req, res) => {
   const f = bookingFields(req.body, req);
   if (hasConflict(f)) return res.status(409).json({ error: 'この時間帯は既に予約があります' });
   const info = db.prepare(
-    'INSERT INTO bookings (room, date, start, end, title, owner, owner_email, members, guests) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(f.room, f.date, f.start, f.end, f.title, f.owner, f.owner_email, f.members, f.guests);
+    'INSERT INTO bookings (room, date, start, end, title, content, owner, owner_email, members, guests) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(f.room, f.date, f.start, f.end, f.title, f.content, f.owner, f.owner_email, f.members, f.guests);
   res.json({ id: Number(info.lastInsertRowid) });
 });
 
@@ -323,8 +324,8 @@ app.put('/api/bookings/:id', (req, res) => {
   const id = Number(req.params.id);
   if (hasConflict(f, id)) return res.status(409).json({ error: 'この時間帯は既に予約があります' });
   db.prepare(
-    'UPDATE bookings SET room = ?, date = ?, start = ?, end = ?, title = ?, members = ?, guests = ? WHERE id = ?'
-  ).run(f.room, f.date, f.start, f.end, f.title, f.members, f.guests, id);
+    'UPDATE bookings SET room = ?, date = ?, start = ?, end = ?, title = ?, content = ?, members = ?, guests = ? WHERE id = ?'
+  ).run(f.room, f.date, f.start, f.end, f.title, f.content, f.members, f.guests, id);
   res.json({ ok: true });
 });
 

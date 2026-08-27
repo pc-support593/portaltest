@@ -160,6 +160,30 @@ function isoDate(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// ---- 予定の本文(内容+外部参加者)のエンコード/デコード(2026-08-22追加) ----
+// Exchangeの予定には件名(subject)と本文(body)しかないため、「内容」と「外部参加者」を
+// 1つの本文にまとめて保存する。rooms.js(実予約)・schedule.jsで共用する。
+const GUESTS_MARKER = '外部参加者: ';
+
+/** 内容・外部参加者 → 予定本文の文字列(両方空なら空文字。呼び出し元は空ならbodyごと省略/クリアする) */
+function encodeEventBody(content, guests) {
+  const c = String(content || '').trim();
+  const g = String(guests || '').trim();
+  if (c && g) return `${c}\n\n${GUESTS_MARKER}${g}`;
+  if (g) return `${GUESTS_MARKER}${g}`;
+  return c;
+}
+
+/** 予定本文の文字列 → {content, guests}(旧形式=外部参加者のみの本文も正しく復元できる) */
+function decodeEventBody(bodyText) {
+  const text = String(bodyText || '').trim();
+  if (!text) return { content: '', guests: '' };
+  if (text.startsWith(GUESTS_MARKER)) return { content: '', guests: text.slice(GUESTS_MARKER.length).trim() };
+  const idx = text.lastIndexOf('\n' + GUESTS_MARKER);
+  if (idx >= 0) return { content: text.slice(0, idx).trim(), guests: text.slice(idx + 1 + GUESTS_MARKER.length).trim() };
+  return { content: text, guests: '' };
+}
+
 // 曜日パターンの擬似予約(rooms.html のデザインサンプル専用。part=自分が参加)。
 // 旧ダミー会議室のサンプル予約を、実在の会議室名に対応付けて維持している(内容は変更していない)
 const PATTERNS = {

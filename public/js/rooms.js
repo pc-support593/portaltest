@@ -162,7 +162,7 @@ function renderRoomTabs() {
       isNew: true, site: state.site,
       room: state.room !== '__all' ? state.room : (first ? first.id : ''),
       date: defaultBookableDate(), start: '09:00', end: '10:00',
-      title: '', members: [], guests: ''
+      title: '', content: '', members: [], guests: ''
     });
   });
 }
@@ -477,7 +477,7 @@ function openEditBooking(id) {
   state.day = null;
   openForm({
     editId: bk.id, site: room ? room.site : state.site, room: bk.room, date: bk.date,
-    start: bk.start, end: bk.end, title: bk.title,
+    start: bk.start, end: bk.end, title: bk.title, content: bk.content || '',
     members: (bk.members || []).slice(), guests: bk.guests || '',
     source: bk.source || 'legacy', myEventId: bk.myEventId || null
   });
@@ -553,6 +553,10 @@ function renderFormModal() {
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
           <input id="form-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
         </label>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">内容(任意)</span>
+          <textarea id="form-content" class="in-input" rows="3" placeholder="打合せの目的・議題など" style="resize:vertical">${esc(f.content)}</textarea>
+        </label>
         <div style="display:flex;gap:12px;align-items:flex-end">
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">開始</span>
@@ -626,6 +630,7 @@ function bindFormEvents(root) {
   on('form-room', 'change', e => { f.room = e.target.value; updateFormError(); });
   on('form-date', 'change', e => { f.date = e.target.value; });
   on('form-title', 'input', e => { f.title = e.target.value; });
+  on('form-content', 'input', e => { f.content = e.target.value; });
   on('form-guests', 'input', e => { f.guests = e.target.value; });
   on('form-start', 'change', e => {
     f.start = e.target.value;
@@ -712,7 +717,7 @@ function afterSaveSwitchTo(f) {
 async function submitLegacyForm(f) {
   const payload = {
     room: f.room, date: f.date, start: f.start, end: f.end,
-    title: f.title, members: f.members, guests: f.guests
+    title: f.title, content: f.content, members: f.members, guests: f.guests
   };
   try {
     if (f.editId) await api(`/api/bookings/${f.editId}`, { method: 'PUT', body: payload });
@@ -761,7 +766,8 @@ async function submitRealForm(f) {
     const loc = { displayName: `${site.name} ${room.name}`, locationEmailAddress: room.email, locationType: 'conferenceRoom' };
     body.location = loc;
     body.locations = [loc];
-    if (f.guests.trim()) body.body = { contentType: 'text', content: `外部参加者: ${f.guests.trim()}` };
+    const bodyText = encodeEventBody(f.content, f.guests);
+    if (bodyText || f.myEventId) body.body = { contentType: 'text', content: bodyText };
 
     const url = f.myEventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.myEventId}`
@@ -814,7 +820,7 @@ function renderModals() {
     const d = state.day;
     openForm({
       site: state.site, room: state.room, date: isoDate(new Date(d.y, d.m, d.d)),
-      start, end: plusOneHour(start), title: '', members: [], guests: ''
+      start, end: plusOneHour(start), title: '', content: '', members: [], guests: ''
     });
   }));
   root.querySelectorAll('[data-cancel-id]').forEach(b => b.addEventListener('click', async () => {
@@ -899,12 +905,6 @@ function attendeesToMembers(attendees, myEmail) {
     .filter(a => a.email && !roomEmails.has(a.email.toLowerCase()) && !sameEmail(a.email, myEmail));
 }
 
-/** 本文の「外部参加者: ...」表記を復元する(schedule.jsと同じ規約) */
-function guestsFromBody(bodyContent) {
-  const m = /^外部参加者: ([\s\S]*)$/.exec(String(bodyContent || '').trim());
-  return m ? m[1].trim() : '';
-}
-
 /** 自分の予定表から会議室を出席者に含む予定を取得し、iCalUId+開始時刻をキーにしたMapを返す。
     会議室側のcalendarViewで取れるIDは会議室メールボックス側のコピーのIDで /me/events/{id} には
     使えないため、自分のコピーのID(myEventId)をここで別途取得して突き合わせる。 */
@@ -924,11 +924,12 @@ async function fetchMyRoomEvents(from, to, token) {
     if (!room) return;
     const { date, start, end } = clampEventTimes(ev);
     const key = `${ev.iCalUId}|${ev.start.dateTime.slice(0, 16)}`;
+    const decoded = decodeEventBody(ev.body && ev.body.contentType === 'text' ? ev.body.content : '');
     map.set(key, {
       id: ev.id, roomId: room.id, isOrganizer: !!ev.isOrganizer, type: ev.type,
       date, start, end, title: ev.subject || '(件名なし)',
       members: attendeesToMembers(ev.attendees, myEmail),
-      guests: guestsFromBody(ev.body && ev.body.contentType === 'text' ? ev.body.content : ''),
+      content: decoded.content, guests: decoded.guests,
       roomResponse: (roomAttendee.status && roomAttendee.status.response) || 'none'
     });
   });
@@ -963,6 +964,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
           owner: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
           owner_email: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',
           members: (mineEv && mineEv.members) || [],
+          content: (mineEv && mineEv.content) || '',
           guests: (mineEv && mineEv.guests) || '',
           myEventId: (mineEv && mineEv.id) || null,
           editable: !!(mineEv && mineEv.id && mineEv.isOrganizer && ev.type === 'singleInstance')
@@ -987,7 +989,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
       id: `pending:${mineEv.id}`, source: 'graph',
       room: mineEv.roomId, date: mineEv.date, start: mineEv.start, end: mineEv.end,
       title: mineEv.title, owner: (ME && ME.name) || '', owner_email: (ME && ME.email) || '',
-      members: mineEv.members, guests: mineEv.guests, myEventId: mineEv.id,
+      members: mineEv.members, content: mineEv.content, guests: mineEv.guests, myEventId: mineEv.id,
       editable: mineEv.isOrganizer && mineEv.type === 'singleInstance',
       pending: true, declined: mineEv.roomResponse === 'declined'
     });

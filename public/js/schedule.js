@@ -426,7 +426,7 @@ function openCreateForm() {
   formState = {
     eventId: null, orig: null,
     date: isoDate(d),
-    start: '10:00', end: '11:00', title: '', place: '', members: [], guests: '', error: '',
+    start: '10:00', end: '11:00', title: '', content: '', place: '', members: [], guests: '', error: '',
     useRoom: false, site: firstSite.id, room: '', // 会議室は空き一覧のチップから選ぶ(自動選択しない)
     // 選択中の日と主画面の日が同じなら取得済みのroomBusyを再利用、違えば読み込み中から始める
     roomBusy: isoDate(d) === isoDate(state.date) ? state.roomBusy : null
@@ -449,15 +449,15 @@ function openEditForm(ev) {
     .filter(a => a.type !== 'resource')
     .filter(a => a.email && !roomEmails.has(a.email.toLowerCase()) && a.email.toLowerCase() !== myEmail)
     .map(a => ({ name: a.name || a.email, email: a.email }));
-  // 外部参加者メモは本文に「外部参加者: ...」の形で保存しているため復元を試みる(復元できなければ空欄)
-  const guestsMatch = /^外部参加者: ([\s\S]*)$/.exec(ev.bodyText.trim());
+  // 本文には「内容」と「外部参加者: ...」をまとめて保存しているため、両方を復元する
+  const { content, guests } = decodeEventBody(ev.bodyText);
 
   formState = {
     eventId: ev.id,
     // 変更前の会議室・時間帯(重複の事前チェックで「自分自身の既存予約」を重複扱いしないために使う)
     orig: { room: matchedRoom ? matchedRoom.id : null, date: ev.date, start: ev.start, end: ev.end },
-    date: ev.date, start: ev.start, end: ev.end, title: ev.title,
-    place: matchedRoom ? '' : ev.place, members, guests: guestsMatch ? guestsMatch[1].trim() : '', error: '',
+    date: ev.date, start: ev.start, end: ev.end, title: ev.title, content,
+    place: matchedRoom ? '' : ev.place, members, guests, error: '',
     useRoom: !!matchedRoom,
     site: matchedRoom ? matchedRoom.site : SITES[0].id,
     room: matchedRoom ? matchedRoom.id : '',
@@ -548,6 +548,10 @@ function renderModal() {
           <input id="f-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
         </label>
         <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">内容(任意)</span>
+          <textarea id="f-content" class="in-input" rows="3" placeholder="打合せの目的・議題など" style="resize:vertical">${esc(f.content)}</textarea>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">日付</span>
           <input id="f-date" type="date" class="in-input" value="${esc(f.date)}">
         </label>
@@ -603,6 +607,7 @@ function renderModal() {
   root.querySelector('#form-box').addEventListener('click', e => e.stopPropagation());
   root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeForm));
   root.querySelector('#f-title').addEventListener('input', e => { f.title = e.target.value; });
+  root.querySelector('#f-content').addEventListener('input', e => { f.content = e.target.value; });
   root.querySelector('#f-date').addEventListener('change', e => {
     f.date = e.target.value;
     if (f.useRoom && Auth.mode === 'entra') refreshFormRoomBusy();
@@ -738,7 +743,8 @@ async function submitCreateForm() {
       body.location = { displayName: '' };
       body.locations = [];
     }
-    if (f.guests.trim()) body.body = { contentType: 'text', content: `外部参加者: ${f.guests.trim()}` };
+    const bodyText = encodeEventBody(f.content, f.guests);
+    if (bodyText || f.eventId) body.body = { contentType: 'text', content: bodyText };
 
     const url = f.eventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.eventId}`

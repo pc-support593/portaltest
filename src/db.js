@@ -46,6 +46,7 @@ function migrate(db) {
       start TEXT NOT NULL,           -- HH:MM
       end TEXT NOT NULL,             -- HH:MM
       title TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '', -- 内容(任意の自由記述。件名とは別枠)
       owner TEXT NOT NULL,           -- 主催者の表示名(表示用)
       owner_email TEXT NOT NULL DEFAULT '', -- 主催者の同一性判定はこちら(同姓同名対策。Entra移行後はUPN)
       members TEXT NOT NULL DEFAULT '[]', -- 社内メンバー JSON [{name, dept, email}]
@@ -67,6 +68,7 @@ function migrate(db) {
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
+  try { db.exec("ALTER TABLE bookings ADD COLUMN content TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
   // お知らせのトップ掲載期限(2026-08-21)。空文字は「期限なし=掲載日ベースの既定ルール」
   try { db.exec("ALTER TABLE news ADD COLUMN expires TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
 
