@@ -420,30 +420,54 @@ function plusOneHour(hhmm) {
 let formState = null;
 let memberCandidates = []; // 社内メンバー検索の候補
 
+// ---- 予定作成フォームで選べるリソース種別(2026-08-22追加) ----
+// 「ゆめすみか展示場」「吉村一建設会議室」「社用車」のいずれかを選び、その配下の
+// 拠点/区分け/部門 → 会議室・社用車 の順で選択する。3マスタとも roomsData.js で定義。
+const RESOURCE_TYPES = [
+  { id: 'yumesumika', label: 'ゆめすみか展示場', itemLabel: '会議室', siteLabel: '拠点', sites: SITES, rooms: ROOMS },
+  { id: 'yoshimura', label: '吉村一建設会議室', itemLabel: '会議室', siteLabel: '区分け', sites: YOSHIMURA_GROUPS, rooms: YOSHIMURA_ROOMS.map(r => ({ ...r, site: r.group })) },
+  { id: 'cars', label: '社用車', itemLabel: '社用車', siteLabel: '部門', sites: CAR_GROUPS, rooms: CARS.map(r => ({ ...r, site: r.group })) }
+];
+function resourceMaster(type) { return RESOURCE_TYPES.find(t => t.id === type) || null; }
+function resourceRoomById(id) {
+  for (const t of RESOURCE_TYPES) { const r = t.rooms.find(x => x.id === id); if (r) return r; }
+  return null;
+}
+/** 指定リソース種別の1日分の空き状況(件名・予約者名まで)を取得。devモードは空({}) */
+async function fetchResourceBusy(date, type) {
+  const master = resourceMaster(type);
+  if (!master || Auth.mode !== 'entra') return {};
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+  return fetchCalendarViewBusy(isoDate(date), master.rooms, token);
+}
+
 function openCreateForm() {
   const d = state.date;
-  const firstSite = SITES[0];
   formState = {
     eventId: null, orig: null,
     date: isoDate(d),
     start: '10:00', end: '11:00', title: '', content: '', place: '', members: [], guests: '', error: '',
-    useRoom: false, site: firstSite.id, room: '', // 会議室は空き一覧のチップから選ぶ(自動選択しない)
-    // 選択中の日と主画面の日が同じなら取得済みのroomBusyを再利用、違えば読み込み中から始める
-    roomBusy: isoDate(d) === isoDate(state.date) ? state.roomBusy : null
+    resourceType: '', site: '', room: '', // 会議室・社用車は空き一覧のチップから選ぶ(自動選択しない)
+    roomBusy: null
   };
   memberCandidates = [];
   renderModal();
-  if (formState.roomBusy == null && Auth.mode === 'entra') refreshFormRoomBusy();
 }
 
 /** 個人のスケジュール一覧のクリックから、既存の予定を変更モードで開く */
 function openEditForm(ev) {
-  // 会議室(resource出席者)を、メールアドレスの一致でこちらのROOMSマスタに逆引きする
-  const roomEmails = new Set(ROOMS.map(r => r.email.toLowerCase()));
+  // 会議室・社用車(resource出席者)を、メールアドレスの一致で3マスタから逆引きする
+  const roomEmails = new Set(RESOURCE_TYPES.flatMap(t => t.rooms.map(r => r.email.toLowerCase())));
   const roomAttendee = ev.attendees.find(a => a.type === 'resource' || roomEmails.has((a.email || '').toLowerCase()));
-  const matchedRoom = roomAttendee ? ROOMS.find(r => r.email.toLowerCase() === roomAttendee.email.toLowerCase()) : null;
-  // 社内メンバー欄には「会議室でも自分自身でもない出席者」だけを復元する。
-  // 会議室が required 側に混入していた場合にメンバー扱いで再送する(=会議室が二重に招待される)ことを防ぐ
+  let matchedRoom = null, matchedType = '';
+  if (roomAttendee) {
+    for (const t of RESOURCE_TYPES) {
+      const found = t.rooms.find(r => r.email.toLowerCase() === roomAttendee.email.toLowerCase());
+      if (found) { matchedRoom = found; matchedType = t.id; break; }
+    }
+  }
+  // 社内メンバー欄には「会議室・社用車でも自分自身でもない出席者」だけを復元する。
+  // resourceがrequired側に混入していた場合にメンバー扱いで再送する(=二重に招待される)ことを防ぐ
   const myEmail = ((Auth.me && Auth.me.email) || '').toLowerCase();
   const members = ev.attendees
     .filter(a => a.type !== 'resource')
@@ -458,14 +482,14 @@ function openEditForm(ev) {
     orig: { room: matchedRoom ? matchedRoom.id : null, date: ev.date, start: ev.start, end: ev.end },
     date: ev.date, start: ev.start, end: ev.end, title: ev.title, content,
     place: matchedRoom ? '' : ev.place, members, guests, error: '',
-    useRoom: !!matchedRoom,
-    site: matchedRoom ? matchedRoom.site : SITES[0].id,
+    resourceType: matchedType,
+    site: matchedRoom ? matchedRoom.site : '',
     room: matchedRoom ? matchedRoom.id : '',
-    roomBusy: isoDate(parseISODate(ev.date)) === isoDate(state.date) ? state.roomBusy : null
+    roomBusy: null
   };
   memberCandidates = [];
   renderModal();
-  if (formState.useRoom && formState.roomBusy == null && Auth.mode === 'entra') refreshFormRoomBusy();
+  if (formState.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
 }
 
 function closeForm() {
@@ -479,21 +503,23 @@ async function refreshFormRoomBusy() {
   f.roomBusy = null;
   renderModal();
   let busy;
-  try { busy = await fetchRoomBusy(parseISODate(f.date)); } catch { busy = {}; }
+  try { busy = await fetchResourceBusy(parseISODate(f.date), f.resourceType); } catch { busy = {}; }
   if (formState === f) { f.roomBusy = busy; renderModal(); }
 }
 
-/** 予定作成フォーム内: 選択中の拠点・時間帯で空いている会議室だけをチップ表示(クリックで選択)。
+/** 予定作成フォーム内: 選択中の拠点/区分け/部門・時間帯で空いている会議室・社用車だけをチップ表示(クリックで選択)。
     変更時は自分の元の予約時間帯を「埋まっている」扱いにしない(submitCreateFormの重複チェックと同じ基準)。 */
 function freeRoomsHtml(f) {
+  const master = resourceMaster(f.resourceType);
+  if (!master) return '';
   if (!f.roomBusy) return '<p style="margin:0;font-size:13px;color:#8a99a8">読み込み中…</p>';
   if (f.start >= f.end) return '<p style="margin:0;font-size:13px;color:#c05a5a">終了時刻は開始時刻より後にしてください</p>';
   const isOwnOriginalSlot = (roomId, it) => f.orig && f.orig.room === roomId && f.orig.date === f.date
     && it.start === f.orig.start && it.end === f.orig.end;
-  const free = siteRooms(f.site).filter(r =>
+  const free = master.rooms.filter(r => r.site === f.site).filter(r =>
     !(f.roomBusy[r.id] || []).some(it => it.start < f.end && it.end > f.start && !isOwnOriginalSlot(r.id, it))
   );
-  if (!free.length) return '<p style="margin:0;font-size:13px;color:#c05a5a">この時間帯に空いている会議室はありません。時間帯または拠点を変更してください</p>';
+  if (!free.length) return `<p style="margin:0;font-size:13px;color:#c05a5a">この時間帯に空いている${esc(master.itemLabel)}はありません。時間帯または${esc(master.siteLabel)}を変更してください</p>`;
   return `<div style="display:flex;flex-wrap:wrap;gap:6px">${free.map(r => `
     <button data-pick-room="${r.id}" class="hv-roomfill" style="border:2px solid ${r.id === f.room ? '#1c2b3a' : 'transparent'};background:${r.color};border-radius:8px;padding:7px 12px;cursor:pointer;font-family:inherit">
       <span style="font-size:12px;font-weight:700;color:#ffffff">${esc(r.name)}</span>
@@ -513,15 +539,16 @@ function renderModal() {
       <button data-rm-member="${i}" style="border:none;background:transparent;cursor:pointer;color:#6b7d8f;font-size:11px;padding:0 2px">✕</button>
     </span>`).join('');
 
-  const selectedRoom = f.room ? roomById(f.room) : null;
-  const roomSection = f.useRoom ? `
+  const activeMaster = resourceMaster(f.resourceType);
+  const selectedRoom = f.room ? resourceRoomById(f.room) : null;
+  const roomSection = activeMaster ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       <label style="display:flex;flex-direction:column;gap:5px">
-        <span style="font-size:12px;font-weight:700;color:#6b7d8f">拠点</span>
-        <select id="f-site" class="in-input">${SITES.map(s => `<option value="${s.id}" ${s.id === f.site ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${esc(activeMaster.siteLabel)}</span>
+        <select id="f-site" class="in-input">${activeMaster.sites.map(s => `<option value="${s.id}" ${s.id === f.site ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
       </label>
       <label style="display:flex;flex-direction:column;gap:5px">
-        <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室</span>
+        <span style="font-size:12px;font-weight:700;color:#6b7d8f">${esc(activeMaster.itemLabel)}</span>
         <input id="f-room-display" class="in-input" readonly tabindex="-1"
           value="${esc(selectedRoom ? selectedRoom.name : '')}" placeholder="下の空き一覧から選択してください"
           style="background:${selectedRoom ? '#eef4fb' : '#f5f8fb'};cursor:default;${selectedRoom ? 'font-weight:700;color:#1c2b3a' : ''}">
@@ -529,7 +556,7 @@ function renderModal() {
     </div>
     <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden">
       <div style="padding:9px 15px;background:#f7fafd;border-bottom:1px solid #eef1f5;font-size:12px;font-weight:700;color:#6b7d8f">
-        ${esc((SITES.find(s => s.id === f.site) || {}).name || '')} の空いている会議室(${esc(f.date.split('-').slice(1).map(Number).join('/'))} ${esc(f.start)}–${esc(f.end)})
+        ${esc((activeMaster.sites.find(s => s.id === f.site) || {}).name || '')} の空いている${esc(activeMaster.itemLabel)}(${esc(f.date.split('-').slice(1).map(Number).join('/'))} ${esc(f.start)}–${esc(f.end)})
       </div>
       <div style="padding:10px 15px;max-height:220px;overflow-y:scroll">${freeRoomsHtml(f)}</div>
     </div>` : '';
@@ -542,7 +569,7 @@ function renderModal() {
         <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
-        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると実際にあなたのOutlook予定表に反映されます。' : '作成すると実際にあなたのOutlook予定表に反映されます。'}${f.useRoom ? '会議室は実際のExchangeリソースとして招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。' : ''}</p>
+        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると実際にあなたのOutlook予定表に反映されます。' : '作成すると実際にあなたのOutlook予定表に反映されます。'}${activeMaster ? `${esc(activeMaster.itemLabel)}は実際のExchangeリソースとして招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
           <input id="f-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
@@ -566,12 +593,15 @@ function renderModal() {
             <select id="f-end" class="in-input">${selOpts(f.end)}</select>
           </label>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="f-use-room" ${f.useRoom ? 'checked' : ''}>
-          <span style="font-size:13px;font-weight:500;color:#1c2b3a">会議室を使用する</span>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室・社用車(任意)</span>
+          <select id="f-resource-type" class="in-input">
+            <option value="" ${!f.resourceType ? 'selected' : ''}>使用しない</option>
+            ${RESOURCE_TYPES.map(t => `<option value="${t.id}" ${f.resourceType === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
+          </select>
         </label>
         ${roomSection}
-        ${!f.useRoom ? `
+        ${!activeMaster ? `
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">場所(任意・自由入力)</span>
           <input id="f-place" class="in-input" value="${esc(f.place)}" placeholder="例: オンライン">
@@ -610,17 +640,17 @@ function renderModal() {
   root.querySelector('#f-content').addEventListener('input', e => { f.content = e.target.value; });
   root.querySelector('#f-date').addEventListener('change', e => {
     f.date = e.target.value;
-    if (f.useRoom && Auth.mode === 'entra') refreshFormRoomBusy();
+    if (f.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
     else renderModal();
   });
   root.querySelector('#f-start').addEventListener('change', e => {
     f.start = e.target.value;
     f.end = plusOneHour(f.start); // 終了時間を開始+1時間に自動設定(ユーザー指示 2026-08-22)
-    renderModal(); // 終了時間の表示と空いている会議室の表示を更新
+    renderModal(); // 終了時間の表示と空いている会議室・社用車の表示を更新
   });
   root.querySelector('#f-end').addEventListener('change', e => {
     f.end = e.target.value;
-    if (f.useRoom) renderModal();
+    if (f.resourceType) renderModal();
   });
   const placeInput = root.querySelector('#f-place');
   if (placeInput) placeInput.addEventListener('input', e => { f.place = e.target.value; });
@@ -629,9 +659,10 @@ function renderModal() {
   const deleteBtn = root.querySelector('#f-delete');
   if (deleteBtn) deleteBtn.addEventListener('click', deleteEvent);
 
-  root.querySelector('#f-use-room').addEventListener('change', e => {
-    f.useRoom = e.target.checked;
-    if (f.useRoom && f.roomBusy == null && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
+  root.querySelector('#f-resource-type').addEventListener('change', e => {
+    f.resourceType = e.target.value;
+    f.site = ''; f.room = ''; f.roomBusy = null; // 種別を切り替えたら選び直す
+    if (f.resourceType && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
     renderModal();
   });
   const siteSel = root.querySelector('#f-site');
@@ -693,25 +724,26 @@ async function submitCreateForm() {
   const errEl = document.getElementById('f-error');
   if (!f.title.trim()) { errEl.textContent = '件名を入力してください'; return; }
   if (f.start >= f.end) { errEl.textContent = '終了時刻は開始時刻より後にしてください'; return; }
-  if (f.useRoom && !f.room) { errEl.textContent = '会議室を選択してください'; return; }
+  const activeMaster = resourceMaster(f.resourceType);
+  if (activeMaster && !f.room) { errEl.textContent = `${activeMaster.itemLabel}を選択してください`; return; }
 
   const submitBtn = document.getElementById('f-submit');
   submitBtn.disabled = true;
   submitBtn.textContent = f.eventId ? '保存中…' : '作成中…';
 
-  const room = f.useRoom ? roomById(f.room) : null;
-  const site = room ? SITES.find(s => s.id === room.site) : null;
+  const room = activeMaster ? resourceRoomById(f.room) : null;
+  const site = room ? activeMaster.sites.find(s => s.id === room.site) : null;
   try {
-    // 会議室の重複を事前チェック(最新の空き状況を取り直して判定)。重複していたら予定自体を作らない。
+    // 会議室・社用車の重複を事前チェック(最新の空き状況を取り直して判定)。重複していたら予定自体を作らない。
     // なお同時刻に他の人が予約した直後などチェックをすり抜けた場合は、従来どおりExchange側が最終判定して自動辞退する
     if (room && Auth.mode === 'entra') {
       submitBtn.textContent = '空き状況を確認中…';
-      const busy = (await fetchRoomBusy(parseISODate(f.date)))[room.id] || [];
+      const busy = (await fetchResourceBusy(parseISODate(f.date), f.resourceType))[room.id] || [];
       const isOwnOriginalSlot = it => f.orig && f.orig.room === room.id && f.orig.date === f.date
         && it.start === f.orig.start && it.end === f.orig.end;
       const conflict = busy.find(it => it.start < f.end && it.end > f.start && !isOwnOriginalSlot(it));
       if (conflict) {
-        throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または会議室を選択してください`);
+        throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または${activeMaster.itemLabel}を選択してください`);
       }
       submitBtn.textContent = f.eventId ? '保存中…' : '作成中…';
     }
