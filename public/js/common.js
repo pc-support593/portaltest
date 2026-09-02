@@ -46,24 +46,47 @@ function fmtMD(iso) {
 }
 
 /** 社内メンバー検索(会議室予約・個人スケジュールの参加者選択で共用)。
-    devモードはダミー名簿(/api/users)、entraモードは Graph /users(委任: User.ReadBasic.All) */
+    devモードはダミー名簿(/api/users)、entraモードは Graph /users(委任: User.Read.All。
+    2026-08-22に User.ReadBasic.All から引き上げ済み。部署(department)まで取得できる) */
 async function searchMembers(q) {
   if (Auth.mode !== 'entra') return api(`/api/users?q=${encodeURIComponent(q)}`);
 
-  const token = await Auth.getGraphToken(['User.ReadBasic.All']);
+  const token = await Auth.getGraphToken(['User.Read.All']);
   // $search はプロパティ単位でクォートし OR で連結する(Graphの仕様。ConsistencyLevel: eventual が必須)
   const search = `"displayName:${q}" OR "mail:${q}"`;
   const url = 'https://graph.microsoft.com/v1.0/users' +
-    `?$search=${encodeURIComponent(search)}&$select=displayName,mail,userPrincipalName&$top=5`;
+    `?$search=${encodeURIComponent(search)}&$select=displayName,mail,userPrincipalName,department&$top=5`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
   });
   if (!res.ok) throw new Error(`メンバー検索に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
-  // 部署(department)は User.ReadBasic.All の基本プロフィールに含まれないため取得しない(最小権限維持)
   return (data.value || []).map(u => ({
     name: u.displayName || '(名前未設定)',
-    dept: '',
+    dept: u.department || '',
     email: u.mail || u.userPrincipalName || ''
+  }));
+}
+
+/** 指定部門(department)に所属するメンバー一覧を取得する(組織図用。2026-08-22追加)。
+    entraモードのみ(devモードは空配列)。委任: User.Read.All */
+async function fetchDepartmentMembers(department) {
+  if (Auth.mode !== 'entra') return [];
+  const token = await Auth.getGraphToken(['User.Read.All']);
+  const filter = `department eq '${String(department).replace(/'/g, "''")}'`;
+  const url = 'https://graph.microsoft.com/v1.0/users' +
+    `?$filter=${encodeURIComponent(filter)}` +
+    '&$select=id,displayName,mail,businessPhones,mobilePhone,department' +
+    '&$count=true&$orderby=displayName&$top=200';
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
+  });
+  if (!res.ok) throw new Error(`組織情報の取得に失敗しました(HTTP ${res.status})`);
+  const data = await res.json();
+  return (data.value || []).map(u => ({
+    name: u.displayName || '(名前未設定)',
+    email: u.mail || '',
+    // 内線ではなく電話番号を表示する方針(ユーザー指示 2026-08-22)。businessPhonesが空ならmobilePhoneで代替
+    phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || ''
   }));
 }
