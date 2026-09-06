@@ -28,12 +28,14 @@ function dateLabel(d) {
 // 実際に削除できるようにするには、あわせて Exchange 側でその担当者に各会議室カレンダーの
 // 編集権限(Add-MailboxFolderPermission -Identity "<会議室>:\Calendar" -User <担当者> -AccessRights Editor)
 // を付与し、Entra ID のアプリに Calendars.ReadWrite.Shared 権限を追加(管理者の同意)する必要がある。
+// 2026-08-22: 5拠点共通の担当者3名を設定(ユーザー指示)
+const COMMON_SITE_REPS = ['k-iwatani@yumesumika.com', 'm-sakahara@yumesumika.com', 'y-nishida@yumesumika.com'];
 const SITE_REPS = {
-  hirano: [],       // 例: ['jimu-hirano@yoshimuraichi.com']
-  hanahaku: [],
-  nishinomiya: [],
-  nakamozu: [],
-  fukuda: []
+  hirano: COMMON_SITE_REPS,
+  hanahaku: COMMON_SITE_REPS,
+  nishinomiya: COMMON_SITE_REPS,
+  nakamozu: COMMON_SITE_REPS,
+  fukuda: COMMON_SITE_REPS
 };
 
 /** 現在サインイン中のユーザーが担当拠点(削除権限あり)を持っていれば、そのIDの配列を返す */
