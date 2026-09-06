@@ -23,33 +23,51 @@ function dateLabel(d) {
 
 // ---- 会議室マスタは js/roomsData.js で定義(rooms.html と共有。SITES/ROOMS/siteRooms/roomById) ----
 
-// 拠点代表者(その拠点の会議室予約を削除できる担当者)。メールアドレスを拠点IDに対応付ける。
-// 担当者が変わったら、この対応表を直接編集する(大文字小文字は区別しない)。
-// 実際に削除できるようにするには、あわせて Exchange 側でその担当者に各会議室カレンダーの
-// 編集権限(Add-MailboxFolderPermission -Identity "<会議室>:\Calendar" -User <担当者> -AccessRights Editor)
+// 拠点/区分け/部門の削除担当者(予約の削除権限を持つ担当者)。メールアドレスをID(拠点/区分け/部門ID)に
+// 対応付ける。担当者が変わったら、この対応表を直接編集する(大文字小文字は区別しない)。
+// 実際に削除できるようにするには、あわせて Exchange 側でその担当者に各会議室・社用車カレンダーの
+// 編集権限(Add-MailboxFolderPermission -Identity "<会議室/社用車>:\Calendar" -User <担当者> -AccessRights Editor)
 // を付与し、Entra ID のアプリに Calendars.ReadWrite.Shared 権限を追加(管理者の同意)する必要がある。
 // 2026-08-22: 5拠点共通の担当者3名を設定(ユーザー指示)
 const COMMON_SITE_REPS = ['k-iwatani@yumesumika.com', 'm-sakahara@yumesumika.com', 'y-nishida@yumesumika.com'];
+// 2026-08-22: 3カテゴリ(ゆめすみか展示場・吉村一建設会議室・社用車)すべてで削除権限を持つ管理者(ユーザー指示)
+const ADMIN_ALL_EMAIL = 'y-honda@yoshimuraichi.com';
+
 const SITE_REPS = {
-  hirano: COMMON_SITE_REPS,
-  hanahaku: COMMON_SITE_REPS,
-  nishinomiya: COMMON_SITE_REPS,
-  nakamozu: COMMON_SITE_REPS,
-  fukuda: COMMON_SITE_REPS
+  hirano: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
+  hanahaku: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
+  nishinomiya: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
+  nakamozu: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
+  fukuda: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL]
+};
+// 吉村一建設会議室の区分け別担当者(現在はADMIN_ALL_EMAILのみ。個別担当者を追加する場合はここに追記)
+const YOSHIMURA_REPS = {
+  annex: [ADMIN_ALL_EMAIL], guest: [ADMIN_ALL_EMAIL], honsha: [ADMIN_ALL_EMAIL],
+  ceo: [ADMIN_ALL_EMAIL], chairman: [ADMIN_ALL_EMAIL]
+};
+// 社用車の部門別担当者(現在はADMIN_ALL_EMAILのみ)
+const CAR_REPS = {
+  c_soumu: [ADMIN_ALL_EMAIL], c_kenchiku: [ADMIN_ALL_EMAIL], c_sekkei: [ADMIN_ALL_EMAIL],
+  c_nishinomiya: [ADMIN_ALL_EMAIL], c_chihaya: [ADMIN_ALL_EMAIL], c_hirano: [ADMIN_ALL_EMAIL]
 };
 
-/** 現在サインイン中のユーザーが担当拠点(削除権限あり)を持っていれば、そのIDの配列を返す */
-function myAdminSiteIds() {
+/** repsMap(ID→担当者メール配列)のうち、現在サインイン中のユーザーが担当を持つIDの配列を返す(共通処理) */
+function myAdminIdsFrom(repsMap) {
   const email = ((Auth.me && Auth.me.email) || '').toLowerCase();
   if (!email) return [];
-  return SITES.filter(s => (SITE_REPS[s.id] || []).some(e => e.toLowerCase() === email)).map(s => s.id);
+  return Object.keys(repsMap).filter(id => (repsMap[id] || []).some(e => e.toLowerCase() === email));
 }
+function myAdminSiteIds() { return myAdminIdsFrom(SITE_REPS); }
+function myAdminYoshimuraIds() { return myAdminIdsFrom(YOSHIMURA_REPS); }
+function myAdminCarIds() { return myAdminIdsFrom(CAR_REPS); }
 
 const state = {
   date: new Date(),
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
+  adminYoshimuraIds: [], // 同上・吉村一建設会議室の区分け
+  adminCarIds: [], // 同上・社用車の部門
   gridTab: 'sites', // 予約状況の表示切り替え: 'sites'(ゆめすみか展示場) | 'cars'(社用車) | 'yoshimura'(吉村一建設会議室)
   yoshimuraBusy: null, // 吉村一建設会議室の空き状況(yoshimuraタブ表示時に取得)
   carsBusy: null // 社用車の空き状況(carsタブ表示時に取得)
@@ -196,31 +214,6 @@ async function fetchYoshimuraBusy(date) {
   return fetchCalendarViewBusy(isoDate(date), YOSHIMURA_ROOMS, token);
 }
 
-/** 吉村一建設会議室の区分け(部門)別カードのHTML。busyMap が null なら読み込み中表示 */
-function yoshimuraGridHtml(busyMap) {
-  if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
-  return YOSHIMURA_GROUPS.map(g => {
-    const rooms = yoshimuraGroupRooms(g.id);
-    const rows = rooms.flatMap(r => (busyMap[r.id] || []).map(b => ({ ...b, room: r })))
-      .sort((a, b) => a.start.localeCompare(b.start))
-      .map(b => `
-      <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
-        <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
-        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
-        ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
-      </div>`);
-    const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
-    return `
-    <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-      <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
-        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(g.name)}</span>
-        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${rooms.length}室</span>
-      </div>
-      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
-    </div>`;
-  }).join('');
-}
-
 /** 社用車(9台)の空き状況+予約者名を取得する。マスタは roomsData.js の CARS */
 async function fetchCarsBusy(date) {
   if (Auth.mode !== 'entra') return {};
@@ -228,39 +221,15 @@ async function fetchCarsBusy(date) {
   return fetchCalendarViewBusy(isoDate(date), CARS, token);
 }
 
-/** 社用車の部門別カードのHTML。busyMap が null なら読み込み中表示 */
-function carsGridHtml(busyMap) {
+/** 拠点/区分け/部門別カードのHTML(ゆめすみか展示場・吉村一建設会議室・社用車で共通処理)。
+    busyMap が null なら読み込み中表示。adminIds に含まれるグループには「担当」バッジ+各予約に削除ボタンを出す。 */
+function resourceGridHtml(groups, roomsInGroup, unit, busyMap, adminIds) {
   if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
-  return CAR_GROUPS.map(g => {
-    const cars = carGroupRooms(g.id);
-    const rows = cars.flatMap(r => (busyMap[r.id] || []).map(b => ({ ...b, room: r })))
-      .sort((a, b) => a.start.localeCompare(b.start))
-      .map(b => `
-      <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
-        <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
-        <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.room.name)}${b.subject ? ' ・ ' + esc(b.subject) : ''}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
-        ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
-      </div>`);
-    const body = rows.length ? rows.join('') : '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>';
-    return `
-    <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-      <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
-        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(g.name)}</span>
-        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${cars.length}台</span>
-      </div>
-      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
-    </div>`;
-  }).join('');
-}
-
-/** 拠点別カードのHTML。roomBusyMap が null なら読み込み中表示。adminSiteIds の拠点には削除ボタンを出す。 */
-function siteGridHtml(roomBusyMap, adminSiteIds) {
-  if (!roomBusyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
-  adminSiteIds = adminSiteIds || [];
-  return SITES.map(s => {
-    const isAdmin = adminSiteIds.includes(s.id);
-    const rooms = siteRooms(s.id);
-    const rows = rooms.flatMap(r => (roomBusyMap[r.id] || []).map(b => ({ ...b, room: r })))
+  adminIds = adminIds || [];
+  return groups.map(g => {
+    const isAdmin = adminIds.includes(g.id);
+    const rooms = roomsInGroup(g.id);
+    const rows = rooms.flatMap(r => (busyMap[r.id] || []).map(b => ({ ...b, room: r })))
       .sort((a, b) => a.start.localeCompare(b.start))
       .map(b => `
       <div style="display:flex;align-items:center;gap:8px;background:${b.room.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
@@ -273,14 +242,17 @@ function siteGridHtml(roomBusyMap, adminSiteIds) {
     return `
     <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
       <div style="padding:11px 15px;background:#f7fafd;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eef1f5">
-        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(s.name)}</span>
-        ${isAdmin ? '<span style="font-size:10px;font-weight:700;color:#1e5fa8;background:#e9f1fa;border-radius:4px;padding:1px 7px;white-space:nowrap">担当拠点</span>' : ''}
-        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${rooms.length}室</span>
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(g.name)}</span>
+        ${isAdmin ? '<span style="font-size:10px;font-weight:700;color:#1e5fa8;background:#e9f1fa;border-radius:4px;padding:1px 7px;white-space:nowrap">担当</span>' : ''}
+        <span style="font-size:11px;color:#8a99a8;margin-left:auto">${rooms.length}${esc(unit)}</span>
       </div>
       <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
     </div>`;
   }).join('');
 }
+const yoshimuraGridHtml = (busyMap, adminIds) => resourceGridHtml(YOSHIMURA_GROUPS, yoshimuraGroupRooms, '室', busyMap, adminIds);
+const carsGridHtml = (busyMap, adminIds) => resourceGridHtml(CAR_GROUPS, carGroupRooms, '台', busyMap, adminIds);
+const siteGridHtml = (busyMap, adminIds) => resourceGridHtml(SITES, siteRooms, '室', busyMap, adminIds);
 
 /** 予約状況の表示切り替えタブ(ゆめすみか展示場/社用車/吉村一建設会議室)を描画する。
     見出し(#grid-title)も選択中のタブに合わせて「(タブ名)の予約状況」に切り替える */
@@ -333,7 +305,8 @@ async function loadAndRenderSiteGrid() {
     try {
       state.carsBusy = await fetchCarsBusy(state.date);
       if (state.gridTab !== 'cars') return; // 取得中にタブが切り替わったら描き替えない
-      el.innerHTML = carsGridHtml(state.carsBusy);
+      el.innerHTML = carsGridHtml(state.carsBusy, state.adminCarIds);
+      bindSiteGridActions(el);
     } catch (e) {
       console.error(e);
       state.carsBusy = {};
@@ -352,7 +325,8 @@ async function loadAndRenderSiteGrid() {
     try {
       state.yoshimuraBusy = await fetchYoshimuraBusy(state.date);
       if (state.gridTab !== 'yoshimura') return; // 取得中にタブが切り替わったら描き替えない
-      el.innerHTML = yoshimuraGridHtml(state.yoshimuraBusy);
+      el.innerHTML = yoshimuraGridHtml(state.yoshimuraBusy, state.adminYoshimuraIds);
+      bindSiteGridActions(el);
     } catch (e) {
       console.error(e);
       state.yoshimuraBusy = {};
@@ -875,12 +849,16 @@ async function autoRefresh() {
     if (tabKey === 'yoshimura') {
       if (JSON.stringify(busy) !== JSON.stringify(state.yoshimuraBusy)) {
         state.yoshimuraBusy = busy;
-        document.getElementById('site-grid').innerHTML = yoshimuraGridHtml(busy);
+        const grid = document.getElementById('site-grid');
+        grid.innerHTML = yoshimuraGridHtml(busy, state.adminYoshimuraIds);
+        bindSiteGridActions(grid);
       }
     } else if (tabKey === 'cars') {
       if (JSON.stringify(busy) !== JSON.stringify(state.carsBusy)) {
         state.carsBusy = busy;
-        document.getElementById('site-grid').innerHTML = carsGridHtml(busy);
+        const grid = document.getElementById('site-grid');
+        grid.innerHTML = carsGridHtml(busy, state.adminCarIds);
+        bindSiteGridActions(grid);
       }
     } else if (JSON.stringify(busy) !== JSON.stringify(state.roomBusy)) {
       state.roomBusy = busy;
@@ -895,6 +873,8 @@ async function autoRefresh() {
   try {
     await Auth.init();
     state.adminSiteIds = myAdminSiteIds();
+    state.adminYoshimuraIds = myAdminYoshimuraIds();
+    state.adminCarIds = myAdminCarIds();
 
     // サインインしたアカウントのドメインで予約状況の初期タブを切り替える(ユーザー指示 2026-08-22)
     // @yoshimuraichi.com → 吉村一建設会議室 / @yumesumika.com → ゆめすみか展示場
