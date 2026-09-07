@@ -33,12 +33,22 @@ const CONFIG = {
       { key: 'url', label: 'リンク先URL', ph: '例: https://…' }
     ],
     cells: it => [it.char, it.label, it.url]
+  },
+  policies: {
+    label: '社内規程', hasBody: false,
+    h1: 'アイコン文字', h2: '名称', h3: 'リンク先URL',
+    fields: [
+      { key: 'char', label: 'アイコン文字(1文字)', ph: '例: 就' },
+      { key: 'label', label: '名称', ph: '例: 就業規則' },
+      { key: 'url', label: 'リンク先URL', ph: '例: https://…' }
+    ],
+    cells: it => [it.char, it.label, it.url]
   }
 };
 
 const state = {
   tab: 'news',
-  data: { news: [], schedule: [], links: [] },
+  data: { news: [], schedule: [], links: [], policies: [] },
   draft: null,    // 編集中の1件(null でモーダル閉)
   editId: null    // 編集対象のid(null で新規)
 };

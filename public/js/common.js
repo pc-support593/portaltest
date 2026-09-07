@@ -74,7 +74,7 @@ async function searchMembers(q) {
 
 /** ヘッダー社内検索のページ検索対象(2026-09-07追加。新しい画面を追加したらここにも追記する) */
 const PORTAL_PAGES = [
-  { title: 'ホーム', url: 'index.html', keywords: ['ホーム', 'トップ', 'ポータル'] },
+  { title: 'ホーム', url: 'index.html', keywords: ['ホーム', 'トップ', 'ポータル', '社内規程', '就業規則', 'クイックリンク'] },
   { title: '会議室予約(ゆめすみか展示場)', url: 'rooms.html', keywords: ['会議室', '予約', 'ゆめすみか', '展示場'] },
   { title: '会議室予約(吉村一建設会議室)', url: 'rooms.html?view=yoshimura', keywords: ['会議室', '予約', '吉村一建設', 'アネックスプラザ', 'ゲストプラザ', '本社', '社長室', '会長室'] },
   { title: '予約(社用車)', url: 'rooms.html?view=cars', keywords: ['社用車', '車', '予約', '車両'] },

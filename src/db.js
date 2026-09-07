@@ -39,6 +39,12 @@ function migrate(db) {
       label TEXT NOT NULL DEFAULT '',
       url TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS policies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      char TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT ''
+    );
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       room TEXT NOT NULL,
@@ -129,6 +135,17 @@ function seed(db) {
       ['図', '図面管理', '#'],
       ['名', '社員名簿', '#'],
       ['S', 'SalesForce', 'https://yumesumika.my.salesforce.com/']
+    ].forEach(r => ins.run(...r));
+  }
+
+  if (count('policies') === 0) {
+    const ins = db.prepare('INSERT INTO policies (char, label, url) VALUES (?, ?, ?)');
+    [
+      ['就', '就業規則', '#'],
+      ['経', '経費規程', '#'],
+      ['慶', '慶弔規程', '#'],
+      ['安', '安全衛生規程', '#'],
+      ['個', '個人情報保護規程', '#']
     ].forEach(r => ins.run(...r));
   }
 

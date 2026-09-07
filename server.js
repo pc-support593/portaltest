@@ -105,7 +105,8 @@ app.get('/api/me', (req, res) => {
 const KINDS = {
   news: ['tag', 'title', 'date', 'expires', 'body'],
   schedule: ['date', 'title', 'sub', 'body'],
-  links: ['char', 'label', 'url']
+  links: ['char', 'label', 'url'],
+  policies: ['char', 'label', 'url']
 };
 
 function kindOf(req, res) {
@@ -139,19 +140,20 @@ function requireAdmin(req, res) {
   return true;
 }
 
-// ポータルトップ用: 3種まとめて取得
+// ポータルトップ用: まとめて取得
 app.get('/api/content', (_req, res) => {
   res.json({
     news: db.prepare('SELECT * FROM news ORDER BY id').all(),
     schedule: db.prepare('SELECT * FROM schedule ORDER BY id').all(),
-    links: db.prepare('SELECT * FROM links ORDER BY id').all()
+    links: db.prepare('SELECT * FROM links ORDER BY id').all(),
+    policies: db.prepare('SELECT * FROM policies ORDER BY id').all()
   });
 });
 
 // ---- ポータルトップの配置(個人ごとのドラッグ&ドロップ並び順) ----
 
-const LAYOUT_SECTIONS = ['news', 'links', 'today', 'schedule', 'tasks'];
-const DEFAULT_LAYOUT = { left: ['news', 'links'], right: ['today', 'schedule', 'tasks'] };
+const LAYOUT_SECTIONS = ['news', 'links', 'policies', 'today', 'schedule', 'tasks'];
+const DEFAULT_LAYOUT = { left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks'] };
 
 /** left/rightの合計がLAYOUT_SECTIONSの過不足ない並べ替えであることを検証 */
 function isValidLayout(body) {

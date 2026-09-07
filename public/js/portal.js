@@ -185,9 +185,10 @@ function openNewsListModal(allNews) {
   }));
 }
 
-function renderLinks(links) {
-  const el = document.getElementById('quick-links');
-  el.innerHTML = links.map((l, i) => {
+/** クイックリンク・社内規程で共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化) */
+function renderTileGrid(elId, items) {
+  const el = document.getElementById(elId);
+  el.innerHTML = items.map((l, i) => {
     // 外部システム(http/https)へのリンクは新しいタブで開く。ポータル内の遷移(rooms.html等)は同じタブのまま
     const external = /^https?:\/\//i.test(l.url || '');
     return `
@@ -474,7 +475,8 @@ function initHeaderSearch() {
       e.preventDefault();
       openScheduleListModal(content.schedule);
     });
-    renderLinks(content.links);
+    renderTileGrid('quick-links', content.links);
+    renderTileGrid('policy-links', content.policies);
     initHeaderSearch();
   } catch (e) {
     console.error(e);
