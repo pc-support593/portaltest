@@ -54,8 +54,12 @@ async function searchMembers(q) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   // $search はプロパティ単位でクォートし OR で連結する(Graphの仕様。ConsistencyLevel: eventual が必須)
   const search = `"displayName:${q}" OR "mail:${q}"`;
+  // 社内ポータル対象の2ドメイン(yoshimuraichi.com/yumesumika.com)以外のアカウント(他ドメイン・外部ゲスト等)は除外する
+  // (ユーザー指示 2026-09-07)。endsWith を使う$filterは advanced query 扱いのため $count=true が必須
+  const domainFilter = "(endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   const url = 'https://graph.microsoft.com/v1.0/users' +
-    `?$search=${encodeURIComponent(search)}&$select=displayName,mail,userPrincipalName,department&$top=5`;
+    `?$search=${encodeURIComponent(search)}&$filter=${encodeURIComponent(domainFilter)}` +
+    '&$count=true&$select=displayName,mail,userPrincipalName,department&$top=5';
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
   });
