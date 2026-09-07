@@ -68,6 +68,26 @@ async function searchMembers(q) {
   }));
 }
 
+/** ヘッダー社内検索のページ検索対象(2026-09-07追加。新しい画面を追加したらここにも追記する) */
+const PORTAL_PAGES = [
+  { title: 'ホーム', url: 'index.html', keywords: ['ホーム', 'トップ', 'ポータル'] },
+  { title: '会議室予約(ゆめすみか展示場)', url: 'rooms.html', keywords: ['会議室', '予約', 'ゆめすみか', '展示場'] },
+  { title: '会議室予約(吉村一建設会議室)', url: 'rooms.html?view=yoshimura', keywords: ['会議室', '予約', '吉村一建設', 'アネックスプラザ', 'ゲストプラザ', '本社', '社長室', '会長室'] },
+  { title: '予約(社用車)', url: 'rooms.html?view=cars', keywords: ['社用車', '車', '予約', '車両'] },
+  { title: 'スケジュール', url: 'schedule.html', keywords: ['スケジュール', '予定', 'カレンダー', '会議室の予約状況'] },
+  { title: '組織図', url: 'organization.html', keywords: ['組織図', '総務部', '部門', '組織', '社員名簿'] },
+  { title: '管理画面', url: 'admin.html', keywords: ['管理', 'admin', 'お知らせ編集'] }
+];
+
+/** ポータル内ページ検索(タイトル・キーワードの部分一致) */
+function searchPortalPages(q) {
+  const query = String(q || '').trim().toLowerCase();
+  if (!query) return [];
+  return PORTAL_PAGES.filter(p =>
+    p.title.toLowerCase().includes(query) || p.keywords.some(k => k.toLowerCase().includes(query))
+  );
+}
+
 /** 指定部門(department)に所属するメンバー一覧を取得する(組織図用。2026-08-22追加)。
     entraモードのみ(devモードは空配列)。委任: User.Read.All */
 async function fetchDepartmentMembers(department) {

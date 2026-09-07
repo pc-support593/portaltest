@@ -380,6 +380,70 @@ function initDragAndDrop() {
   });
 }
 
+// ---- ヘッダー社内検索(人 + ポータル内ページ。2026-09-07追加。追加のGraph権限は不要:
+//      人検索は既存の searchMembers=User.Read.All、ページ検索はクライアント内の固定一覧) ----
+
+function renderSearchResults(pages, members, query) {
+  const box = document.getElementById('header-search-results');
+  if (!query) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  if (!pages.length && !members.length) {
+    box.innerHTML = '<p style="margin:0;padding:14px 16px;font-size:12px;color:#8a99a8">一致する結果がありません</p>';
+    box.style.display = '';
+    return;
+  }
+  const pagesHtml = pages.length ? `
+    <div style="font-size:11px;font-weight:700;color:#8a99a8;padding:10px 16px 4px">ページ</div>
+    ${pages.map((p, i) => `
+      <a href="${esc(p.url)}" data-search-page="${i}" class="hv-row" style="display:flex;align-items:center;gap:10px;padding:9px 16px;text-decoration:none;color:#1c2b3a;font-size:13px">
+        <span style="color:#1e5fa8">⊞</span>${esc(p.title)}
+      </a>`).join('')}` : '';
+  const membersHtml = members.length ? `
+    <div style="font-size:11px;font-weight:700;color:#8a99a8;padding:10px 16px 4px">人</div>
+    ${members.map((m, i) => `
+      <a href="mailto:${esc(m.email)}" data-search-member="${i}" class="hv-row" style="display:flex;flex-direction:column;gap:1px;padding:9px 16px;text-decoration:none;color:#1c2b3a">
+        <span style="font-size:13px;font-weight:500">${esc(m.name)}${m.dept ? `<span style="font-weight:400;color:#6b7d8f"> ・ ${esc(m.dept)}</span>` : ''}</span>
+        <span style="font-size:11px;color:#8a99a8">${esc(m.email)}</span>
+      </a>`).join('')}` : '';
+  box.innerHTML = pagesHtml + membersHtml;
+  box.style.display = '';
+}
+
+function initHeaderSearch() {
+  const input = document.getElementById('header-search-input');
+  const box = document.getElementById('header-search-results');
+  if (!input || !box) return;
+  let debounceTimer = null;
+  let seq = 0;
+
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const query = input.value.trim();
+    if (!query) { renderSearchResults([], [], ''); return; }
+    debounceTimer = setTimeout(async () => {
+      const mySeq = ++seq;
+      const pages = searchPortalPages(query);
+      let members = [];
+      try {
+        members = await searchMembers(query);
+      } catch (e) {
+        console.error('社内検索(人)に失敗しました', e);
+      }
+      if (mySeq !== seq) return; // 入力中に別の検索が走った場合、古い結果は捨てる
+      renderSearchResults(pages, members, query);
+    }, 250);
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.portal-search')) { box.style.display = 'none'; }
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { box.style.display = 'none'; input.blur(); }
+  });
+  input.addEventListener('focus', () => {
+    if (box.innerHTML && input.value.trim()) box.style.display = '';
+  });
+}
+
 (async function init() {
   try {
     const user = await Auth.init();
@@ -411,6 +475,7 @@ function initDragAndDrop() {
       openScheduleListModal(content.schedule);
     });
     renderLinks(content.links);
+    initHeaderSearch();
   } catch (e) {
     console.error(e);
     document.getElementById('greeting').textContent = '読み込みに失敗しました';
