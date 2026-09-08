@@ -1,40 +1,71 @@
 // 組織図画面(2026-09-08: ツリー構造に変更。ユーザー指示)。
 // Entra ID の manager 属性(上長)を正として、全社の階層構造を自動的に組み立てて表示する。
 // department 属性(部門名の文字列一致)には依存しない(手動の対象部門一覧を持たない)。
-// 権限は既存の User.Read.All のみで足りる(manager/directReports は追加権限不要)。
+// 権限は既存の User.Read.All のみで足りる(manager の読み取りに追加スコープは不要)。
 'use strict';
 
 const state = { tree: [], expanded: new Set(), rootCount: 0, totalCount: 0 };
 
+/** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す(HTTPステータスだけだと
+    原因が分からず切り分けに時間がかかるため。2026-09-08追加) */
+async function graphErrorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    if (data && data.error && data.error.message) return `${fallback}: ${data.error.message}`;
+  } catch { /* 本文がJSONでない場合はフォールバックのみ */ }
+  return fallback;
+}
+
 /** 会議室・社用車(Equipment/Roomメールボックス)はサインイン不可のため accountEnabled=false で除外。
     対象は社内の2ドメインのみ(検索機能と同じ絞り込み。ユーザー指示 2026-09-07)。
-    manager は $expand で1回のGraph呼び出しにまとめて取得する(N+1呼び出しを避けるため) */
+    マネージャーは一覧取得とは別に、ユーザーごとに `/users/{id}/manager` で個別取得する
+    (2026-09-08: 当初 $expand=manager を一覧取得に付けていたが、advanced query($filter の endsWith
+    + $count)との組み合わせでHTTP 400になったため撤回。$expand無しの一覧取得+個別のmanager取得に変更。
+    manager未設定のユーザーは404が返る仕様のため、404はエラー扱いにせず「マネージャーなし」として扱う) */
 async function fetchOrgUsers() {
   if (Auth.mode !== 'entra') return [];
   const token = await Auth.getGraphToken(['User.Read.All']);
   const domainFilter = "accountEnabled eq true and (endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   let url = 'https://graph.microsoft.com/v1.0/users' +
     '?$select=id,displayName,mail,jobTitle,department,businessPhones,mobilePhone' +
-    `&$expand=${encodeURIComponent('manager($select=id,displayName)')}` +
     `&$filter=${encodeURIComponent(domainFilter)}` +
     '&$count=true&$top=999';
 
   const rows = [];
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } });
-    if (!res.ok) throw new Error(`組織情報の取得に失敗しました(HTTP ${res.status})`);
+    if (!res.ok) throw new Error(await graphErrorMessage(res, `組織情報の取得に失敗しました(HTTP ${res.status})`));
     const data = await res.json();
     rows.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
   }
-  return rows.map(u => ({
+
+  // マネージャーの個別取得(同時実行数を絞って一斉リクエストによるスロットリングを避ける)
+  const CONCURRENCY = 8;
+  const managerIds = new Array(rows.length).fill(null);
+  let next = 0;
+  async function worker() {
+    while (next < rows.length) {
+      const i = next++;
+      try {
+        const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(rows[i].id)}/manager?$select=id`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (r.ok) managerIds[i] = (await r.json()).id || null;
+        // 404 = マネージャー未設定(正常な状態。エラーにしない)。それ以外の失敗もマネージャーなし扱いで続行
+      } catch { /* 個別の失敗は無視して続行(1件の失敗で全体を壊さない) */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+
+  return rows.map((u, i) => ({
     id: u.id,
     name: u.displayName || '(名前未設定)',
     email: u.mail || '',
     title: u.jobTitle || '',
     dept: u.department || '',
     phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || '',
-    managerId: (u.manager && u.manager.id) || null
+    managerId: managerIds[i]
   }));
 }
 
