@@ -53,7 +53,7 @@ Graph連携なしで、本人のMS365アカウントでのサインインと画�
    | 権限 | 用途 |
    |---|---|
    | `User.Read` | サインインとプロフィール表示 |
-   | `User.Read.All` | 社内メンバー検索(予約フォーム)+組織図(部署=departmentでの絞り込み)。2026-08-22に`User.ReadBasic.All`から引き上げ(部署情報の取得に必要なため) |
+   | `User.Read.All` | 社内メンバー検索(予約フォーム)+組織図(2026-09-08〜: manager属性によるツリー構造。2026-08-22に`User.ReadBasic.All`から引き上げ。manager/directReportsの読み取りに追加スコープは不要) |
    | `Calendars.ReadWrite` | 今日の予定表示・会議室予約の作成/変更/削除(`getSchedule` / `calendarView` は `Calendars.Read` 相当としてこれに包含) |
    | `Calendars.ReadWrite.Shared` | 拠点代表者の会議室予約削除機能(§12)、および2026-08-24以降の会議室予約(rooms.js/schedule.js)で会議室自身の予定表(`/users/{room}/calendarView`)を直接読む・書くために使用 ※管理者同意が必要 |
 

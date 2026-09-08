@@ -92,25 +92,3 @@ function searchPortalPages(q) {
   );
 }
 
-/** 指定部門(department)に所属するメンバー一覧を取得する(組織図用。2026-08-22追加)。
-    entraモードのみ(devモードは空配列)。委任: User.Read.All */
-async function fetchDepartmentMembers(department) {
-  if (Auth.mode !== 'entra') return [];
-  const token = await Auth.getGraphToken(['User.Read.All']);
-  const filter = `department eq '${String(department).replace(/'/g, "''")}'`;
-  const url = 'https://graph.microsoft.com/v1.0/users' +
-    `?$filter=${encodeURIComponent(filter)}` +
-    '&$select=id,displayName,mail,businessPhones,mobilePhone,department' +
-    '&$count=true&$orderby=displayName&$top=200';
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
-  });
-  if (!res.ok) throw new Error(`組織情報の取得に失敗しました(HTTP ${res.status})`);
-  const data = await res.json();
-  return (data.value || []).map(u => ({
-    name: u.displayName || '(名前未設定)',
-    email: u.mail || '',
-    // 内線ではなく電話番号を表示する方針(ユーザー指示 2026-08-22)。businessPhonesが空ならmobilePhoneで代替
-    phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || ''
-  }));
-}

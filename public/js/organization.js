@@ -1,65 +1,145 @@
-// 組織図画面。現時点では総務部のみ対応(ユーザー指示 2026-08-22。他部門は追って追加)。
-// Entra ID(Graph /users?$filter=department eq '...')から氏名・メール・電話番号を取得して表示する。
-// 部署(department)取得には User.Read.All 権限が必要(User.ReadBasic.All からの引き上げ、要管理者同意)。
+// 組織図画面(2026-09-08: ツリー構造に変更。ユーザー指示)。
+// Entra ID の manager 属性(上長)を正として、全社の階層構造を自動的に組み立てて表示する。
+// department 属性(部門名の文字列一致)には依存しない(手動の対象部門一覧を持たない)。
+// 権限は既存の User.Read.All のみで足りる(manager/directReports は追加権限不要)。
 'use strict';
 
-// 表示する部門の一覧。増やす場合はここに1行追加するだけでよい(department の表記はEntra ID側と完全一致させること)
-const DEPARTMENTS = [
-  { id: 'soumu', name: '総務部' }
-];
+const state = { tree: [], expanded: new Set(), rootCount: 0, totalCount: 0 };
 
-const state = { members: [] };
+/** 会議室・社用車(Equipment/Roomメールボックス)はサインイン不可のため accountEnabled=false で除外。
+    対象は社内の2ドメインのみ(検索機能と同じ絞り込み。ユーザー指示 2026-09-07)。
+    manager は $expand で1回のGraph呼び出しにまとめて取得する(N+1呼び出しを避けるため) */
+async function fetchOrgUsers() {
+  if (Auth.mode !== 'entra') return [];
+  const token = await Auth.getGraphToken(['User.Read.All']);
+  const domainFilter = "accountEnabled eq true and (endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
+  let url = 'https://graph.microsoft.com/v1.0/users' +
+    '?$select=id,displayName,mail,jobTitle,department,businessPhones,mobilePhone' +
+    `&$expand=${encodeURIComponent('manager($select=id,displayName)')}` +
+    `&$filter=${encodeURIComponent(domainFilter)}` +
+    '&$count=true&$top=999';
 
-function renderDeptCard() {
-  const el = document.getElementById('dept-card');
-  const dept = DEPARTMENTS[0];
+  const rows = [];
+  while (url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } });
+    if (!res.ok) throw new Error(`組織情報の取得に失敗しました(HTTP ${res.status})`);
+    const data = await res.json();
+    rows.push(...(data.value || []));
+    url = data['@odata.nextLink'] || null;
+  }
+  return rows.map(u => ({
+    id: u.id,
+    name: u.displayName || '(名前未設定)',
+    email: u.mail || '',
+    title: u.jobTitle || '',
+    dept: u.department || '',
+    phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || '',
+    managerId: (u.manager && u.manager.id) || null
+  }));
+}
 
-  if (Auth.mode !== 'entra') {
-    el.innerHTML = `
-    <div style="padding:15px 20px;border-bottom:1px solid #e8edf3">
-      <h2 style="margin:0;font-size:15px;font-weight:700">${esc(dept.name)}</h2>
+/** manager(上長)属性から親子関係を組み立てる。マネージャーが未設定、またはマネージャーが
+    対象ドメイン外(取得対象に含まれない)場合はルート扱いにする */
+function buildOrgTree(users) {
+  const byId = new Map(users.map(u => [u.id, { ...u, children: [] }]));
+  const roots = [];
+  for (const u of byId.values()) {
+    const parent = u.managerId && byId.get(u.managerId);
+    if (parent) parent.children.push(u); else roots.push(u);
+  }
+  const collator = (a, b) => a.name.localeCompare(b.name, 'ja');
+  const sortRec = node => { node.children.sort(collator); node.children.forEach(sortRec); };
+  roots.sort(collator);
+  roots.forEach(sortRec);
+  return roots;
+}
+
+function countDescendants(node) {
+  return node.children.reduce((n, c) => n + 1 + countDescendants(c), 0);
+}
+
+/** 初期表示: ルートとその直下(部門長クラス)までを開き、それより下は折りたたんでおく
+    (全社員を一度に表示すると縦に長大になるため) */
+function defaultExpand(nodes, depth) {
+  if (depth > 0) return;
+  nodes.forEach(n => { state.expanded.add(n.id); defaultExpand(n.children, depth + 1); });
+}
+
+function renderNode(node, depth) {
+  const hasChildren = node.children.length > 0;
+  const isOpen = state.expanded.has(node.id);
+  const sub = [node.title, node.dept].filter(Boolean).join(' ・ ') || node.email;
+  return `
+  <div>
+    <div ${hasChildren ? `data-toggle="${esc(node.id)}"` : ''} style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px ${14 + depth * 24}px;border-bottom:1px solid #f2f5f9;${hasChildren ? 'cursor:pointer' : ''}">
+      <span style="width:14px;text-align:center;color:#8a99a8;font-size:11px;flex-shrink:0">${hasChildren ? (isOpen ? '▾' : '▸') : ''}</span>
+      <span style="width:30px;height:30px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc(node.name.charAt(0))}</span>
+      <span style="display:flex;flex-direction:column;min-width:0;line-height:1.35">
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(node.name)}${hasChildren ? ` <span style="font-weight:500;color:#8a99a8;font-size:11px">(配下 ${countDescendants(node)}名)</span>` : ''}</span>
+        <span style="font-size:11px;color:#6b7d8f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</span>
+      </span>
     </div>
-    <p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">devモードでは組織情報を確認できません(Entra IDでのサインインが必要です)</p>`;
+    ${hasChildren && isOpen ? node.children.map(c => renderNode(c, depth + 1)).join('') : ''}
+  </div>`;
+}
+
+function renderTree() {
+  const el = document.getElementById('org-tree');
+  if (Auth.mode !== 'entra') {
+    el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">devモードでは組織図を確認できません(Entra IDでのサインインが必要です)</p>';
     return;
   }
-
-  const rows = state.members.map(m => `
-    <div style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid #f2f5f9">
-      <div style="width:34px;height:34px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${esc(m.name.charAt(0))}</div>
-      <span style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:120px">${esc(m.name)}</span>
-      <span style="font-size:12px;color:#6b7d8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.email)}</span>
-      <span style="font-size:12px;color:#6b7d8f;white-space:nowrap">${esc(m.phone || '未登録')}</span>
-    </div>`).join('');
-
-  el.innerHTML = `
-    <div style="padding:15px 20px;border-bottom:1px solid #e8edf3;display:flex;align-items:center;gap:9px">
-      <h2 style="margin:0;font-size:15px;font-weight:700">${esc(dept.name)}</h2>
-      <span style="font-size:11px;color:#8a99a8">${state.members.length}名</span>
-    </div>
-    ${state.members.length ? rows : '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">該当するメンバーが見つかりませんでした</p>'}`;
+  if (!state.tree.length) {
+    el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">組織情報が見つかりませんでした</p>';
+    return;
+  }
+  // Entra ID側で「マネージャー」が未設定の社員が多いと、階層にならず大半がルート(トップ階層)に
+  // 並んでしまう。その場合は原因が分かるよう案内を出す(ユーザー側でのEntra ID設定不足の可能性が高いため)
+  const warn = state.rootCount > 1 && state.rootCount >= state.totalCount * 0.3
+    ? `<p style="margin:0;padding:12px 20px;font-size:12px;color:#8a6d1f;background:#fdf6e7;border-bottom:1px solid #f0e4c8">
+        トップ階層に${state.rootCount}名が並んでいます。多くの社員でEntra IDの「マネージャー」が未設定の可能性があります。
+        正しい階層で表示するには、Entra ID(entra.microsoft.com)の各ユーザーの「マネージャー」欄を設定してください。</p>`
+    : '';
+  el.innerHTML = warn + state.tree.map(n => renderNode(n, 0)).join('');
+  el.querySelectorAll('[data-toggle]').forEach(row => row.addEventListener('click', () => {
+    const id = row.dataset.toggle;
+    if (state.expanded.has(id)) state.expanded.delete(id); else state.expanded.add(id);
+    renderTree();
+  }));
 }
 
 async function loadAndRender() {
-  const el = document.getElementById('dept-card');
-  if (Auth.mode !== 'entra') { renderDeptCard(); return; }
+  const el = document.getElementById('org-tree');
+  if (Auth.mode !== 'entra') { renderTree(); return; }
   el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
-    state.members = await fetchDepartmentMembers(DEPARTMENTS[0].name);
-    renderDeptCard();
+    const users = await fetchOrgUsers();
+    state.tree = buildOrgTree(users);
+    state.totalCount = users.length;
+    state.rootCount = state.tree.length;
+    state.expanded = new Set();
+    defaultExpand(state.tree, 0);
+    renderTree();
   } catch (e) {
     console.error(e);
-    state.members = [];
+    state.tree = [];
     el.innerHTML = `<p style="margin:0;padding:24px 20px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
 }
 
-// 自動リフレッシュ(共通方針: 2分間隔・非表示タブはスキップ・差分があるときだけ静かに差し替え)
+// 自動リフレッシュ(共通方針: 2分間隔・非表示タブはスキップ・差分があるときだけ静かに差し替え)。
+// 開閉状態(state.expanded)は保持したまま、ツリーの中身だけ差し替える
 async function autoRefresh() {
   if (document.hidden || Auth.mode !== 'entra') return;
   try {
-    const prev = JSON.stringify(state.members);
-    const members = await fetchDepartmentMembers(DEPARTMENTS[0].name);
-    if (JSON.stringify(members) !== prev) { state.members = members; renderDeptCard(); }
+    const users = await fetchOrgUsers();
+    const tree = buildOrgTree(users);
+    if (JSON.stringify(tree) !== JSON.stringify(state.tree)) {
+      state.tree = tree;
+      state.totalCount = users.length;
+      state.rootCount = tree.length;
+      renderTree();
+    }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }
 
@@ -70,7 +150,7 @@ async function autoRefresh() {
     setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {
     console.error(e);
-    document.getElementById('dept-card').innerHTML =
+    document.getElementById('org-tree').innerHTML =
       `<p style="margin:0;padding:24px 20px;font-size:13px;color:#c05a5a">読み込みに失敗しました: ${esc(e.message || e)}</p>`;
   }
 })();
