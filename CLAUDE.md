@@ -47,7 +47,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 - `public/organization.html` / `public/js/organization.js` — 組織図画面。**department属性による部門ごとのグループ表示**(氏名・メール・電話番号)。
   - **経緯(2026-09-08)**: 当初`manager`属性(上長)から全社の階層ツリーを自動構築する方式を試みたが、Entra ID側で`manager`が未設定の社員が多く「ただの一覧(ほぼ全員がトップ階層)」になってしまったため、ユーザー指示によりdepartment(部署名の文字列一致)ベースのグループ表示に戻した。`manager`ベースのツリー構築コード(`buildOrgTree`/`renderNode`等)は撤去済み(復活させる場合はEntra ID側で`manager`を広く設定してから)
   - `fetchOrgUsers()`がGraph `/users`一覧(`$filter`+`$count`+`@odata.nextLink`でページング。検索機能と同じ`@yoshimuraichi.com`/`@yumesumika.com`の2ドメイン限定)を取得。**会議室・社用車の除外方法**: 当初`accountEnabled eq true`で絞り込んでいたが、このテナントでは会議室・社用車(Exchangeリソースメールボックス)のEntra ID上のアカウントが有効化されたまま(`accountEnabled: true`)だったため機能しなかった。`roomsData.js`(`ROOMS`/`YOSHIMURA_ROOMS`/`CARS`。会議室・社用車の実メールアドレスの単一の正)を読み込み、そのメールアドレス一覧(`RESOURCE_EMAILS`)と一致するユーザーを取得結果から除外する方式に変更(organization.htmlに`roomsData.js`のscriptタグを追加)
-  - `groupByDepartment(users)`が`department`属性ごとにグループ化(空欄は「(部門未設定)」にまとめ末尾に表示)。表示は部門名を見出しにしたカード+メンバー一覧(氏名・メール・電話番号)
+  - `groupByDepartment(users)`が`department`属性ごとにグループ化。**2026-09-10変更(ユーザー指示)**: 役職(`jobTitle`)に「会長」「社長」「専務」を含む社員は`department`を無視し、その語自体を部門扱いにして`PRIORITY_TITLES`の順(会長→社長→専務。該当者がいるものだけ)で先頭に表示する。`department`が空欄の社員は(上記の役職に該当しない限り)表示しない(以前あった「(部門未設定)」バケットは廃止)。表示は部門名を見出しにしたカード+メンバー一覧(氏名・メール・電話番号)
   - 追加のGraph権限は不要(`User.Read.All`の範囲内)。devモードは非対応(案内文のみ)。自動リフレッシュはルール11に準拠
   - 参考資料として実際の組織図(PDF/Excel)を`_governance/reference/組織図.xlsx`等で受領済み(Gitリポジトリ外・個人情報のため`Portal/`配下には置かない。Excel自体は表形式ではなく手作業配置の図のためプログラムでの解析はしていない)
 

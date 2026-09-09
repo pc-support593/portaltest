@@ -2,6 +2,8 @@
 // Entra IDのdepartment属性で部門ごとにメンバーをグループ化して表示する
 // (2026-09-08: manager属性によるツリー表示を試みたが、Entra ID側でmanagerが
 // 未設定の社員が多く「ただの一覧」になってしまったため、ユーザー指示によりこの方式に変更)。
+// 役職(jobTitle)に「会長」「社長」「専務」を含む社員は部門を無視してその役職を部門扱いにし、
+// 先頭(会長→社長→専務の順)に表示する。department が空欄の社員は表示しない(ユーザー指示 2026-09-10)。
 // 会議室・社用車(Exchangeリソースメールボックス)は roomsData.js の実マスタと突き合わせて除外する
 // (accountEnabledでの判定は、この組織のリソースメールボックスが有効化されたままのため機能しなかった)。
 'use strict';
@@ -31,7 +33,7 @@ async function fetchOrgUsers() {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const domainFilter = "endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com')";
   let url = 'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,department,businessPhones,mobilePhone' +
+    '?$select=id,displayName,mail,department,jobTitle,businessPhones,mobilePhone' +
     `&$filter=${encodeURIComponent(domainFilter)}` +
     '&$count=true&$top=999';
 
@@ -50,24 +52,34 @@ async function fetchOrgUsers() {
       name: u.displayName || '(名前未設定)',
       email: u.mail || '',
       dept: u.department || '',
+      title: u.jobTitle || '',
       phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || ''
     }));
 }
 
-const UNASSIGNED_LABEL = '(部門未設定)';
+// 役職(jobTitle)にこれらの語を含む場合は部門を無視し、この語自体を部門扱いにして先頭に表示する
+// (ユーザー指示 2026-09-10)。この順番がそのまま表示順になる
+const PRIORITY_TITLES = ['会長', '社長', '専務'];
 
-/** department属性ごとにグループ化する。空欄は UNASSIGNED_LABEL にまとめ、常に末尾に置く */
+/** 役職優先グループ(会長→社長→専務の順、該当者がいるものだけ)→ 残りをdepartment属性でグループ化。
+    department が空欄の社員は表示しない(ユーザー指示 2026-09-10) */
 function groupByDepartment(users) {
+  const priorityBuckets = new Map(PRIORITY_TITLES.map(t => [t, []]));
   const byDept = new Map();
   users.forEach(u => {
-    const key = u.dept || UNASSIGNED_LABEL;
-    if (!byDept.has(key)) byDept.set(key, []);
-    byDept.get(key).push(u);
+    const matchedTitle = PRIORITY_TITLES.find(t => u.title.includes(t));
+    if (matchedTitle) { priorityBuckets.get(matchedTitle).push(u); return; }
+    if (!u.dept) return;
+    if (!byDept.has(u.dept)) byDept.set(u.dept, []);
+    byDept.get(u.dept).push(u);
   });
   const collator = (a, b) => a.name.localeCompare(b.name, 'ja');
-  const depts = [...byDept.keys()].filter(d => d !== UNASSIGNED_LABEL).sort((a, b) => a.localeCompare(b, 'ja'));
-  if (byDept.has(UNASSIGNED_LABEL)) depts.push(UNASSIGNED_LABEL);
-  return depts.map(dept => ({ dept, members: byDept.get(dept).sort(collator) }));
+  const priorityGroups = PRIORITY_TITLES
+    .filter(t => priorityBuckets.get(t).length)
+    .map(t => ({ dept: t, members: priorityBuckets.get(t).sort(collator) }));
+  const deptGroups = [...byDept.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
+    .map(dept => ({ dept, members: byDept.get(dept).sort(collator) }));
+  return [...priorityGroups, ...deptGroups];
 }
 
 function renderGroups() {
