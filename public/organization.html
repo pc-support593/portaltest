@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>組織図 - 吉村一建設 ポータル</title>
+<title>社員名簿 - 吉村一建設 ポータル</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
       <div style="width:30px;height:30px;border-radius:7px;background:#2e6fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">吉</div>
       <span style="font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap">吉村一建設 ポータル</span>
       <span style="font-size:13px;color:#7f96b3">｜</span>
-      <span style="font-size:13px;color:#a8bdd6;white-space:nowrap">組織図</span>
+      <span style="font-size:13px;color:#a8bdd6;white-space:nowrap">社員名簿</span>
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:18px">
       <a href="index.html" class="nav-link">← ポータルへ戻る</a>
@@ -31,10 +31,19 @@
     </div>
   </header>
 
-  <div style="max-width:800px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:10px;flex:1">
-    <h1 style="margin:0;font-size:19px;font-weight:700">組織図</h1>
-    <p style="margin:0;font-size:12px;color:#8a99a8">部門ごとにメンバーの一覧を表示します。</p>
-    <section id="org-tree" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden"></section>
+  <div style="max-width:1200px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:10px;flex:1">
+    <h1 style="margin:0;font-size:19px;font-weight:700">社員名簿</h1>
+    <p style="margin:0;font-size:12px;color:#8a99a8">部門ごとにメンバーの一覧を表示します。右側が「ゆめすみか」、左側がそれ以外です。</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <section style="display:flex;flex-direction:column;gap:8px">
+        <h2 style="margin:0;font-size:13px;font-weight:700;color:#6b7d8f">吉村一建設</h2>
+        <div id="org-left" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden"></div>
+      </section>
+      <section style="display:flex;flex-direction:column;gap:8px">
+        <h2 style="margin:0;font-size:13px;font-weight:700;color:#6b7d8f">ゆめすみか</h2>
+        <div id="org-right" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden"></div>
+      </section>
+    </div>
   </div>
 </div>
 <script src="js/common.js"></script>
