@@ -83,9 +83,12 @@ const PERSON_OVERRIDES = {
 
 // 特定の個人を、Entra ID側のdepartment属性に関わらず指定の部門に固定する特別対応
 // (メールアドレスの完全一致・大文字小文字を区別しない)。
-// 2026-09-10: naofumi_kotani@yumesumika.com を設計企画部に固定(ユーザー指示。Entra ID側の
-// department属性が実際の所属と異なる/未設定のための個別対応)
-const DEPARTMENT_OVERRIDES = { 'naofumi_kotani@yumesumika.com': '設計企画部' };
+// 2026-09-10: naofumi_kotani@yumesumika.com / kotani@yoshimuraichi.com をどちらも設計企画部に
+// 固定(ユーザー指示。Entra ID側のdepartment属性が実際の所属と異なる/未設定のための個別対応)
+const DEPARTMENT_OVERRIDES = {
+  'naofumi_kotani@yumesumika.com': '設計企画部',
+  'kotani@yoshimuraichi.com': '設計企画部'
+};
 
 /** メールアドレスの最初の「-」より後ろの部分(ローマ字の姓)を並び順のキーにする
     (ユーザー指示 2026-09-10)。漢字の氏名はEntra IDにふりがな属性が無く、Unicode上の
