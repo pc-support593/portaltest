@@ -69,9 +69,16 @@ const PRIORITY_TITLES = ['会長', '社長', '専務'];
 // 氏名の表記ゆれ(姓名間のスペース等)に影響されないよう、氏名ではなくメールアドレスで判定する。
 // 2026-09-10: 森下直美(n-morishita@yoshimuraichi.com)を、メールドメインは@yoshimuraichi.comの
 // ままだが実務はゆめすみかのため、右列(ゆめすみか)の「ゆめすみか常務取締役」として
-// 会長/社長/専務と同様の先頭見出し扱いで表示する(ユーザー指示)
+// 会長/社長/専務と同様の先頭見出し扱いで表示する(ユーザー指示)。
+// 逆に、不動産部・㈱来夢エンジニアの3名はメールドメインが@yumesumika.comだが実務は
+// 吉村一建設側のため左列に表示する(groupを指定しないので部門名は実際のdepartment属性のまま。
+// ユーザー指示 2026-09-10。これにより右列の不動産部・来夢エンジニアのグループは
+// 該当者がいなくなり自動的に表示されなくなる)
 const PERSON_OVERRIDES = {
-  'n-morishita@yoshimuraichi.com': { column: 'right', group: 'ゆめすみか常務取締役' }
+  'n-morishita@yoshimuraichi.com': { column: 'right', group: 'ゆめすみか常務取締役' },
+  's-tada@yumesumika.com': { column: 'left' },
+  'katsu-oshima@yumesumika.com': { column: 'left' },
+  's-yamanaka@yumesumika.com': { column: 'left' }
 };
 
 // 特定の個人を、Entra ID側のdepartment属性に関わらず指定の部門に固定する特別対応
