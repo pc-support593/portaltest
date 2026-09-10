@@ -87,6 +87,18 @@ const PERSON_OVERRIDES = {
 // department属性が実際の所属と異なる/未設定のための個別対応)
 const DEPARTMENT_OVERRIDES = { 'naofumi_kotani@yumesumika.com': '設計企画部' };
 
+/** メールアドレスの最初の「-」より後ろの部分(ローマ字の姓)を並び順のキーにする
+    (ユーザー指示 2026-09-10)。漢字の氏名はEntra IDにふりがな属性が無く、Unicode上の
+    文字コード順にしかならず正しい五十音順にできない(実際に検証済み: 「友藤/東/森本/千葉/巽/
+    森下/小谷」を日本語ロケールでソートすると本来の読み順と一致しなかった)ため、
+    このメールアドレスの命名規則(頭文字-姓のローマ字)を五十音順の代用として使う。
+    「-」が無いメールアドレス(例: naofumi_kotani@…)は@より前の全体をそのまま使う */
+function sortKeyFromEmail(email) {
+  const local = String(email || '').split('@')[0].toLowerCase();
+  const idx = local.indexOf('-');
+  return idx >= 0 ? local.slice(idx + 1) : local;
+}
+
 /** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
     → 残りをdepartment属性(DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
     部門が空欄の社員は表示しない */
@@ -112,7 +124,7 @@ function buildGroups(users, priorityTitles) {
     byDept.get(dept).push(u);
   });
 
-  const collator = (a, b) => a.name.localeCompare(b.name, 'ja');
+  const collator = (a, b) => sortKeyFromEmail(a.email).localeCompare(sortKeyFromEmail(b.email));
   const priorityKeys = [...priorityTitles.filter(t => priorityBuckets.has(t)), ...overrideOrder];
   const priorityGroups = priorityKeys.map(key => ({ dept: key, members: priorityBuckets.get(key).sort(collator) }));
   const deptGroups = [...byDept.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
