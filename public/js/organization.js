@@ -5,7 +5,8 @@
 // 役職(jobTitle)に「会長」「社長」「専務」を含む社員は部門を無視してその役職を部門扱いにし、
 // 先頭(会長→社長→専務の順)に表示する。department が空欄の社員は表示しない(2026-09-10)。
 // 2列表示(2026-09-10・ユーザー指示): メールアドレスが @yumesumika.com の社員は右列(ゆめすみか)、
-// それ以外は左列に表示する。
+// それ以外は左列に表示する。PERSON_OVERRIDES(メールアドレス指定)がある人はメールドメインより
+// そちらを優先する(実務はゆめすみかだがメールドメインが@yoshimuraichi.comの人向け)。
 // 会議室・社用車(Exchangeリソースメールボックス)は roomsData.js の実マスタと突き合わせて除外する
 // (accountEnabledでの判定は、この組織のリソースメールボックスが有効化されたままのため機能しなかった)。
 'use strict';
@@ -63,38 +64,33 @@ async function fetchOrgUsers() {
 // この順番がそのまま表示順になる(左列=吉村一建設側で使用)
 const PRIORITY_TITLES = ['会長', '社長', '専務'];
 
-/** 氏名の表記ゆれ(姓名間の半角/全角スペースの有無)を吸収するための正規化 */
-function normalizeName(s) {
-  return String(s || '').replace(/[\s　]+/g, '');
-}
-
-// 特定の個人を、部門・役職に関わらず固定の見出しに割り当てる特別対応(氏名の完全一致・
-// スペースの有無は無視して判定。2026-09-10: 森下直美をゆめすみか常務取締役として、
-// 会長/社長/専務と同様の先頭見出し扱いにする=ユーザー指示)。
-// Entra ID側で表示名を変更した場合はこのMapのキーも合わせて直すこと(キーは normalizeName 済みで書く)
-const NAME_OVERRIDES = { [normalizeName('森下 直美')]: 'ゆめすみか常務取締役' };
+// 特定の個人を、実際のEntra ID属性(部門・メールドメイン)に関わらず固定の列・見出しに
+// 割り当てる特別対応(メールアドレスの完全一致・大文字小文字を区別しない)。
+// 氏名の表記ゆれ(姓名間のスペース等)に影響されないよう、氏名ではなくメールアドレスで判定する。
+// 2026-09-10: 森下直美(n-morishita@yoshimuraichi.com)を、メールドメインは@yoshimuraichi.comの
+// ままだが実務はゆめすみかのため、右列(ゆめすみか)の「ゆめすみか常務取締役」として
+// 会長/社長/専務と同様の先頭見出し扱いで表示する(ユーザー指示)
+const PERSON_OVERRIDES = {
+  'n-morishita@yoshimuraichi.com': { column: 'right', group: 'ゆめすみか常務取締役' }
+};
 
 // 特定の個人を、Entra ID側のdepartment属性に関わらず指定の部門に固定する特別対応
-// (メールアドレスの@より前の部分の完全一致・大文字小文字を区別しない)。
-// 2026-09-10: naofumi_kotani を設計企画部に固定(ユーザー指示。Entra ID側のdepartment属性が
-// 実際の所属と異なる/未設定のための個別対応)
-const DEPARTMENT_OVERRIDES = { 'naofumi_kotani': '設計企画部' };
+// (メールアドレスの完全一致・大文字小文字を区別しない)。
+// 2026-09-10: naofumi_kotani@yumesumika.com を設計企画部に固定(ユーザー指示。Entra ID側の
+// department属性が実際の所属と異なる/未設定のための個別対応)
+const DEPARTMENT_OVERRIDES = { 'naofumi_kotani@yumesumika.com': '設計企画部' };
 
-function emailLocalPart(email) {
-  return String(email || '').split('@')[0].toLowerCase();
-}
-
-/** 役職優先グループ(NAME_OVERRIDESの氏名一致 → priorityTitlesの語順、該当者がいるものだけ)
+/** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
     → 残りをdepartment属性(DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
     部門が空欄の社員は表示しない */
 function buildGroups(users, priorityTitles) {
   const priorityBuckets = new Map();
-  const overrideOrder = []; // NAME_OVERRIDES由来の見出しは priorityTitles の後ろ・出現順に追加
+  const overrideOrder = []; // PERSON_OVERRIDES由来の見出しは priorityTitles の後ろ・出現順に追加
   const byDept = new Map();
 
   users.forEach(u => {
-    const overrideKey = NAME_OVERRIDES[normalizeName(u.name)];
-    const key = overrideKey || priorityTitles.find(t => u.title.includes(t));
+    const person = PERSON_OVERRIDES[u.email.toLowerCase()];
+    const key = (person && person.group) || priorityTitles.find(t => u.title.includes(t));
     if (key) {
       if (!priorityBuckets.has(key)) {
         priorityBuckets.set(key, []);
@@ -103,7 +99,7 @@ function buildGroups(users, priorityTitles) {
       priorityBuckets.get(key).push(u);
       return;
     }
-    const dept = DEPARTMENT_OVERRIDES[emailLocalPart(u.email)] || u.dept;
+    const dept = DEPARTMENT_OVERRIDES[u.email.toLowerCase()] || u.dept;
     if (!dept) return;
     if (!byDept.has(dept)) byDept.set(dept, []);
     byDept.get(dept).push(u);
@@ -148,10 +144,16 @@ function renderAll() {
   renderColumn('org-right', state.right);
 }
 
-/** @yumesumika.com は右列(ゆめすみか)、それ以外は左列に振り分ける(ユーザー指示 2026-09-10) */
+/** @yumesumika.com は右列(ゆめすみか)、それ以外は左列に振り分ける(ユーザー指示 2026-09-10)。
+    PERSON_OVERRIDESで列が指定されている場合はメールドメインより優先する
+    (森下直美はメールドメインが@yoshimuraichi.comのままだが右列に表示するため) */
 function splitByCompany(users) {
-  const right = users.filter(u => u.email.toLowerCase().endsWith('@yumesumika.com'));
-  const left = users.filter(u => !u.email.toLowerCase().endsWith('@yumesumika.com'));
+  const right = [], left = [];
+  users.forEach(u => {
+    const person = PERSON_OVERRIDES[u.email.toLowerCase()];
+    const isRight = person ? person.column === 'right' : u.email.toLowerCase().endsWith('@yumesumika.com');
+    (isRight ? right : left).push(u);
+  });
   return { left, right };
 }
 
