@@ -63,21 +63,37 @@ async function fetchOrgUsers() {
 // この順番がそのまま表示順になる(左列=吉村一建設側で使用)
 const PRIORITY_TITLES = ['会長', '社長', '専務'];
 
-// 特定の個人を、部門・役職に関わらず固定の見出しに割り当てる特別対応(氏名の完全一致で判定)。
-// 2026-09-10: 森下直美をゆめすみか常務取締役として、会長/社長/専務と同様の先頭見出し扱いにする
-// (ユーザー指示)。表示名の完全一致を条件にしているため、Entra ID側で表示名を変更した場合は
-// このMapのキーも合わせて直すこと
-const NAME_OVERRIDES = { '森下直美': 'ゆめすみか常務取締役' };
+/** 氏名の表記ゆれ(姓名間の半角/全角スペースの有無)を吸収するための正規化 */
+function normalizeName(s) {
+  return String(s || '').replace(/[\s　]+/g, '');
+}
+
+// 特定の個人を、部門・役職に関わらず固定の見出しに割り当てる特別対応(氏名の完全一致・
+// スペースの有無は無視して判定。2026-09-10: 森下直美をゆめすみか常務取締役として、
+// 会長/社長/専務と同様の先頭見出し扱いにする=ユーザー指示)。
+// Entra ID側で表示名を変更した場合はこのMapのキーも合わせて直すこと(キーは normalizeName 済みで書く)
+const NAME_OVERRIDES = { [normalizeName('森下 直美')]: 'ゆめすみか常務取締役' };
+
+// 特定の個人を、Entra ID側のdepartment属性に関わらず指定の部門に固定する特別対応
+// (メールアドレスの@より前の部分の完全一致・大文字小文字を区別しない)。
+// 2026-09-10: naofumi_kotani を設計企画部に固定(ユーザー指示。Entra ID側のdepartment属性が
+// 実際の所属と異なる/未設定のための個別対応)
+const DEPARTMENT_OVERRIDES = { 'naofumi_kotani': '設計企画部' };
+
+function emailLocalPart(email) {
+  return String(email || '').split('@')[0].toLowerCase();
+}
 
 /** 役職優先グループ(NAME_OVERRIDESの氏名一致 → priorityTitlesの語順、該当者がいるものだけ)
-    → 残りをdepartment属性でグループ化。department が空欄の社員は表示しない */
+    → 残りをdepartment属性(DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
+    部門が空欄の社員は表示しない */
 function buildGroups(users, priorityTitles) {
   const priorityBuckets = new Map();
   const overrideOrder = []; // NAME_OVERRIDES由来の見出しは priorityTitles の後ろ・出現順に追加
   const byDept = new Map();
 
   users.forEach(u => {
-    const overrideKey = NAME_OVERRIDES[u.name];
+    const overrideKey = NAME_OVERRIDES[normalizeName(u.name)];
     const key = overrideKey || priorityTitles.find(t => u.title.includes(t));
     if (key) {
       if (!priorityBuckets.has(key)) {
@@ -87,9 +103,10 @@ function buildGroups(users, priorityTitles) {
       priorityBuckets.get(key).push(u);
       return;
     }
-    if (!u.dept) return;
-    if (!byDept.has(u.dept)) byDept.set(u.dept, []);
-    byDept.get(u.dept).push(u);
+    const dept = DEPARTMENT_OVERRIDES[emailLocalPart(u.email)] || u.dept;
+    if (!dept) return;
+    if (!byDept.has(dept)) byDept.set(dept, []);
+    byDept.get(dept).push(u);
   });
 
   const collator = (a, b) => a.name.localeCompare(b.name, 'ja');
