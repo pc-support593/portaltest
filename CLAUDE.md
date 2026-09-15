@@ -17,7 +17,7 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 
 - `server.js` — 全API(config/me/content/admin CRUD/users検索/bookings CRUD/layout)+ 静的配信 + entraモードのトークン検証
 - `src/db.js` — スキーマ + ハンドオフ準拠のシードデータ
-- `public/js/roomsData.js` — **拠点・会議室マスタの単一の正**(実際のExchange会議室リソース。5拠点33室・email付き)。`rooms.js` と `schedule.js` の両方が読み込む(schedule.htmlとrooms.htmlの両方でscriptタグ読込。マスタが増減したらここ1箇所を直す)。あわせて `rooms.js` 用のダミー予約データと純粋関数 `bookingsFor(roomId, date, extraBookings)`、および`rooms.js`/`schedule.js`共用の`encodeEventBody(content, guests)`/`decodeEventBody(bodyText)`(予定本文=内容+外部参加者の相互変換。2026-08-22追加)を持つ。**schedule.js側で同名のconst(SITES/ROOMS等)を再宣言しないこと**(グローバル衝突でSyntaxErrorになる)。`bookingsFor` の期間別の返り値(ユーザー指示・2026-08-21):
+- `public/js/roomsData.js` — **拠点・会議室マスタの単一の正**(実際のExchange会議室リソース。6拠点35室・email付き。2026-09-15: 泉佐野展示場=2室を追加)。`rooms.js` と `schedule.js` の両方が読み込む(schedule.htmlとrooms.htmlの両方でscriptタグ読込。マスタが増減したらここ1箇所を直す)。あわせて `rooms.js` 用のダミー予約データと純粋関数 `bookingsFor(roomId, date, extraBookings)`、および`rooms.js`/`schedule.js`共用の`encodeEventBody(content, guests)`/`decodeEventBody(bodyText)`(予定本文=内容+外部参加者の相互変換。2026-08-22追加)を持つ。**schedule.js側で同名のconst(SITES/ROOMS等)を再宣言しないこと**(グローバル衝突でSyntaxErrorになる)。`bookingsFor` の期間別の返り値(ユーザー指示・2026-08-21):
   - **〜2026-06-30**: 曜日パターンのダミー `PATTERNS` + 実予約(サーバーSQLite)
   - **2026-07-01〜2026-08-23**: `SAMPLE_HISTORY`(1日1〜5件・固定シードで一度だけ生成したフローズンなランダムサンプル。再生成しない)**のみ**。実予約は反映せず、`rooms.js`側のフォームでも予約操作不可(`formError`でブロック)
   - **2026-08-24〜**: `rooms.js`が渡す`extraBookings`次第(下記参照)。entraモードなら実際のExchange予約、devモードならサーバーSQLite保存のサンプル動作
@@ -33,11 +33,11 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
   - 予約フォームは「件名」とは別に**「内容」欄(自由記述。任意)**を持つ(2026-08-22追加)。参加者は「社内メンバー」(`searchMembers`。§共通ファイル参照)と「外部参加者」(`guests`。自由入力の別枠、社外顧客等)を分けて入力する。**内容・外部参加者はどちらもExchangeの予定本文(body)1つにまとめて保存**する(`roomsData.js`の`encodeEventBody`/`decodeEventBody`で相互変換。件名と混同しないよう分離)。SQLite保存(サンプル・旧データ)の予約にも`content`列で同様に保持する
 - `public/js/schedule.js` — スケジュール画面。**個人のスケジュール・拠点別の会議室スケジュールとも実データ**。
   - 個人: Graph `/me/calendarView` で表示、`/me/events` で作成
-  - 会議室マスタ: ファイル冒頭の `SITES`/`ROOMS_NAMES_BY_SITE` に**実際のExchange会議室リソースをハードコード**(5拠点33室。平野9・花博7・西宮9・中百舌鳥6・福田2。ドメインは`yumesumika.com`)。マスタが増減したら Exchange 管理者に確認しこの配列を直す(`Get-Mailbox -RecipientTypeDetails RoomMailbox` で最新一覧を取得できる)。Graph `Place.Read.All` は使わない設計(ハードコード運用と決定済み)ため不要
-  - 空き状況: `fetchRoomBusy()`(共通処理`fetchCalendarViewBusy`)が各会議室自身の予定表(`GET /users/{room}/calendarView`)を33室ぶん並行取得し、`state.roomBusy`(roomId→busy配列)に格納。**件名・予約者名まで表示**(2026-08-22変更。旧`getSchedule`方式=空き時間のみ取得、から切替。全会議室にReviewer権限を付与済みのため、拠点代表者(`SITE_REPS`)に限らず誰でも件名・予約者を見られる)。`getScheduleBusy`/`getSchedule`は不使用(削除済み)
+  - 会議室マスタ: ファイル冒頭の `SITES`/`ROOMS_NAMES_BY_SITE` に**実際のExchange会議室リソースをハードコード**(6拠点35室。平野9・花博7・西宮9・中百舌鳥6・福田2・泉佐野2。ドメインは`yumesumika.com`。2026-09-15: 泉佐野展示場を追加、拠点代表者削除権限=`SITE_REPS`も既存5拠点と同じ担当者=`COMMON_SITE_REPS`+`ADMIN_ALL_EMAIL`で設定)。マスタが増減したら Exchange 管理者に確認しこの配列を直す(`Get-Mailbox -RecipientTypeDetails RoomMailbox` で最新一覧を取得できる)。Graph `Place.Read.All` は使わない設計(ハードコード運用と決定済み)ため不要
+  - 空き状況: `fetchRoomBusy()`(共通処理`fetchCalendarViewBusy`)が各会議室自身の予定表(`GET /users/{room}/calendarView`)を35室ぶん並行取得し、`state.roomBusy`(roomId→busy配列)に格納。**件名・予約者名まで表示**(2026-08-22変更。旧`getSchedule`方式=空き時間のみ取得、から切替。全会議室にReviewer権限を付与済みのため、拠点代表者(`SITE_REPS`)に限らず誰でも件名・予約者を見られる)。`getScheduleBusy`/`getSchedule`は不使用(削除済み)
   - 予約作成: 「会議室を使用する」チェック時、選択した会議室を `attendees` に `type: "resource"` で追加して `POST /me/events`。**Exchange側が空きなら自動承諾・埋まっていれば自動辞退する本物の予約**(サンプルではない。サーバー側のSQLite保存は使わない)。場所は `locationEmailAddress` で会議室本体と紐づける(文字列だけだと自動承諾時に場所が二重表記になる)
   - 重複の事前チェック: 送信直前に `fetchRoomBusy` で最新の空き状況を取り直し、重複していたら**予定自体を作らずエラー表示**(変更時は自分の元の時間帯を重複扱いしない)。すり抜けた場合の最終判定はExchange(自動辞退。ただし主催者の予定表には残る=Outlook標準挙動)
-  - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(calendarViewの `showAs === 'tentative'`)。全33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)
+  - 会議室が未承諾の予定は「承諾待ち」バッジ+半透明で表示(calendarViewの `showAs === 'tentative'`)。既存33室は `AutoAccept` + `AllowConflicts: False` 設定済み(Exchange側)。**2026-09-15追加の泉佐野2室(`izumisano_room1`/`izumisano_room2`@yumesumika.com)は、この設定・Reviewer権限・拠点代表者のEditor権限がExchange側で未確認**(§14に準じたPowerShellの実行案内済み。実行状況は`Portal/未実行.txt`参照)
   - **既知の制約(2026-08-21確認)**: Exchange側が**過去日時の会議室予約を処理しない**(会議室が出席者として一切追加されず、空き状況取得でも常に空きのまま)。ポータル側のコードには過去日時を防ぐ処理がなく、検証時は必ず未来の時間帯で予約すること
   - 予約状況セクションには**表示切り替えタブ**(`GRID_TABS`: ゆめすみか展示場/社用車/吉村一建設会議室。2026-08-22追加)があり、**見出し(#grid-title)は選択中のタブに合わせて「(タブ名)の予約状況」に自動で切り替わる**。**初期タブはサインインドメインで決まる**(@yoshimuraichi.com→吉村一建設会議室、@yumesumika.com→ゆめすみか展示場。ユーザー指示 2026-08-22)。「社用車」は**実データ**(roomsData.jsの`CAR_GROUPS`/`CARS`=9台を`fetchCalendarViewBusy`で取得し、所有部門(総務/建築営業部/設計企画部/西宮/千早赤坂村/平野)ごとにカード表示。`carsGridHtml`。2026-08-22実装。Exchange側は備品(EquipmentMailbox)として登録済み)。「吉村一建設会議室」は**実データ**(roomsData.jsの`YOSHIMURA_GROUPS`/`YOSHIMURA_ROOMS`=10室を`fetchCalendarViewBusy`で取得し、区分け(アネックスプラザ/ゲストプラザ/本社/社長室/会長室)ごとにカード表示。`yoshimuraGridHtml`)。予約の作成・変更は`rooms.html?view=yoshimura`/`rooms.html?view=cars`(共通化した予約カレンダー)から行う。**セクション右上の予約ページへのリンク(#rooms-link)は選択中のタブに連動**(ゆめすみか→rooms.html、吉村一建設→rooms.html?view=yoshimura、社用車→rooms.html?view=cars)。ゆめすみか展示場の表示(`siteGridHtml`)はメイン画面用。**予定作成モーダルは「会議室・社用車」欄(`#f-resource-type`)でゆめすみか展示場/吉村一建設会議室/社用車のいずれかを選べる**(`RESOURCE_TYPES`。2026-08-22追加。1画面のフォームから3マスタすべて予約可能)。選択すると「会議室」欄(表示ラベルは種別により会議室/社用車に変わる)が`<select>`のプルダウンになり、`roomOptionsHtml`(旧`freeRoomsHtml`をプルダウン用に変更。2026-09-07)が選択中の拠点/区分け/部門・時間帯で**空いているものだけ**を選択肢として表示する(開始/終了/種別/拠点の変更に追随。種別や拠点を切り替えると選択はクリアされる)。空き状況取得は`fetchResourceBusy`(内部で共通の`fetchCalendarViewBusy`を使用)。**既知の不具合修正(2026-09-07)**: 種別(`#f-resource-type`)を切り替えた際、`f.site`を空文字のままにしていたため、`<select>`が見た目上は先頭の拠点/区分け/部門を選択済み表示するのに内部状態と食い違い、会議室一覧が出ない不具合があった。切替時に`f.site`を先頭の拠点/区分け/部門IDで初期化するよう修正済み。**時間の入力は30分単位、開始時間を選ぶと終了時間が自動で開始+1時間(上限21:00)になる**(rooms.jsのフォーム・日別ポップアップも同じ挙動。ユーザー指示 2026-08-22)。予定作成フォームは「件名」とは別に「内容」欄(自由記述・任意)を持ち(2026-08-22追加)、参加者は`rooms.js`と同様に「社内メンバー」(`searchMembers`)と「外部参加者」(自由入力)を分けて入力する。内容・外部参加者は`roomsData.js`の`encodeEventBody`/`decodeEventBody`で1つの予定本文(body)にまとめて保存・復元する
 - `public/js/portal.js` — トップ画面。「社内規程」枠(`sec-policies`。2026-09-07追加)は「クイックリンク」枠(`sec-links`)と**全く同じ仕組み**(頭文字・名称・URL、管理画面からCRUD)で、表示は共通関数`renderTileGrid(elId, items)`(旧`renderLinks`を汎用化)で描画する。データは`links`とは別テーブル(`policies`)で管理する。「今日の予定」も実データ(Graph `/me/calendarView`)。お知らせのトップ表示ルール(ユーザー指示 2026-08-21): **掲載期限(`expires`。管理画面で入力)があればその日まで表示**、未入力なら掲載日が過ぎたら非表示(日付なしは表示継続)。過去分は「すべて見る」の一覧モーダル(`openNewsListModal`。全件・新しい順)から見る。全社スケジュールは**今月分だけトップに表示**(日付なしは表示継続)し、全期間は「年間予定表」の一覧モーダル(`openScheduleListModal`。日付昇順・月ごとの見出し付き)から見る(ユーザー指示 2026-08-21)。セクション配置はドラッグ&ドロップで並び替え可能(ドラッグハンドル`.drag-handle`のみ起点、ネイティブHTML5 DnD)。並び順は`/api/layout`でユーザー単位(email)にサーバー保存し、他端末でも同じ配置になる
@@ -76,12 +76,23 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
     - **プライバシー影響**: ①適用後は全社員が全会議室の予定の件名・主催者・出席者を参照可能になる(今回の要望どおりだが確認済みであることの記録)
     - ①の副作用: `schedule.js`の`getSchedule`でも件名表示が改善される場合がある(既存の「件名は表示されない場合がある」の状況が緩和される)
 
+15. **泉佐野展示場(2室)の追加(2026-09-15・ユーザー指示)**: `roomsData.js`の`SITES`/`ROOM_NAMES_BY_SITE`に`izumisano`(泉佐野展示場。`izumisano_room1`/`izumisano_room2`@yumesumika.com)を追加、`schedule.js`の`SITE_REPS.izumisano`を既存5拠点と同じ担当者(`COMMON_SITE_REPS`+`ADMIN_ALL_EMAIL`)に設定済み。**Exchange側の前提作業(実行状況未確認。`Portal/未実行.txt`参照)**:
+    - §14①②の2つの`Get-Mailbox -RecipientTypeDetails RoomMailbox`一括コマンドは全会議室を動的に列挙するため、**同じコマンドを再実行するだけ**でこの2室にも自動的に適用される(新しいコマンドを作る必要はない)
+    - §12のEditor権限(拠点代表者の削除機能)は、この2室分を個別に実行する必要がある:
+      ```powershell
+      foreach ($room in @('izumisano_room1@yumesumika.com','izumisano_room2@yumesumika.com')) {
+        foreach ($user in @('k-iwatani@yumesumika.com','m-sakahara@yumesumika.com','y-nishida@yumesumika.com','y-honda@yoshimuraichi.com')) {
+          Add-MailboxFolderPermission -Identity "$($room):\Calendar" -User $user -AccessRights Editor
+        }
+      }
+      ```
+
 ## 今後のロードマップ(統括計画)
 
 1. ✅ プロジェクト化・devモードで4画面稼働
 2. ✅ テスト用 Entra ID アプリ登録(台帳記録: Yoshimura-Portal)
 3. ✅ MSALログイン有効化(`AUTH_MODE=entra`)+ サーバー側トークン検証(jose)
 4. ✅ 個人の予定表連携(表示: `/me/calendarView`、作成: `/me/events`。会議室を含まない予定のみ)
-5. ✅ 会議室の実データ化(`schedule.js`。5拠点33室の実Exchangeリソース+`getSchedule`+resource出席者予約)。`rooms.js`も2026-08-24以降・entraモードで実データ化済み(2026-08-21指示。§14のExchange側前提作業は未実行)。7/1〜8/23とdevモードはデザインサンプルのまま維持
+5. ✅ 会議室の実データ化(`schedule.js`。6拠点35室の実Exchangeリソース+`getSchedule`+resource出席者予約)。`rooms.js`も2026-08-24以降・entraモードで実データ化済み(2026-08-21指示。§14のExchange側前提作業は未実行)。7/1〜8/23とdevモードはデザインサンプルのまま維持
 6. ✅ 社内メンバー検索の実データ化(`User.ReadBasic.All` + Graph `/users`。**Azure側でのAPI権限追加+管理者同意が未実施の場合は動作しない**。§0参照)
 7. webinputsystem(経費精算)へのSSO遷移確認

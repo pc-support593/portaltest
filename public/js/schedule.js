@@ -38,7 +38,8 @@ const SITE_REPS = {
   hanahaku: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
   nishinomiya: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
   nakamozu: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
-  fukuda: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL]
+  fukuda: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL],
+  izumisano: [...COMMON_SITE_REPS, ADMIN_ALL_EMAIL]
 };
 // 吉村一建設会議室の区分け別担当者(現在はADMIN_ALL_EMAILのみ。個別担当者を追加する場合はここに追記)
 const YOSHIMURA_REPS = {

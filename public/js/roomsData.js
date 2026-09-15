@@ -17,7 +17,8 @@ const SITES = [
   { id: 'hanahaku', name: '花博展示場' },
   { id: 'nishinomiya', name: '西宮展示場' },
   { id: 'nakamozu', name: '中百舌鳥展示場' },
-  { id: 'fukuda', name: '福田展示場' }
+  { id: 'fukuda', name: '福田展示場' },
+  { id: 'izumisano', name: '泉佐野展示場' }
 ];
 
 const ROOM_NAMES_BY_SITE = {
@@ -63,6 +64,10 @@ const ROOM_NAMES_BY_SITE = {
   fukuda: [
     ['1階', 'Fukuda_room1@yumesumika.com'],
     ['2階', 'Fukuda_room2@yumesumika.com']
+  ],
+  izumisano: [
+    ['1F', 'izumisano_room1@yumesumika.com'],
+    ['2F', 'izumisano_room2@yumesumika.com']
   ]
 };
 
