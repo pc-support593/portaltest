@@ -5,6 +5,8 @@
 // 表示形式は「日単位×2週間」の表(2026-10-02変更。ユーザー指示: 時間単位ではなく日単位で
 // 2週分を見たい)。各日のマスには、その日の予定の件名を簡潔に並べる(複数件は改行)。
 // 必要な追加Graph権限: GroupMember.Read.All(委任。グループメンバー一覧の取得に必要。要管理者同意)。
+// 「本社」タブ(2026-10-02追加)のみMS365グループを介さず、指定されたメールアドレスを直接
+// メンバーとして扱う(ユーザー指示。表示名の取得は既存のUser.Read.Allで足り新規権限は不要)。
 // 予定の件名まで表示するには、各スタッフの個人カレンダーにもReviewer権限の付与が必要
 // (会議室と同じ要領。未実行の場合は403になりその人の行にエラー表示。powershell.txt参照)。
 'use strict';
@@ -16,13 +18,16 @@ const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 // 設計(sekkei)は hidden:true で一旦タブから非表示にしている(ユーザー指示 2026-10-02。
 // 後で使う可能性があるため、仕組み(グループ定義・取得ロジック)はそのまま残す。
 // 再表示する場合は hidden: true の行を削除するだけでよい)
+// 「本社」(honsha)はMS365グループを介さず、指定された特定メンバーを直接扱う
+// (ユーザー指示 2026-10-02。groupMailの代わりにmembers配列を持たせる)
 const SHOWROOM_GROUPS = [
   { id: 'fukuda', name: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
   { id: 'nakamozu', name: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
   { id: 'hirano', name: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
-  { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true }
+  { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true },
+  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com'] }
 ];
 
 /** タブに表示する(非表示扱いでない)グループ一覧 */
@@ -86,6 +91,28 @@ async function fetchGroupMembers(groupMail) {
   }
   const collator = (a, b) => (a.displayName || '').localeCompare(b.displayName || '', 'ja');
   return members.filter(m => m.mail).sort(collator).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail }));
+}
+
+/** 指定したメールアドレスのユーザー情報(表示名)を個別に取得する(MS365グループを介さない
+    固定メンバーリスト用。2026-10-02追加。既存のUser.Read.Allで足りるため新規権限は不要)。
+    1人ずつtry/catchし、取得に失敗した人はメールアドレスをそのまま表示名にする */
+async function fetchStaticMembers(emails) {
+  const token = await Auth.getGraphToken(['User.Read.All']);
+  const results = await Promise.all(emails.map(async email => {
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(await graphErrorMessage(res));
+      const u = await res.json();
+      return { id: u.id, name: u.displayName || email, email: u.mail || email };
+    } catch (e) {
+      console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
+      return { id: email, name: email, email };
+    }
+  }));
+  const collator = (a, b) => (a.name || '').localeCompare(b.name || '', 'ja');
+  return results.sort(collator);
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで
@@ -187,7 +214,9 @@ async function loadMembers() {
   if (state.members[state.groupTab]) return;
   const group = SHOWROOM_GROUPS.find(g => g.id === state.groupTab);
   try {
-    state.members[state.groupTab] = await fetchGroupMembers(group.groupMail);
+    state.members[state.groupTab] = group.members
+      ? await fetchStaticMembers(group.members)
+      : await fetchGroupMembers(group.groupMail);
   } catch (e) {
     console.error(e);
     document.getElementById('timeline').innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
