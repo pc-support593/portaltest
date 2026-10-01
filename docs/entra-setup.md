@@ -55,7 +55,8 @@ Graph連携なしで、本人のMS365アカウントでのサインインと画�
    | `User.Read` | サインインとプロフィール表示 |
    | `User.Read.All` | 社内メンバー検索(予約フォーム)+社員名簿(旧称「組織図」。department属性による部門ごとのグループ表示)。2026-08-22に`User.ReadBasic.All`から引き上げ |
    | `Calendars.ReadWrite` | 今日の予定表示・会議室予約の作成/変更/削除(`getSchedule` / `calendarView` は `Calendars.Read` 相当としてこれに包含) |
-   | `Calendars.ReadWrite.Shared` | 拠点代表者の会議室予約削除機能(§12)、および2026-08-24以降の会議室予約(rooms.js/schedule.js)で会議室自身の予定表(`/users/{room}/calendarView`)を直接読む・書くために使用 ※管理者同意が必要 |
+   | `Calendars.ReadWrite.Shared` | 拠点代表者の会議室予約削除機能(§12)、2026-08-24以降の会議室予約(rooms.js/schedule.js)で会議室自身の予定表(`/users/{room}/calendarView`)を直接読む・書くために使用、2026-10-01〜ゆめすみかスタッフ予定(yumesumikaSchedule.js)で各スタッフの個人予定表を読むためにも使用 ※管理者同意が必要 |
+   | `GroupMember.Read.All` | ゆめすみかスタッフ予定(2026-10-01追加)で、展示場ごとのMS365グループのメンバー一覧を取得するために使用 ※管理者同意が必要 |
 
    (会議室(拠点・部屋)一覧は `Place.Read.All` ではなく `roomsData.js` にハードコードする運用に決定済みのため、`Place.Read.All` は不使用)
 4. 「管理者の同意を与えます」を実行(`Calendars.ReadWrite.Shared` が管理者同意必須のため。他はユーザー同意可能だが、初回サインイン時の同意画面を出さないよう一括で同意しておくのが運用上楽)

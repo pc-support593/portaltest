@@ -278,6 +278,9 @@ function renderGridTabs() {
       roomsLink.textContent = 'ゆめすみか展示場の予約へ';
     }
   }
+  // 「ゆめすみかスタッフ予定」へのリンクは「ゆめすみか展示場」タブのときだけ表示する(2026-10-01追加)
+  const staffScheduleLink = document.getElementById('staff-schedule-link');
+  if (staffScheduleLink) staffScheduleLink.style.display = state.gridTab === 'sites' ? '' : 'none';
   const el = document.getElementById('grid-tabs');
   if (!el) return;
   el.innerHTML = GRID_TABS.map(t => {
