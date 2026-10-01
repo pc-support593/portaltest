@@ -12,15 +12,21 @@
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // 展示場(+設計)ごとのMS365グループ。泉佐野は対応するグループが未作成のため対象外
-// (ユーザー指示 2026-10-01。グループが用意され次第ここに追記する)
+// (ユーザー指示 2026-10-01。グループが用意され次第ここに追記する)。
+// 設計(sekkei)は hidden:true で一旦タブから非表示にしている(ユーザー指示 2026-10-02。
+// 後で使う可能性があるため、仕組み(グループ定義・取得ロジック)はそのまま残す。
+// 再表示する場合は hidden: true の行を削除するだけでよい)
 const SHOWROOM_GROUPS = [
   { id: 'fukuda', name: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
   { id: 'nakamozu', name: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
   { id: 'hirano', name: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
-  { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com' }
+  { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true }
 ];
+
+/** タブに表示する(非表示扱いでない)グループ一覧 */
+function visibleGroups() { return SHOWROOM_GROUPS.filter(g => !g.hidden); }
 
 const DAYS_SPAN = 14; // 2週間分
 
@@ -42,7 +48,7 @@ function windowLabel(startDate) {
 }
 
 const state = {
-  groupTab: SHOWROOM_GROUPS[0].id,
+  groupTab: visibleGroups()[0].id,
   date: new Date(), // 表示する2週間の開始日
   members: {},      // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
   busy: null        // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
@@ -135,7 +141,7 @@ function renderGroupTabs() {
   const current = SHOWROOM_GROUPS.find(g => g.id === state.groupTab) || SHOWROOM_GROUPS[0];
   if (title) title.textContent = `${current.name}のスタッフ予定`;
   const el = document.getElementById('group-tabs');
-  el.innerHTML = SHOWROOM_GROUPS.map(g => {
+  el.innerHTML = visibleGroups().map(g => {
     const sel = g.id === state.groupTab;
     return `<button class="hv-site" data-group-tab="${g.id}" style="border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">${esc(g.name)}</button>`;
   }).join('');
