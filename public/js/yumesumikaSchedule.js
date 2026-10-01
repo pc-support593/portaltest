@@ -9,6 +9,8 @@
 // メンバーとして扱う(ユーザー指示。表示名の取得は既存のUser.Read.Allで足り新規権限は不要)。
 // 予定の件名まで表示するには、各スタッフの個人カレンダーにもReviewer権限の付与が必要
 // (会議室と同じ要領。未実行の場合は403になりその人の行にエラー表示。powershell.txt参照)。
+// スタッフ予定の下に、その拠点の会議室予約状況も表示する(2026-10-02追加。ユーザー指示。
+// ゆめすみか展示場の5拠点タブのみ対象。「本社」タブはメンバー表示のみでよいとのこと)。
 'use strict';
 
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -54,10 +56,20 @@ function windowLabel(startDate) {
 
 const state = {
   groupTab: visibleGroups()[0].id,
-  date: new Date(), // 表示する2週間の開始日
+  date: new Date(), // 表示する2週間の開始日(会議室セクションは、このうち開始日ぶんを表示する)
   members: {},      // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
-  busy: null        // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
+  busy: null,       // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
+  roomsBusy: null   // roomId -> [{start,end,subject,organizer,tentative}] | null(読み込み中)
 };
+
+/** 会議室予約状況セクションを出すタブ(ゆめすみか展示場の5拠点のみ。本社・設計は対象外。
+    ユーザー指示 2026-10-02: 「本社」タブはメンバー表示のみでよい)。
+    roomsData.js の SITES/siteRooms(ゆめすみか展示場マスタ)をそのまま使う */
+function roomsForTab(groupTab) {
+  const site = SITES.find(s => s.id === groupTab);
+  if (!site) return null;
+  return { label: site.name, rooms: siteRooms(site.id) };
+}
 
 /** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す
     (HTTPステータスだけだと原因切り分けに時間がかかるため) */
@@ -149,6 +161,71 @@ async function fetchPeopleBusy(startDate, people) {
   return map;
 }
 
+/** 指定日の各会議室の予約状況(件名・予約者名)を並行取得する(schedule.jsの
+    fetchCalendarViewBusyと同じ処理。このページではschedule.jsを読み込んでいないため
+    同等の処理をここに持つ)。1件ずつtry/catchし、失敗した会議室は空扱いにする */
+async function fetchRoomsBusy(dateStr, rooms) {
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite.Shared']);
+  const map = {};
+  await Promise.all(rooms.map(async room => {
+    try {
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
+        `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
+        `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
+        '&$select=id,subject,start,end,organizer,showAs&$orderby=start/dateTime';
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
+      if (!r.ok) throw new Error(await graphErrorMessage(r));
+      const d = await r.json();
+      map[room.id] = (d.value || []).map(ev => ({
+        start: ev.start.dateTime.slice(11, 16),
+        end: ev.end.dateTime.slice(11, 16),
+        subject: ev.subject || '(件名なし)',
+        organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
+        tentative: ev.showAs === 'tentative'
+      }));
+    } catch (e) {
+      console.error(`「${room.name}」の予約状況取得に失敗しました`, e);
+      map[room.id] = null;
+    }
+  }));
+  return map;
+}
+
+/** 会議室予約状況セクションのHTML(拠点内の各会議室をカード表示。schedule.jsの
+    resourceGridHtmlを簡略化したもの。このページに削除機能は無いため表示のみ) */
+function roomsSectionHtml(rooms, busyMap) {
+  if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  return rooms.map(r => {
+    const items = busyMap[r.id];
+    const body = items === null
+      ? '<p style="margin:0;padding:4px 0;font-size:12px;color:#c05a5a">取得に失敗しました</p>'
+      : !items.length
+        ? '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>'
+        : items.map(b => `
+          <div style="display:flex;align-items:center;gap:8px;background:${r.color};border-radius:6px;padding:6px 10px${b.tentative ? ';opacity:0.65' : ''}">
+            <span style="font-size:11px;font-weight:700;color:#ffffff;white-space:nowrap">${esc(b.start)}–${esc(b.end)}</span>
+            <span style="font-size:12px;font-weight:500;color:#ffffff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.subject)}${b.organizer ? ' ・ ' + esc(b.organizer) : ''}</span>
+            ${b.tentative ? '<span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap;flex-shrink:0">承諾待ち</span>' : ''}
+          </div>`).join('');
+    return `
+    <div style="border:1px solid #eef1f5;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:9px 15px;background:#f7fafd;border-bottom:1px solid #eef1f5">
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a">${esc(r.name)}</span>
+      </div>
+      <div style="padding:10px 15px;display:flex;flex-direction:column;gap:6px">${body}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderRooms() {
+  const wrap = document.getElementById('rooms-wrap');
+  const info = roomsForTab(state.groupTab);
+  if (!info || Auth.mode !== 'entra') { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  document.getElementById('rooms-title').textContent = `${info.label}の会議室予約状況(${windowDates(state.date)[0].getMonth() + 1}/${windowDates(state.date)[0].getDate()})`;
+  document.getElementById('rooms-section').innerHTML = roomsSectionHtml(info.rooms, state.roomsBusy);
+}
+
 /** 1人・1日ぶんのマスのHTML */
 function dayCellHtml(entry, dateKey, isToday) {
   const base = `flex:1;min-width:100px;padding:6px 6px;border-bottom:1px solid #f2f5f9;border-left:1px solid #f5f7fa;${isToday ? 'background:#f2f6fb' : ''}`;
@@ -228,15 +305,29 @@ async function render() {
   document.getElementById('date-label').textContent = windowLabel(state.date);
   renderGroupTabs();
   state.busy = null;
+  state.roomsBusy = null;
   renderTimeline();
+  renderRooms();
   if (Auth.mode !== 'entra') return;
+
+  const roomsInfo = roomsForTab(state.groupTab);
+  const roomsPromise = roomsInfo ? fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms) : Promise.resolve(null);
+
   try {
     await loadMembers();
-  } catch { return; } // エラーメッセージは loadMembers 内で表示済み
+  } catch {
+    // メンバー一覧のエラーメッセージは loadMembers 内で表示済み。会議室セクションは独立して継続する
+    state.roomsBusy = await roomsPromise;
+    renderRooms();
+    return;
+  }
   renderTimeline();
   const members = state.members[state.groupTab];
-  state.busy = await fetchPeopleBusy(state.date, members);
+  const [busy, roomsBusy] = await Promise.all([fetchPeopleBusy(state.date, members), roomsPromise]);
+  state.busy = busy;
+  state.roomsBusy = roomsBusy;
   renderTimeline();
+  renderRooms();
 }
 
 /** 表示する2週間を前後にずらす(2026-10-02変更: 1日ずつではなく2週間単位でずらす) */
@@ -251,12 +342,21 @@ function shiftWindow(n) {
 async function autoRefresh() {
   if (document.hidden || Auth.mode !== 'entra') return;
   const members = state.members[state.groupTab];
-  if (!members) return;
+  const roomsInfo = roomsForTab(state.groupTab);
   try {
-    const busy = await fetchPeopleBusy(state.date, members);
-    if (JSON.stringify(busy) !== JSON.stringify(state.busy)) {
-      state.busy = busy;
-      renderTimeline();
+    if (members) {
+      const busy = await fetchPeopleBusy(state.date, members);
+      if (JSON.stringify(busy) !== JSON.stringify(state.busy)) {
+        state.busy = busy;
+        renderTimeline();
+      }
+    }
+    if (roomsInfo) {
+      const roomsBusy = await fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms);
+      if (JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
+        state.roomsBusy = roomsBusy;
+        renderRooms();
+      }
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }
