@@ -69,8 +69,18 @@ async function fetchGroupMembers(groupMail) {
   return members.filter(m => m.mail).sort(collator).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail }));
 }
 
+/** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す
+    (HTTPステータスだけだと原因切り分けに時間がかかるため。2026-10-02追加) */
+async function graphErrorMessage(res) {
+  try {
+    const data = await res.json();
+    if (data && data.error) return `HTTP ${res.status}: ${data.error.code || ''} ${data.error.message || ''}`.trim();
+  } catch { /* 本文がJSONでない場合はステータスのみ */ }
+  return `HTTP ${res.status}`;
+}
+
 /** 指定日の各メンバーの予定(終日予定は除く)を並行取得する。1人ずつtry/catchし、
-    失敗した人は busy[email] = null にする(権限未設定等。1人の失敗で全体を壊さない) */
+    失敗した人は busy[email] = { error } にする(権限未設定等。1人の失敗で全体を壊さない) */
 async function fetchPeopleBusy(dateStr, people) {
   const token = await Auth.getGraphToken(['Calendars.ReadWrite.Shared']);
   const map = {};
@@ -81,14 +91,16 @@ async function fetchPeopleBusy(dateStr, people) {
         `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
         '&$select=subject,start,end,isAllDay&$orderby=start/dateTime';
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await graphErrorMessage(res));
       const data = await res.json();
-      map[person.email] = (data.value || [])
-        .filter(ev => !ev.isAllDay)
-        .map(ev => ({ start: ev.start.dateTime.slice(11, 16), end: ev.end.dateTime.slice(11, 16), subject: ev.subject || '(件名なし)' }));
+      map[person.email] = {
+        items: (data.value || [])
+          .filter(ev => !ev.isAllDay)
+          .map(ev => ({ start: ev.start.dateTime.slice(11, 16), end: ev.end.dateTime.slice(11, 16), subject: ev.subject || '(件名なし)' }))
+      };
     } catch (e) {
       console.error(`「${person.name}」の予定取得に失敗しました`, e);
-      map[person.email] = null;
+      map[person.email] = { error: e.message || String(e) };
     }
   }));
   return map;
@@ -100,11 +112,12 @@ function minutesOf(hhmm) {
 }
 
 /** タイムライン1人分の予定バーのHTML(8:00〜21:00の範囲にクランプして配置) */
-function busyBarsHtml(items) {
-  if (items === null) {
-    return '<span style="font-size:11px;color:#c05a5a">予定の取得に失敗しました(権限未設定の可能性があります)</span>';
+function busyBarsHtml(entry) {
+  if (!entry || entry.error) {
+    const detail = entry && entry.error ? esc(entry.error) : '';
+    return `<span style="font-size:11px;color:#c05a5a">予定の取得に失敗しました${detail ? `(${detail})` : ''}</span>`;
   }
-  return items.map(it => {
+  return entry.items.map(it => {
     const startMin = Math.max(DAY_START, Math.min(DAY_END, minutesOf(it.start)));
     const endMin = Math.max(DAY_START, Math.min(DAY_END, minutesOf(it.end)));
     if (endMin <= startMin) return '';
