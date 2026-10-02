@@ -445,6 +445,36 @@ function initHeaderSearch() {
   });
 }
 
+// ---- 出社日(A/B/C班ローテーション)バッジ(2026-10-02追加。ユーザー指示) ----
+
+/** 「こんにちは、〜さん」の横に「〜班出勤日」バッジを表示する。対象は@yoshimuraichi.comの
+    社員のみ(isShiftTeamEligible)。本日、自分の定休グループ(calendarGroupFor)で出勤番
+    (shift_work)の班があれば表示し、クリックするとその班の出勤者一覧(today-attendance.html)
+    へ遷移する。同日に複数班が出勤番のケースを排除しないため、該当する班をすべて表示する */
+async function renderShiftBadge() {
+  const el = document.getElementById('shift-badge');
+  if (!el || Auth.mode !== 'entra' || !isShiftTeamEligible((Auth.me && Auth.me.email) || '')) return;
+
+  const token = await Auth.getGraphToken(['User.Read']);
+  const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=department', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`自分のプロフィール取得に失敗しました(HTTP ${res.status})`);
+  const me = await res.json();
+  const group = calendarGroupFor(Auth.me.email, me.department || '');
+  if (!group) return;
+
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const rows = await api(`/api/work-calendar?group=${encodeURIComponent(group)}&from=${todayIso}&to=${todayIso}`);
+  const shiftWorkRows = rows.filter(r => r.type === 'shift_work' && r.team);
+  if (!shiftWorkRows.length) return;
+
+  el.innerHTML = shiftWorkRows.map(r => `
+    <a href="today-attendance.html?team=${encodeURIComponent(r.team)}&group=${encodeURIComponent(group)}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#e9f1fa;border-radius:12px;padding:4px 12px;text-decoration:none;white-space:nowrap">${esc(r.team)}班出勤日</a>`).join('');
+}
+
 (async function init() {
   try {
     const user = await Auth.init();
@@ -502,6 +532,13 @@ function initHeaderSearch() {
     console.error(e);
     document.getElementById('today-events').innerHTML =
       `<p style="margin:0;padding:6px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
+  }
+
+  // 出社日バッジはニュース等と独立して失敗しうるため、失敗しても他の表示を壊さない
+  try {
+    await renderShiftBadge();
+  } catch (e) {
+    console.error('出社日バッジの表示に失敗しました', e);
   }
 
   // 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
