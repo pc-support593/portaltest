@@ -2,7 +2,7 @@
 
 ## 概要
 
-社員向け社内ポータル。6画面: ポータルトップ(お知らせ・クイックリンク・社内規程・予定)/ 会議室予約(拠点別カレンダー。**2026-07-01〜08-23はデザインサンプル、2026-08-24以降はentraモードで実際のExchange連携**)/ スケジュール(個人 + 拠点別会議室、**両方実データ**)/ ゆめすみかスタッフ予定(展示場ごとのMS365グループのメンバー全員の予定を**2週間×日単位の表**で表示。**実データ=Entra ID+Exchange**。2026-10-01追加、2026-10-02に時間単位→日単位2週間表示へ変更)/ 社員名簿(旧称「組織図」。部門別メンバー一覧。**実データ=Entra ID**。2026-08-22追加、2026-09-10に名称変更)/ 管理画面(コンテンツCRUD)。
+社員向け社内ポータル。9画面: ポータルトップ(お知らせ・クイックリンク・社内規程・予定・出社日バッジ)/ 会議室予約(拠点別カレンダー。**2026-07-01〜08-23はデザインサンプル、2026-08-24以降はentraモードで実際のExchange連携**)/ スケジュール(個人 + 拠点別会議室、**両方実データ**)/ ゆめすみかスタッフ予定(展示場ごとのMS365グループのメンバー全員の予定を**2週間×日単位の表**で表示。**実データ=Entra ID+Exchange**。2026-10-01追加、2026-10-02に時間単位→日単位2週間表示へ変更)/ 社員名簿(旧称「組織図」。部門別メンバー一覧。**実データ=Entra ID**。2026-08-22追加、2026-09-10に名称変更)/ 本日の出勤者(A/B/C班ローテーション。**実データ=Portal SQLite+Entra ID**。2026-10-02追加)/ 年間カレンダー(同上。月単位の祝日・行事・班ローテーション閲覧。2026-10-02追加)/ 管理画面(コンテンツCRUD。当番表・年間カレンダー取込を含む)。
 Claude Design のハンドオフ([design/README.md](design/README.md))を移植。**統括方針「Entra ID SSO + ポータル」構成のMS365実環境検証が目的**(→ ベンダー要件提示の説得材料)。Entra IDアプリ登録・サインイン・Graphでの個人予定連携・**実際のExchange会議室リソースとの連携は実装済み・稼働中**。
 
 ## 技術スタック
@@ -64,6 +64,19 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
     **`compareRomajiGojuon`について(2026-09-17追加)**: 当初`sortKeyFromEmail`の結果を`localeCompare`(=アルファベット順)で比較していたが、ユーザーから「根本的にローマ字順になっている。あいうえお順にしてほしい」と指摘があった(アルファベット順と五十音順は別物: 例えば`Chiba`は五十音では「ち」=た行のためアルファベット順の`C`の位置とは一致しない)。`tokenizeMora`でローマ字を1モーラ(拍)ずつ「行(あかさたなはまやらわ)・段(あいうえお)・清濁」に分解し、`compareMoraTokens`で先頭のモーラから順に比較する自前の簡易五十音コラレータに変更した。促音(っ)・拗音(きゃ等)・撥音(ん)・じゃ行・清濁(か/が等)にも簡易対応済み(完璧な仮名変換ではなく実用上妥当な近似)。「友藤/東/森本/千葉/巽/森下/小谷」の実機検証で本来の読み順と一致することを確認済み
   - 追加のGraph権限は不要(`User.Read.All`の範囲内)。devモードは非対応(案内文のみ)。自動リフレッシュはルール11に準拠(2列とも差分判定)
   - 参考資料として実際の組織図(PDF/Excel)を`_governance/reference/組織図.xlsx`等で受領済み(Gitリポジトリ外・個人情報のため`Portal/`配下には置かない。Excel自体は表形式ではなく手作業配置の図のためプログラムでの解析はしていない)
+
+- **出社日(A/B/C班ローテーション)年間カレンダー機能**(2026-10-02追加。ユーザー指示)。吉村一建設グループは、祝日・会社行事に加えて「Ａ班・Ｂ班・Ｃ班」が交代で本来休みの日に出勤し、代わりに別の平日が振替休日になるローテーション勤務カレンダーを運用している。参考資料として実際の2027年カレンダー(`Portal/carender/2027日曜定休.pdf`・`2027水曜定休.pdf`。Gitリポジトリ外・`Portal/`配下には置かない)を受領済み。
+  - **定休グループ**は2種類、`calendarGroupFor(email, department)`(`public/js/common.js`)で判定: 既定は`@yoshimuraichi.com`→`sunday_off`(日曜定休)、`@yumesumika.com`→`wednesday_off`(水曜定休)。例外として`@yoshimuraichi.com`のうち`department`が「不動産部」の社員だけ`wednesday_off`(ユーザー確認済み)。`department`属性が実態と異なる場合の個別上書きは`CALENDAR_GROUP_OVERRIDES`(organization.jsの`DEPARTMENT_OVERRIDES`と同じ仕組み。現時点では空)
+  - **A/B/C班ローテーションの対象**は`isShiftTeamEligible(email)`(同ファイル)で判定: `@yoshimuraichi.com`ドメイン全体(吉村一建設本体・㈱来夢エンジニア・㈱ライトウエストを含む。すべて同ドメインのためドメイン判定のみでよい。ユーザー確認済み)。`@yumesumika.com`(㈱ゆめすみか)は対象外
+  - **データモデル**(`src/db.js`): `shift_teams(email, calendar_group, team)`(社員ごとの班割当て。未設定は行自体をDELETEする)、`work_calendar(id, date, calendar_group, team, type, label)`(`team=''`は祝日・行事等の全員対象、`type`は`holiday`/`event`/`shift_work`/`shift_off`)。**`shift_teams`に`calendar_group`を持たせている理由**: これが無いと日曜定休側と水曜定休側で同じ「Ａ班」という名前が別人の集合を指してしまい、出勤者一覧が誤った人を表示する不具合になる(設計レビューで発見・修正済み)
+  - **サーバーAPI**(`server.js`。`/api/admin/:kind`ブロックの直後に追加): `GET /api/work-calendar?group=&from=&to=`(3つとも必須。認証のみでadmin不要)、`GET /api/shift-teams?group=&team=`(両方省略可)、`PUT /api/admin/shift-teams`(`{email,calendar_group,team}`でupsert、`{email,unassign:true}`でDELETE。admin限定)、`POST /api/admin/work-calendar/import`(CSV取込。admin限定)
+  - **CSV仕様**(`parseWorkCalendarCsv`): ヘッダー行固定`date,calendar_group,team,type,label`。**クォート処理は実装していない**(管理者が内部で作成する単純なデータのため。意図的な判断)。ラベルにASCIIカンマは使わず全角読点「、」を使う運用。先頭のBOM(Excelの「CSV UTF-8」形式で保存した場合に付与される)を剥がしてから処理する。1件でもエラーがあれば行番号付きエラー一覧を返し**全体を取り込まない**(部分取込はしない)。取込時は`calendar_group`ごとにアップロードされた日付のmin〜maxの範囲を`DELETE`してから`INSERT`(再取込で修正可能)
+  - **管理画面**(`public/js/admin.js`): 既存の`CONFIG`駆動タブ(どのkindも`<input>`しか出せない)には乗せられないため、`BESPOKE_TABS`として2つの専用タブを追加: 「当番表(A/B/C班)」(`@yoshimuraichi.com`の社員一覧+班`<select>`。変更時に即`PUT`、一括保存ボタンは無い=保存漏れ防止)、「年間カレンダー取込」(CSVファイルをアップロードして`POST /api/admin/work-calendar/import`)。`admin.html`に`roomsData.js`のscriptタグを追加(`RESOURCE_EMAILS`で会議室・社用車の疑似メールを当番表から除外するため)
+  - **ポータルトップのバッジ**(`public/js/portal.js`の`renderShiftBadge()`): 「こんにちは、〜さん」の横(`#shift-badge`)に、`isShiftTeamEligible`かつ本日が自分の定休グループで出勤番(`type==='shift_work'`)の日であれば「〜班出勤日」バッジを表示する。自分の`department`はGraph `/me?$select=department`で取得(`User.Read`。サインイン時に既に同意済みのため新規許可不要。`docs/entra-setup.md`§4が積み残しにしていた「Graph連携時に`/me`から取得予定」に対応するもの)。**同日に複数班が出勤番の場合はすべて表示する**(1つに絞らない)
+  - **本日の出勤者ページ**(`public/today-attendance.html`/`public/js/todayAttendance.js`): バッジのリンク先(`?team=&group=`)。`GET /api/shift-teams`でメール一覧→`yumesumikaSchedule.js`の`fetchStaticMembers`と同じ方式(`GET /users/{email}`を1人ずつ)で表示名・電話番号を解決→`organization.js`の`renderColumn`と同じ見た目で一覧表示
+  - **年間カレンダー閲覧ページ**(`public/work-calendar.html`/`public/js/workCalendar.js`): 定休グループをタブ切替(既定は自分の`calendarGroupFor`)、月単位のグリッドで祝日・行事・班の出勤番/振替休日を表示。同じ日に複数行(祝日+出勤番等)があってもすべて積み上げ表示する。本来の定休曜日(日曜/水曜)はDBの内容に関係なく曜日計算だけで色付けする。`roomsData.js`は読み込まない(`SITES`/`ROOMS`等とのグローバル衝突を避けるため。`isoDate`はファイル内に複製)
+  - 追加のGraph権限は不要(既存の`User.Read`/`User.Read.All`/`Calendars.ReadWrite.Shared`の範囲内)。devモードは全ページ非対応(案内文のみ)
+  - 実データ(2027年4月分〜)のCSV下書きは、ユーザー提供の2027年PDF2枚をもとにClaudeが作成し、ユーザーが照合する運用(進行中)
 
 ## 実装ルール
 

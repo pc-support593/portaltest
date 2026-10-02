@@ -113,7 +113,7 @@ CLIENT_ID=<アプリ登録のクライアントID>
    - `iss` = `https://login.microsoftonline.com/<テナントID>/v2.0`(**v2トークン前提。マニフェストの `requestedAccessTokenVersion: 2` が必須**)
    - `aud` = クライアントID または `api://<クライアントID>`
    - `scp` に `access_as_user` を含むこと、`exp`(joseが検証)
-4. 検証済みクレームから `name` / `preferred_username`(メール)/ `roles`(Portal.Admin判定)を取得して `me()` の戻り値にする(部署はトークンに入らないため、当面メールを表示。Graph連携時に `/me` から取得予定)
+4. 検証済みクレームから `name` / `preferred_username`(メール)/ `roles`(Portal.Admin判定)を取得して `me()` の戻り値にする(部署はトークンに入らないため、当面メールを表示。**2026-10-02実装済み**: 出社日バッジ機能〈portal.jsの`renderShiftBadge()`〉で`GET https://graph.microsoft.com/v1.0/me?$select=department`により取得。スコープは`User.Read`のみで、サインイン時(`auth.js`の`loginRedirect`)に既に同意済みのため新規許可・管理者同意は不要)
 
 管理画面のCRUD APIは `roles` に `Portal.Admin` が含まれるユーザーのみ許可する(実装済みの `requireAdmin` がそのまま使える)。
 `roles` クレームは**アプリロールを割り当てたユーザーのトークンにしか入らない**(未割当ユーザーはクレーム自体が無い)点に注意。
