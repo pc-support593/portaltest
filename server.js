@@ -231,6 +231,132 @@ app.delete('/api/admin/:kind/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- 出社日(A/B/C班ローテーション)年間カレンダー(2026-10-02追加) ----
+
+const CAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CALENDAR_GROUPS = ['sunday_off', 'wednesday_off'];
+const SHIFT_TEAMS = ['A', 'B', 'C'];
+const WORK_CALENDAR_TYPES = ['holiday', 'event', 'shift_work', 'shift_off'];
+const WORK_CALENDAR_HEADER = 'date,calendar_group,team,type,label';
+
+/** CSV 1行(5列の配列)を検証する。問題なければ null、問題があればエラー文言を返す */
+function validateWorkCalendarRow(cols) {
+  const [date, calendar_group, team, type, label] = cols;
+  if (!CAL_DATE_RE.test(date)) return `日付の形式が不正です: "${date}"`;
+  if (!CALENDAR_GROUPS.includes(calendar_group)) return `calendar_groupが不正です: "${calendar_group}"`;
+  if (team !== '' && !SHIFT_TEAMS.includes(team)) return `teamが不正です: "${team}"`;
+  if (!WORK_CALENDAR_TYPES.includes(type)) return `typeが不正です: "${type}"`;
+  if (!label) return 'labelが空です';
+  return null;
+}
+
+/** 社内で作成するシンプルなCSV専用パーサー(クォート処理なし。ラベルにASCIIカンマを含めない運用とし、
+    複数項目は全角読点「、」で区切る)。1件でもエラーがあれば全体を取り込ませたくないため、
+    エラー一覧をまとめて返す(呼び出し元は errors.length があれば一切INSERTしない) */
+function parseWorkCalendarCsv(text) {
+  const lines = String(text || '').replace(/^﻿/, '').split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+  if (!lines.length) return { rows: [], errors: ['CSVが空です'] };
+  const header = lines[0].trim();
+  if (header !== WORK_CALENDAR_HEADER) {
+    return { rows: [], errors: [`ヘッダー行が不正です。"${WORK_CALENDAR_HEADER}" である必要があります(実際: "${header}")`] };
+  }
+  const rows = [];
+  const errors = [];
+  const seenKey = new Set();     // (date,calendar_group,team,type) の重複チェック
+  const seenWorkOff = new Set(); // 同じ(date,calendar_group,team)にshift_work/shift_offが両方無いかのチェック
+  for (let i = 1; i < lines.length; i++) {
+    const lineNo = i + 1;
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols.length !== 5) {
+      errors.push(`${lineNo}行目: 列数が5ではありません(${cols.length}列)`);
+      continue;
+    }
+    const err = validateWorkCalendarRow(cols);
+    if (err) { errors.push(`${lineNo}行目: ${err}`); continue; }
+    const [date, calendar_group, team, type, label] = cols;
+    const key = `${date}|${calendar_group}|${team}|${type}`;
+    if (seenKey.has(key)) { errors.push(`${lineNo}行目: 重複した行です(${date} ${calendar_group} ${team || '(共通)'} ${type})`); continue; }
+    seenKey.add(key);
+    if (type === 'shift_work' || type === 'shift_off') {
+      const woKey = `${date}|${calendar_group}|${team}`;
+      const other = type === 'shift_work' ? 'shift_off' : 'shift_work';
+      if (seenWorkOff.has(`${woKey}|${other}`)) {
+        errors.push(`${lineNo}行目: 同じ日・班に出勤番と振替休日が両方登録されています(${date} ${calendar_group} ${team}班)`);
+        continue;
+      }
+      seenWorkOff.add(`${woKey}|${type}`);
+    }
+    rows.push({ date, calendar_group, team, type, label });
+  }
+  return { rows, errors };
+}
+
+app.get('/api/work-calendar', (req, res) => {
+  const { group, from, to } = req.query;
+  if (!CALENDAR_GROUPS.includes(group)) return res.status(400).json({ error: 'groupが不正です' });
+  if (!CAL_DATE_RE.test(from || '') || !CAL_DATE_RE.test(to || '')) return res.status(400).json({ error: 'from/toの形式が不正です' });
+  const rows = db.prepare(
+    'SELECT date, team, type, label FROM work_calendar WHERE calendar_group = ? AND date >= ? AND date <= ? ORDER BY date'
+  ).all(group, from, to);
+  res.json(rows);
+});
+
+app.get('/api/shift-teams', (req, res) => {
+  const { group, team } = req.query;
+  const rows = (group && team)
+    ? db.prepare('SELECT email, calendar_group, team FROM shift_teams WHERE calendar_group = ? AND team = ?').all(group, team)
+    : db.prepare('SELECT email, calendar_group, team FROM shift_teams ORDER BY email').all();
+  res.json(rows);
+});
+
+app.put('/api/admin/shift-teams', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'メールアドレスを指定してください' });
+  if (req.body && req.body.unassign) {
+    db.prepare('DELETE FROM shift_teams WHERE email = ?').run(email);
+    return res.json({ ok: true });
+  }
+  const calendar_group = String((req.body && req.body.calendar_group) || '');
+  const team = String((req.body && req.body.team) || '');
+  if (!CALENDAR_GROUPS.includes(calendar_group)) return res.status(400).json({ error: 'calendar_groupが不正です' });
+  if (!SHIFT_TEAMS.includes(team)) return res.status(400).json({ error: 'teamが不正です' });
+  db.prepare(
+    `INSERT INTO shift_teams (email, calendar_group, team) VALUES (?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET calendar_group = excluded.calendar_group, team = excluded.team`
+  ).run(email, calendar_group, team);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/work-calendar/import', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const { rows, errors } = parseWorkCalendarCsv(req.body && req.body.csv);
+  if (errors.length) return res.status(400).json({ error: 'CSVにエラーがあります', errors });
+  if (!rows.length) return res.status(400).json({ error: '取り込み対象の行がありません' });
+
+  const byGroup = {};
+  rows.forEach(r => { (byGroup[r.calendar_group] ||= []).push(r); });
+
+  const del = db.prepare('DELETE FROM work_calendar WHERE calendar_group = ? AND date >= ? AND date <= ?');
+  const ins = db.prepare('INSERT INTO work_calendar (date, calendar_group, team, type, label) VALUES (?, ?, ?, ?, ?)');
+  const summary = [];
+  db.exec('BEGIN');
+  try {
+    for (const [group, groupRows] of Object.entries(byGroup)) {
+      const dates = groupRows.map(r => r.date).sort();
+      const from = dates[0], to = dates[dates.length - 1];
+      del.run(group, from, to);
+      groupRows.forEach(r => ins.run(r.date, r.calendar_group, r.team, r.type, r.label));
+      summary.push({ calendar_group: group, from, to, count: groupRows.length });
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  res.json({ imported: rows.length, groups: summary });
+});
+
 // ---- 社内メンバー検索(Entra移行後は Graph /users $search に置換) ----
 
 app.get('/api/users', (req, res) => {

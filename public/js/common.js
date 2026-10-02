@@ -23,7 +23,11 @@ async function api(path, options) {
   });
   let data = null;
   try { data = await res.json(); } catch { /* 空レスポンス */ }
-  if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error((data && data.error) || `HTTP ${res.status}`);
+    err.data = data; // サーバーが errors 配列等の詳細情報を返す場合に呼び出し元で参照できるようにする(2026-10-02追加)
+    throw err;
+  }
   return data;
 }
 
@@ -81,8 +85,36 @@ const PORTAL_PAGES = [
   { title: 'スケジュール', url: 'schedule.html', keywords: ['スケジュール', '予定', 'カレンダー', '会議室の予約状況'] },
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
+  { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
+  { title: '年間カレンダー', url: 'work-calendar.html', keywords: ['年間カレンダー', '出社日', '定休日', '振替休日', '班'] },
   { title: '管理画面', url: 'admin.html', keywords: ['管理', 'admin', 'お知らせ編集'] }
 ];
+
+// ---- 出社日(A/B/C班ローテーション)年間カレンダー関連の共通ヘルパー(2026-10-02追加) ----
+
+// department属性が実態と異なる例外用(organization.jsのDEPARTMENT_OVERRIDESと同じ仕組み)。
+// 現時点では該当者なしのため空。メールアドレス(小文字)→部門名の上書き
+const CALENDAR_GROUP_OVERRIDES = {};
+
+/** 定休グループ(sunday_off=日曜定休 / wednesday_off=水曜定休)を判定する(ユーザー指示 2026-10-02)。
+    既定: @yoshimuraichi.com→日曜定休、@yumesumika.com→水曜定休。
+    例外: @yoshimuraichi.comのうち不動産部だけ水曜定休 */
+function calendarGroupFor(email, department) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase() || '';
+  if (domain === 'yumesumika.com') return 'wednesday_off';
+  if (domain === 'yoshimuraichi.com') {
+    const dept = CALENDAR_GROUP_OVERRIDES[String(email || '').toLowerCase()] || department;
+    return dept === '不動産部' ? 'wednesday_off' : 'sunday_off';
+  }
+  return null;
+}
+
+/** A/B/C班ローテーションの対象かどうか(ユーザー確認 2026-10-02: 吉村一建設グループ全体
+    <本体・㈱来夢エンジニア・㈱ライトウエスト、すべて@yoshimuraichi.com>が対象。
+    ㈱ゆめすみか<@yumesumika.com>は対象外) */
+function isShiftTeamEligible(email) {
+  return String(email || '').toLowerCase().endsWith('@yoshimuraichi.com');
+}
 
 /** ポータル内ページ検索(タイトル・キーワードの部分一致) */
 function searchPortalPages(q) {

@@ -71,6 +71,20 @@ function migrate(db) {
       layout TEXT NOT NULL,          -- JSON { left: [sectionId...], right: [sectionId...] }
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS shift_teams (
+      email TEXT PRIMARY KEY,
+      calendar_group TEXT NOT NULL,  -- 'sunday_off' | 'wednesday_off'
+      team TEXT NOT NULL             -- 'A' | 'B' | 'C'
+    );
+    CREATE TABLE IF NOT EXISTS work_calendar (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,              -- ISO 8601 (YYYY-MM-DD)
+      calendar_group TEXT NOT NULL,    -- 'sunday_off' | 'wednesday_off'
+      team TEXT NOT NULL DEFAULT '',   -- '' (全員対象: 祝日・行事) | 'A' | 'B' | 'C'
+      type TEXT NOT NULL,              -- 'holiday' | 'event' | 'shift_work' | 'shift_off'
+      label TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_work_calendar_group_date ON work_calendar(calendar_group, date);
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
