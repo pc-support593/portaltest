@@ -9,6 +9,12 @@ const TEAM = params.get('team') || '';
 const GROUP = params.get('group') || '';
 const GROUP_LABEL = GROUP === 'wednesday_off' ? '水曜定休' : GROUP === 'sunday_off' ? '日曜定休' : '';
 
+/** roomsData.jsはこのページでは読み込まないため同じ4行を複製(workCalendar.jsと同方針) */
+function isoDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す */
 async function graphErrorMessage(res) {
   try {
@@ -69,7 +75,8 @@ async function render() {
   }
   el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
-    const rows = await api(`/api/shift-teams?group=${encodeURIComponent(GROUP)}&team=${encodeURIComponent(TEAM)}`);
+    const todayIso = isoDate(new Date());
+    const rows = await api(`/api/shift-teams?group=${encodeURIComponent(GROUP)}&team=${encodeURIComponent(TEAM)}&date=${todayIso}`);
     if (!rows.length) {
       el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">該当するメンバーが見つかりませんでした</p>';
       return;

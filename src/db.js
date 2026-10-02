@@ -85,6 +85,14 @@ function migrate(db) {
       label TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_work_calendar_group_date ON work_calendar(calendar_group, date);
+    CREATE TABLE IF NOT EXISTS shift_swaps (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      date           TEXT NOT NULL,   -- ISO 8601 (YYYY-MM-DD)。その日1回だけの交代(ベースの班割当ては変えない)
+      calendar_group TEXT NOT NULL,   -- 'sunday_off' | 'wednesday_off'
+      email_out      TEXT NOT NULL,   -- 本来その日の出勤番だが、その日だけ休む人
+      email_in       TEXT NOT NULL    -- その日だけ代わりに出勤する人
+    );
+    CREATE INDEX IF NOT EXISTS idx_shift_swaps_date_group ON shift_swaps(date, calendar_group);
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }

@@ -58,6 +58,7 @@ const state = {
 // 仕組み(どのkindも<input>で統一されている)に乗らないため、専用の描画関数を持つ別タブとして追加する
 const BESPOKE_TABS = [
   { id: 'shift-teams', label: '当番表(A/B/C班)' },
+  { id: 'shift-swaps', label: '班の臨時交代' },
   { id: 'work-calendar-import', label: '年間カレンダー取込' }
 ];
 function isBespokeTab(tab) { return BESPOKE_TABS.some(t => t.id === tab); }
@@ -154,6 +155,113 @@ async function renderShiftTeamsTab() {
   });
 }
 
+function personLabel(p, assignments) {
+  const a = assignments[p.email.toLowerCase()];
+  return `${p.name}(${a ? a.team + '班' : '班未設定'})`;
+}
+
+async function renderShiftSwapsTab() {
+  document.getElementById('table-head').innerHTML = '';
+  const body = document.getElementById('table-body');
+  body.innerHTML = '<div style="padding:32px 24px;text-align:center;font-size:13px;color:#8a99a8">読み込み中…</div>';
+  const pad = n => String(n).padStart(2, '0');
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  let data, swaps;
+  try {
+    data = await loadShiftTeamsData();
+    swaps = await api(`/api/admin/shift-swaps?from=${todayIso}`);
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</div>`;
+    return;
+  }
+  if (state.tab !== 'shift-swaps') return;
+
+  const options = data.people.map(p => `<option value="${esc(p.email)}">${esc(personLabel(p, data.assignments))}</option>`).join('');
+
+  body.innerHTML = `
+    <div style="padding:24px;display:flex;flex-direction:column;gap:18px;max-width:760px">
+      <p style="margin:0;font-size:13px;color:#6b7d8f;line-height:1.8">
+        特定の1日だけ、2人の出勤日を入れ替えます(例: 本来の出勤番の人がその日だけ休み、代わりに別の班の人が出勤)。<br>
+        「当番表(A/B/C班)」の割当て自体は変更されません。次にその人の班の出勤番が来たときは通常どおりになります。
+      </p>
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px">
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">日付</span>
+          <input id="swap-date" class="in-input" type="date" style="padding:7px 10px;font-size:13px">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">定休グループ</span>
+          <select id="swap-group" class="in-input" style="padding:7px 10px;font-size:13px">
+            <option value="sunday_off">日曜定休</option>
+            <option value="wednesday_off">水曜定休</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">休む人(本来の出勤番)</span>
+          <select id="swap-out" class="in-input" style="padding:7px 10px;font-size:13px;min-width:200px">${options}</select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">代わりに出勤する人</span>
+          <select id="swap-in" class="in-input" style="padding:7px 10px;font-size:13px;min-width:200px">${options}</select>
+        </label>
+        <button id="swap-add-btn" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 22px;font-size:13px;cursor:pointer;font-family:inherit">登録する</button>
+      </div>
+      <span id="swap-error" style="font-size:12px;color:#c05a5a"></span>
+      <div>
+        <h4 style="margin:0 0 10px;font-size:13px;color:#1c2b3a">登録済みの交代(本日以降)</h4>
+        <div id="swap-list"></div>
+      </div>
+    </div>`;
+
+  function renderSwapList() {
+    const listEl = document.getElementById('swap-list');
+    if (!swaps.length) {
+      listEl.innerHTML = '<p style="margin:0;font-size:13px;color:#8a99a8">登録はありません</p>';
+      return;
+    }
+    const nameOf = email => {
+      const p = data.people.find(x => x.email.toLowerCase() === email.toLowerCase());
+      return p ? p.name : email;
+    };
+    listEl.innerHTML = swaps.map(s => `
+      <div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #f2f5f9">
+        <span style="font-size:13px;width:100px;color:#1c2b3a">${esc(fmtMD(s.date))}</span>
+        <span style="font-size:12px;width:90px;color:#6b7d8f">${s.calendar_group === 'wednesday_off' ? '水曜定休' : '日曜定休'}</span>
+        <span style="font-size:13px;flex:1;color:#1c2b3a">${esc(nameOf(s.email_out))} → ${esc(nameOf(s.email_in))}</span>
+        <button data-del-swap="${s.id}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:5px 16px;cursor:pointer;color:#a8b5c2;font-size:12px;font-weight:500;font-family:inherit">取消</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-del-swap]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('この交代を取り消しますか?')) return;
+      try {
+        await api(`/api/admin/shift-swaps/${b.dataset.delSwap}`, { method: 'DELETE' });
+        swaps = swaps.filter(s => String(s.id) !== b.dataset.delSwap);
+        renderSwapList();
+      } catch (e) { alert(e.message); }
+    }));
+  }
+  renderSwapList();
+
+  document.getElementById('swap-add-btn').addEventListener('click', async () => {
+    const errorEl = document.getElementById('swap-error');
+    errorEl.textContent = '';
+    const date = document.getElementById('swap-date').value;
+    const calendar_group = document.getElementById('swap-group').value;
+    const email_out = document.getElementById('swap-out').value;
+    const email_in = document.getElementById('swap-in').value;
+    if (!date) { errorEl.textContent = '日付を指定してください'; return; }
+    if (email_out === email_in) { errorEl.textContent = '休む人と出勤する人に同じ人は指定できません'; return; }
+    try {
+      const result = await api('/api/admin/shift-swaps', { method: 'POST', body: { date, calendar_group, email_out, email_in } });
+      swaps.push({ id: result.id, date, calendar_group, email_out, email_in });
+      swaps.sort((a, b) => a.date.localeCompare(b.date));
+      renderSwapList();
+    } catch (e) {
+      errorEl.textContent = e.message;
+    }
+  });
+}
+
 function renderCalendarImportTab() {
   document.getElementById('table-head').innerHTML = '';
   const body = document.getElementById('table-body');
@@ -226,6 +334,7 @@ function renderTabs() {
 
 function renderTable() {
   if (state.tab === 'shift-teams') { renderShiftTeamsTab(); return; }
+  if (state.tab === 'shift-swaps') { renderShiftSwapsTab(); return; }
   if (state.tab === 'work-calendar-import') { renderCalendarImportTab(); return; }
   const cfg = CONFIG[state.tab];
   const items = state.data[state.tab] || [];

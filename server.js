@@ -182,6 +182,41 @@ app.put('/api/layout', (req, res) => {
   res.json({ ok: true });
 });
 
+// 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
+// パスの形が重なってしまうため(例: GET/POST /api/admin/shift-swaps, DELETE /api/admin/shift-swaps/:id)、
+// 汎用ルートより前に登録して先にマッチさせる(でなければ kind='shift-swaps' が KINDS になく 404 になる)
+app.get('/api/admin/shift-swaps', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const { from } = req.query;
+  const rows = CAL_DATE_RE.test(from || '')
+    ? db.prepare('SELECT * FROM shift_swaps WHERE date >= ? ORDER BY date').all(from)
+    : db.prepare('SELECT * FROM shift_swaps ORDER BY date').all();
+  res.json(rows);
+});
+
+app.post('/api/admin/shift-swaps', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const date = String((req.body && req.body.date) || '').trim();
+  const calendar_group = String((req.body && req.body.calendar_group) || '').trim();
+  const email_out = String((req.body && req.body.email_out) || '').trim().toLowerCase();
+  const email_in = String((req.body && req.body.email_in) || '').trim().toLowerCase();
+  if (!CAL_DATE_RE.test(date)) return res.status(400).json({ error: '日付の形式が不正です' });
+  if (!CALENDAR_GROUPS.includes(calendar_group)) return res.status(400).json({ error: 'calendar_groupが不正です' });
+  if (!email_out || !email_in) return res.status(400).json({ error: '交代する2人を指定してください' });
+  if (email_out === email_in) return res.status(400).json({ error: '同じ人が指定されています' });
+  const info = db.prepare(
+    'INSERT INTO shift_swaps (date, calendar_group, email_out, email_in) VALUES (?, ?, ?, ?)'
+  ).run(date, calendar_group, email_out, email_in);
+  res.json({ id: Number(info.lastInsertRowid) });
+});
+
+app.delete('/api/admin/shift-swaps/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const info = db.prepare('DELETE FROM shift_swaps WHERE id = ?').run(Number(req.params.id));
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/:kind', (req, res) => {
   const kind = kindOf(req, res); if (!kind) return;
   res.json(db.prepare(`SELECT * FROM ${kind} ORDER BY id`).all());
@@ -302,10 +337,23 @@ app.get('/api/work-calendar', (req, res) => {
 });
 
 app.get('/api/shift-teams', (req, res) => {
-  const { group, team } = req.query;
-  const rows = (group && team)
+  const { group, team, date } = req.query;
+  let rows = (group && team)
     ? db.prepare('SELECT email, calendar_group, team FROM shift_teams WHERE calendar_group = ? AND team = ?').all(group, team)
     : db.prepare('SELECT email, calendar_group, team FROM shift_teams ORDER BY email').all();
+  // 班の臨時交代(その1回だけ。ベースの班割当ては変えない)の反映。date指定時のみ適用
+  if (group && team && date && CAL_DATE_RE.test(date)) {
+    const swaps = db.prepare('SELECT email_out, email_in FROM shift_swaps WHERE calendar_group = ? AND date = ?').all(group, date);
+    if (swaps.length) {
+      const outSet = new Set(swaps.map(s => s.email_out.toLowerCase()));
+      rows = rows.filter(r => !outSet.has(r.email.toLowerCase()));
+      swaps.forEach(s => {
+        if (!rows.some(r => r.email.toLowerCase() === s.email_in.toLowerCase())) {
+          rows.push({ email: s.email_in, calendar_group: group, team });
+        }
+      });
+    }
+  }
   res.json(rows);
 });
 
