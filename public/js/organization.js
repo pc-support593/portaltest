@@ -63,6 +63,59 @@ async function fetchOrgUsers() {
     }));
 }
 
+// ゆめすみか側の部門分けはdepartment属性ではなくMS365グループで判定する(2026-10-05・ユーザー指示。
+// yumesumika-schedule.jsのSHOWROOM_GROUPSと同じグループ・同じ理由=department属性より実際の運用
+// (MS365グループ)の方が正確なため)。いずれのグループにも所属しないゆめすみか社員は表示しない
+// (ユーザー指示。department属性へのフォールバックはしない)
+const YUMESUMIKA_GROUPS = [
+  { label: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
+  { label: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
+  { label: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
+  { label: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
+  { label: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
+  { label: '設計', groupMail: 'yumesumika_6@yumesumika.com' }
+];
+const YUMESUMIKA_GROUP_ORDER = YUMESUMIKA_GROUPS.map(g => g.label);
+
+/** 指定したMS365グループのメンバーのメールアドレス一覧を取得する
+    (yumesumikaSchedule.jsのfetchGroupMembersと同じ方式。GroupMember.Read.Allは既に許可済みのため新規権限不要) */
+async function fetchGroupMemberEmails(groupMail) {
+  const token = await Auth.getGraphToken(['GroupMember.Read.All']);
+  const groupUrl = 'https://graph.microsoft.com/v1.0/groups' +
+    `?$filter=${encodeURIComponent(`mail eq '${groupMail}'`)}&$select=id`;
+  const groupRes = await fetch(groupUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (!groupRes.ok) throw new Error(await graphErrorMessage(groupRes, `グループの取得に失敗しました(${groupMail})`));
+  const groupData = await groupRes.json();
+  const group = (groupData.value || [])[0];
+  if (!group) throw new Error(`グループが見つかりませんでした(${groupMail})`);
+
+  let url = `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=mail&$top=200`;
+  const emails = [];
+  while (url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(await graphErrorMessage(res, `メンバー一覧の取得に失敗しました(${groupMail})`));
+    const data = await res.json();
+    emails.push(...(data.value || []).map(m => (m.mail || '').toLowerCase()).filter(Boolean));
+    url = data['@odata.nextLink'] || null;
+  }
+  return emails;
+}
+
+/** ゆめすみか社員のメールアドレス(小文字)→所属グループ名のマップを作る。
+    6グループを並行取得し、1グループの取得失敗で全体を壊さないようtry/catchする
+    (失敗したグループのメンバーはどのグループにも属さない扱いになり、該当者は表示されなくなる=安全側に劣化) */
+async function fetchYumesumikaGroupMap() {
+  const map = {};
+  await Promise.all(YUMESUMIKA_GROUPS.map(async g => {
+    try {
+      (await fetchGroupMemberEmails(g.groupMail)).forEach(email => { map[email] = g.label; });
+    } catch (e) {
+      console.error(`「${g.label}」のメンバー取得に失敗しました`, e);
+    }
+  }));
+  return map;
+}
+
 // 役職(jobTitle)にこれらの語を含む場合は部門を無視し、この語自体を部門扱いにして先頭に表示する。
 // この順番がそのまま表示順になる(左列=吉村一建設側で使用)
 const PRIORITY_TITLES = ['会長', '社長', '専務'];
@@ -219,9 +272,15 @@ function compareRomajiGojuon(a, b) {
 }
 
 /** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
-    → 残りをdepartment属性(DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
-    部門が空欄の社員は表示しない */
-function buildGroups(users, priorityTitles) {
+    → 残りを通常グループ(既定はdepartment属性。DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
+    グループが決まらない社員は表示しない。
+    options.deptOf(u)/options.deptOrder で通常グループの判定方法・表示順を差し替え可能
+    (2026-10-05追加・ゆめすみか側をMS365グループ判定にするため。省略時は従来どおりdepartment属性+五十音順) */
+function buildGroups(users, priorityTitles, options) {
+  const opts = options || {};
+  const deptOf = opts.deptOf || (u => DEPARTMENT_OVERRIDES[u.email.toLowerCase()] || u.dept || null);
+  const deptOrder = opts.deptOrder || null;
+
   const priorityBuckets = new Map();
   const overrideOrder = []; // PERSON_OVERRIDES由来の見出しは priorityTitles の後ろ・出現順に追加
   const byDept = new Map();
@@ -237,7 +296,7 @@ function buildGroups(users, priorityTitles) {
       priorityBuckets.get(key).push(u);
       return;
     }
-    const dept = DEPARTMENT_OVERRIDES[u.email.toLowerCase()] || u.dept;
+    const dept = deptOf(u);
     if (!dept) return;
     if (!byDept.has(dept)) byDept.set(dept, []);
     byDept.get(dept).push(u);
@@ -255,8 +314,10 @@ function buildGroups(users, priorityTitles) {
   });
   const priorityKeys = [...priorityTitles.filter(t => priorityBuckets.has(t)), ...overrideOrder];
   const priorityGroups = priorityKeys.map(key => ({ dept: key, members: priorityBuckets.get(key).sort(collator) }));
-  const deptGroups = [...byDept.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
-    .map(dept => ({ dept, members: byDept.get(dept).sort(collator) }));
+  const deptKeys = deptOrder
+    ? deptOrder.filter(d => byDept.has(d))
+    : [...byDept.keys()].sort((a, b) => a.localeCompare(b, 'ja'));
+  const deptGroups = deptKeys.map(dept => ({ dept, members: byDept.get(dept).sort(collator) }));
   return [...priorityGroups, ...deptGroups];
 }
 
@@ -311,8 +372,12 @@ async function loadAndRender() {
   document.getElementById('org-right').innerHTML = loading;
   try {
     const { left, right } = splitByCompany(await fetchOrgUsers());
+    const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
     state.left = buildGroups(left, PRIORITY_TITLES);
-    state.right = buildGroups(right, []);
+    state.right = buildGroups(right, [], {
+      deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
+      deptOrder: YUMESUMIKA_GROUP_ORDER
+    });
     renderAll();
   } catch (e) {
     console.error(e);
@@ -328,8 +393,12 @@ async function autoRefresh() {
   if (document.hidden || Auth.mode !== 'entra') return;
   try {
     const { left, right } = splitByCompany(await fetchOrgUsers());
+    const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
     const newLeft = buildGroups(left, PRIORITY_TITLES);
-    const newRight = buildGroups(right, []);
+    const newRight = buildGroups(right, [], {
+      deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
+      deptOrder: YUMESUMIKA_GROUP_ORDER
+    });
     if (JSON.stringify(newLeft) !== JSON.stringify(state.left) || JSON.stringify(newRight) !== JSON.stringify(state.right)) {
       state.left = newLeft; state.right = newRight;
       renderAll();
