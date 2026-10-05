@@ -264,7 +264,7 @@ function renderColumn(elId, groups) {
         <div style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc(m.name.charAt(0))}</div>
         <span style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:110px">${esc(m.name)}</span>
         <span style="font-size:12px;color:#6b7d8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.email)}</span>
-        <span style="font-size:12px;color:#6b7d8f;white-space:nowrap">${esc(m.phone || '未登録')}</span>
+        <span style="font-size:12px;color:#6b7d8f;white-space:nowrap;flex-shrink:0;min-width:190px">${esc(m.phone || '未登録')}</span>
       </div>`).join('')}
     </div>`).join('');
 }
