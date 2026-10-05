@@ -56,9 +56,10 @@ async function fetchOrgUsers() {
       email: u.mail || '',
       dept: u.department || '',
       title: u.jobTitle || '',
-      // 事業所の電話(businessPhones)は配列のため複数件あれば全て表示する(例: 共通携帯を複数人で共有している場合)。
-      // 1件もなければ携帯電話(mobilePhone)にフォールバック
-      phone: (u.businessPhones && u.businessPhones.length ? u.businessPhones.join(' / ') : u.mobilePhone) || ''
+      // 電話番号表示(2026-10-05変更・ユーザー指示): 基本は携帯電話(mobilePhone)を表示し、
+      // 事業所の電話(businessPhones。配列・複数件あり得る)が登録されていれば2件目以降として追加表示する
+      // (どちらか一方のフォールバックではなく、両方登録されていれば両方とも表示する)
+      phone: phoneListOf(u).join(' / ')
     }));
 }
 

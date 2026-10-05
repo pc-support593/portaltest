@@ -43,6 +43,17 @@ function surname(name) {
   return String(name || '').split(/[ 　]/)[0];
 }
 
+/** Graphのユーザーオブジェクトから表示用の電話番号一覧を組み立てる(2026-10-05追加・ユーザー指示)。
+    基本は携帯電話(mobilePhone。単一の文字列項目)を表示し、事業所の電話(businessPhones。配列・
+    複数件あり得る)が登録されていれば2件目以降として追加する(どちらか一方のフォールバックではなく、
+    両方登録されていれば両方とも表示する)。organization.js・todayAttendance.jsで共用 */
+function phoneListOf(u) {
+  const list = [];
+  if (u.mobilePhone) list.push(u.mobilePhone);
+  if (Array.isArray(u.businessPhones)) list.push(...u.businessPhones.filter(Boolean));
+  return list;
+}
+
 /** ISO 8601(YYYY-MM-DD)→ 表示用 'M/D'。ISO以外はそのまま返す */
 function fmtMD(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));

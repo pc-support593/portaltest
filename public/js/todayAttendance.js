@@ -39,8 +39,8 @@ async function fetchMemberDetails(emails) {
       return {
         name: u.displayName || email,
         email: u.mail || email,
-        // organization.jsと同じ方式(businessPhonesは配列。複数件あれば全て表示)
-        phone: (u.businessPhones && u.businessPhones.length ? u.businessPhones.join(' / ') : u.mobilePhone) || ''
+        // common.jsのphoneListOf()と同じ方式(携帯電話+事業所の電話をすべて表示)
+        phone: phoneListOf(u).join(' / ')
       };
     } catch (e) {
       console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
