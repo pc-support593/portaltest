@@ -116,6 +116,21 @@ async function fetchYumesumikaGroupMap() {
   return map;
 }
 
+// MS365アカウント(メールアドレス)を持たない社員の手動追加リスト(2026-10-05・ユーザー指示)。
+// Graph APIには存在しないため、Entra ID取得結果とは別にこの配列を直接buildGroupsへ合流させる。
+// email/phoneを持たない項目はrenderColumn側の表示で空欄・「未登録」として扱われる(既存のロジックのまま)。
+// 「物流部」は吉村一建設側の部門のため column:'left'(右列=ゆめすみかはMS365グループ判定のため、
+// メールアドレスの無いこの方式では右列には乗せられないことに注意)
+const MANUAL_MEMBERS = [
+  { name: '松岡 謙次', dept: '物流部', phone: '080-4429-6487', column: 'left' },
+  { name: '荒井 正義', dept: '物流部', phone: '', column: 'left' }
+];
+
+/** MANUAL_MEMBERSの1件を、buildGroups/renderColumnが期待する形(email/title付き)に変換する */
+function manualMemberToUser(m) {
+  return { name: m.name, email: '', dept: m.dept, title: '', phone: m.phone || '' };
+}
+
 // 役職(jobTitle)にこれらの語を含む場合は部門を無視し、この語自体を部門扱いにして先頭に表示する。
 // この順番がそのまま表示順になる(左列=吉村一建設側で使用)
 const PRIORITY_TITLES = ['会長', '社長', '専務'];
@@ -373,8 +388,10 @@ async function loadAndRender() {
   try {
     const { left, right } = splitByCompany(await fetchOrgUsers());
     const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
-    state.left = buildGroups(left, PRIORITY_TITLES);
-    state.right = buildGroups(right, [], {
+    const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
+    const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
+    state.left = buildGroups([...left, ...manualLeft], PRIORITY_TITLES);
+    state.right = buildGroups([...right, ...manualRight], [], {
       deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
       deptOrder: YUMESUMIKA_GROUP_ORDER
     });
@@ -394,8 +411,10 @@ async function autoRefresh() {
   try {
     const { left, right } = splitByCompany(await fetchOrgUsers());
     const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
-    const newLeft = buildGroups(left, PRIORITY_TITLES);
-    const newRight = buildGroups(right, [], {
+    const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
+    const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
+    const newLeft = buildGroups([...left, ...manualLeft], PRIORITY_TITLES);
+    const newRight = buildGroups([...right, ...manualRight], [], {
       deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
       deptOrder: YUMESUMIKA_GROUP_ORDER
     });
