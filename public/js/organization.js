@@ -56,7 +56,9 @@ async function fetchOrgUsers() {
       email: u.mail || '',
       dept: u.department || '',
       title: u.jobTitle || '',
-      phone: (u.businessPhones && u.businessPhones[0]) || u.mobilePhone || ''
+      // 事業所の電話(businessPhones)は配列のため複数件あれば全て表示する(例: 共通携帯を複数人で共有している場合)。
+      // 1件もなければ携帯電話(mobilePhone)にフォールバック
+      phone: (u.businessPhones && u.businessPhones.length ? u.businessPhones.join(' / ') : u.mobilePhone) || ''
     }));
 }
 
