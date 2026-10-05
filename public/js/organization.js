@@ -77,12 +77,20 @@ const PRIORITY_TITLES = ['会長', '社長', '専務'];
 // 吉村一建設側のため左列に表示する(groupを指定しないので部門名は実際のdepartment属性のまま。
 // ユーザー指示 2026-09-10。これにより右列の不動産部・来夢エンジニアのグループは
 // 該当者がいなくなり自動的に表示されなくなる)
+// 2026-10-05: 森下直美さんの下の役職として「マネージャー」を新設、k-ohira@yumesumika.comが対象
+// (ユーザー指示)。表示順はOVERRIDE_GROUP_ORDERで保証する(下記参照)
 const PERSON_OVERRIDES = {
   'n-morishita@yoshimuraichi.com': { column: 'right', group: 'ゆめすみか常務取締役' },
+  'k-ohira@yumesumika.com': { column: 'right', group: 'マネージャー' },
   's-tada@yumesumika.com': { column: 'left' },
   'katsu-oshima@yumesumika.com': { column: 'left' },
   's-yamanaka@yumesumika.com': { column: 'left' }
 };
+
+// PERSON_OVERRIDESのgroup指定による優先見出しの表示順(2026-10-05追加)。
+// buildGroups内のoverrideOrderはGraph APIの返却順(保証されない)に依存してしまうため、
+// 複数のgroupが存在する場合に備えてこの配列で明示的に順序を固定する
+const OVERRIDE_GROUP_ORDER = ['ゆめすみか常務取締役', 'マネージャー'];
 
 // 特定の個人を、Entra ID側のdepartment属性に関わらず指定の部門に固定する特別対応
 // (メールアドレスの完全一致・大文字小文字を区別しない)。
@@ -236,6 +244,15 @@ function buildGroups(users, priorityTitles) {
   });
 
   const collator = (a, b) => compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email));
+  // overrideOrderはusers配列の出現順(Graph APIの返却順。保証されない)に依存してしまうため、
+  // OVERRIDE_GROUP_ORDERで明示した順序で並べ替える(そこに無いgroup名は出現順のまま末尾側に残す)
+  overrideOrder.sort((a, b) => {
+    const ia = OVERRIDE_GROUP_ORDER.indexOf(a), ib = OVERRIDE_GROUP_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
   const priorityKeys = [...priorityTitles.filter(t => priorityBuckets.has(t)), ...overrideOrder];
   const priorityGroups = priorityKeys.map(key => ({ dept: key, members: priorityBuckets.get(key).sort(collator) }));
   const deptGroups = [...byDept.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
