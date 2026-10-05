@@ -122,8 +122,8 @@ async function fetchYumesumikaGroupMap() {
 // 「物流部」は吉村一建設側の部門のため column:'left'(右列=ゆめすみかはMS365グループ判定のため、
 // メールアドレスの無いこの方式では右列には乗せられないことに注意)
 const MANUAL_MEMBERS = [
-  { name: '松岡 謙次', dept: '物流部', phone: '080-4429-6487', column: 'left' },
-  { name: '荒井 正義', dept: '物流部', phone: '', column: 'left' }
+  { name: '松岡 謙次', dept: '物流事業係', phone: '080-4429-6487', column: 'left' },
+  { name: '荒井 正義', dept: '物流事業係', phone: '', column: 'left' }
 ];
 
 /** MANUAL_MEMBERSの1件を、buildGroups/renderColumnが期待する形(email/title付き)に変換する */
@@ -317,7 +317,15 @@ function buildGroups(users, priorityTitles, options) {
     byDept.get(dept).push(u);
   });
 
-  const collator = (a, b) => compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email));
+  // メールアドレスを持たない社員(MANUAL_MEMBERS。sortKeyFromEmailが空文字を返す)は、
+  // 五十音順コラレータでは常に先頭に来てしまう(空配列同士/空配列と比較した際の挙動のため)。
+  // メールアドレスが無い=五十音順の判定材料が無いという意味なので、該当者は各グループの末尾に回す
+  // (2026-10-05・ユーザー指示: 物流事業係に手動追加した2名を下のほうに表示したい)
+  const collator = (a, b) => {
+    const aHasEmail = !!a.email, bHasEmail = !!b.email;
+    if (aHasEmail !== bHasEmail) return aHasEmail ? -1 : 1;
+    return compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email));
+  };
   // overrideOrderはusers配列の出現順(Graph APIの返却順。保証されない)に依存してしまうため、
   // OVERRIDE_GROUP_ORDERで明示した順序で並べ替える(そこに無いgroup名は出現順のまま末尾側に残す)
   overrideOrder.sort((a, b) => {
