@@ -76,8 +76,8 @@ function renderGrid() {
     const day = i + 1;
     const d = new Date(state.month.getFullYear(), state.month.getMonth(), day);
     const key = isoDate(d);
-    const isOff = d.getDay() === offWeekday;
     const rows = state.rowsByDate[key] || [];
+    const isOff = d.getDay() === offWeekday || rows.some(r => r.type === 'holiday');
     return `
     <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${isOff ? 'background:#fdecec;border-color:#f6d3d3' : ''}">
       <div style="font-size:12px;font-weight:700;color:${isOff ? '#d64545' : '#1c2b3a'}">${day}</div>
