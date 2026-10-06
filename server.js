@@ -100,6 +100,24 @@ app.get('/api/me', (req, res) => {
   res.json(me(req));
 });
 
+// ---- 社内報(igrace.jp)への自動ログイン用(2026-10-06) ----
+// 全社共通のID/パスワードを環境変数(IGRACE_USER / IGRACE_PASSWORD)で持ち、認証済みユーザーにだけ返す。
+// 画面ファイル(public/)は未認証でも取得できるため、資格情報は絶対にそこへ書かない。
+// 返した値で igrace-login.html がWordPressのログインフォームを自動送信する。
+app.get('/api/external-login/igrace', (req, res) => {
+  me(req);
+  const user = process.env.IGRACE_USER || '';
+  const password = process.env.IGRACE_PASSWORD || '';
+  if (!user || !password) {
+    return res.status(503).json({ error: '社内報の自動ログインが未設定です(サーバーの IGRACE_USER / IGRACE_PASSWORD)' });
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    action: 'https://igrace.jp/wp-login.php',
+    fields: { log: user, pwd: password, redirect_to: 'https://igrace.jp/' }
+  });
+});
+
 // ---- 管理コンテンツ(お知らせ / 全社スケジュール / クイックリンク) ----
 
 const KINDS = {
