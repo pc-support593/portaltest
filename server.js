@@ -104,10 +104,11 @@ app.get('/api/me', (req, res) => {
 
 const KINDS = {
   news: ['tag', 'title', 'date', 'expires', 'body'],
-  schedule: ['date', 'title', 'sub', 'body'],
+  schedule: ['date', 'title', 'sub', 'body', 'calendar_scope'],
   links: ['char', 'label', 'url'],
   policies: ['char', 'label', 'url']
 };
+const SCHEDULE_SCOPES = ['both', 'sunday_off', 'wednesday_off'];
 
 function kindOf(req, res) {
   const kind = req.params.kind;
@@ -120,9 +121,15 @@ function pickFields(kind, body) {
   for (const f of KINDS[kind]) {
     let v = typeof body[f] === 'string' ? body[f].trim() : '';
     if (f === 'body') v = v.slice(0, 500);
+    if (f === 'calendar_scope' && !SCHEDULE_SCOPES.includes(v)) v = 'both';
     row[f] = v;
   }
   return row;
+}
+
+/** 「何か1つでも入力されているか」の判定。calendar_scopeは未指定でも'both'が入るため判定から除く */
+function hasAnyInput(row) {
+  return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && v !== '');
 }
 
 /** リンクURLは http(s) と相対パスのみ許可(javascript: 等のスキームによる格納型XSS対策) */
@@ -226,7 +233,7 @@ app.post('/api/admin/:kind', (req, res) => {
   const kind = kindOf(req, res); if (!kind) return;
   if (!requireAdmin(req, res)) return;
   const row = pickFields(kind, req.body || {});
-  if (!Object.values(row).some(v => v !== '')) {
+  if (!hasAnyInput(row)) {
     return res.status(400).json({ error: 'いずれかの項目を入力してください' });
   }
   if ('url' in row && !isSafeUrl(row.url)) {
@@ -244,17 +251,24 @@ app.put('/api/admin/:kind/:id', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const id = Number(req.params.id);
   const row = pickFields(kind, req.body || {});
-  if (!Object.values(row).some(v => v !== '')) {
+  if (!hasAnyInput(row)) {
     return res.status(400).json({ error: 'いずれかの項目を入力してください' });
   }
   if ('url' in row && !isSafeUrl(row.url)) {
     return res.status(400).json({ error: 'URLは http(s) または相対パスのみ使用できます' });
+  }
+  // calendar_scope が送られてこなかった更新(古い画面からの保存等)では、登録済みの値を維持する
+  if (kind === 'schedule' && !(req.body && 'calendar_scope' in req.body)) {
+    const cur = db.prepare('SELECT calendar_scope FROM schedule WHERE id = ?').get(id);
+    if (cur) row.calendar_scope = cur.calendar_scope;
   }
   const fields = KINDS[kind];
   const info = db.prepare(
     `UPDATE ${kind} SET ${fields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`
   ).run(...fields.map(f => row[f]), id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  // CSV由来の項目を管理画面で編集したら手入力扱いに切り替える(次回のCSV取込で上書き・削除されないようにする)
+  if (kind === 'schedule') db.prepare("UPDATE schedule SET source = '' WHERE id = ?").run(id);
   res.json({ ok: true });
 });
 
@@ -332,6 +346,19 @@ app.get('/api/work-calendar', (req, res) => {
   const rows = db.prepare(
     'SELECT date, team, type, label FROM work_calendar WHERE calendar_group = ? AND date >= ? AND date <= ? ORDER BY date'
   ).all(group, from, to);
+  // 管理画面で手入力した全社スケジュール(source='')を event として合流させる。CSV由来(source='csv')は
+  // すでに work_calendar 側に行があるため二重表示を避けて除外する。同日・同名の行も重複させない
+  const manual = db.prepare(
+    `SELECT date, title AS label FROM schedule
+     WHERE source != 'csv' AND title != '' AND (calendar_scope = 'both' OR calendar_scope = ?)
+       AND date >= ? AND date <= ? AND date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`
+  ).all(group, from, to);
+  const seen = new Set(rows.map(r => `${r.date}|${r.label}`));
+  manual.forEach(m => {
+    if (seen.has(`${m.date}|${m.label}`)) return;
+    rows.push({ date: m.date, team: '', type: 'event', label: m.label });
+  });
+  rows.sort((a, b) => a.date.localeCompare(b.date));
   res.json(rows);
 });
 
@@ -375,6 +402,29 @@ app.put('/api/admin/shift-teams', (req, res) => {
   res.json({ ok: true });
 });
 
+/** 年間カレンダーCSVの event 行を全社スケジュール(source='csv')へ反映する(2026-10-06)。
+    取込範囲(group, from〜to)の既存CSV由来項目からこのグループを外し(他グループ分は残す)、
+    CSVの event 行を日付+行事名で突き合わせて追加・統合する。手入力の項目(source='')には触れない。
+    呼び出し元のトランザクション内で実行する */
+function syncScheduleFromCalendar(group, from, to, groupRows) {
+  const other = group === 'sunday_off' ? 'wednesday_off' : 'sunday_off';
+  const old = db.prepare("SELECT id, calendar_scope FROM schedule WHERE source = 'csv' AND date >= ? AND date <= ?").all(from, to);
+  for (const o of old) {
+    if (o.calendar_scope === group) db.prepare('DELETE FROM schedule WHERE id = ?').run(o.id);
+    else if (o.calendar_scope === 'both') db.prepare('UPDATE schedule SET calendar_scope = ? WHERE id = ?').run(other, o.id);
+  }
+  const find = db.prepare("SELECT id, calendar_scope FROM schedule WHERE source = 'csv' AND date = ? AND title = ?");
+  const insert = db.prepare("INSERT INTO schedule (date, title, sub, body, calendar_scope, source) VALUES (?, ?, '', '', ?, 'csv')");
+  for (const r of groupRows) {
+    if (r.type !== 'event' || !r.label) continue;
+    const ex = find.get(r.date, r.label);
+    if (!ex) insert.run(r.date, r.label, group);
+    else if (ex.calendar_scope !== group && ex.calendar_scope !== 'both') {
+      db.prepare("UPDATE schedule SET calendar_scope = 'both' WHERE id = ?").run(ex.id);
+    }
+  }
+}
+
 app.post('/api/admin/work-calendar/import', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const { rows, errors } = parseWorkCalendarCsv(req.body && req.body.csv);
@@ -394,6 +444,7 @@ app.post('/api/admin/work-calendar/import', (req, res) => {
       const from = dates[0], to = dates[dates.length - 1];
       del.run(group, from, to);
       groupRows.forEach(r => ins.run(r.date, r.calendar_group, r.team, r.type, r.label));
+      syncScheduleFromCalendar(group, from, to, groupRows);
       summary.push({ calendar_group: group, from, to, count: groupRows.length });
     }
     db.exec('COMMIT');

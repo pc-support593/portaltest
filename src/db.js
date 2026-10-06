@@ -101,6 +101,12 @@ function migrate(db) {
   // お知らせのトップ掲載期限(2026-08-21)。空文字は「期限なし=掲載日ベースの既定ルール」
   try { db.exec("ALTER TABLE news ADD COLUMN expires TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
 
+  // 全社スケジュールと年間カレンダーの連動(2026-10-06)。列の追加のみ(既存データは'both'/手入力扱いのまま)
+  // calendar_scope: どの定休グループに表示するか 'both' | 'sunday_off' | 'wednesday_off'
+  // source: 'csv'=年間カレンダーCSVの event 行から作られた項目 / ''=管理画面で手入力した項目
+  try { db.exec("ALTER TABLE schedule ADD COLUMN calendar_scope TEXT NOT NULL DEFAULT 'both'"); } catch { /* 追加済み */ }
+  try { db.exec("ALTER TABLE schedule ADD COLUMN source TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
+
   // 会議室マスタを実際のExchange会議室(5拠点33室)に変更した際のID移行(2026-08-20)。
   // 旧ダミー会議室IDのサンプル予約を、対応する実会議室IDへ付け替える(サンプルデータは削除しない方針のため)。
   // 冪等: 旧IDはもう新規生成されないので、該当行がなければ何もしない

@@ -447,6 +447,32 @@ function initHeaderSearch() {
 
 // ---- 出社日(A/B/C班ローテーション)バッジ(2026-10-02追加。ユーザー指示) ----
 
+let myCalendarGroupPromise = null;
+/** 自分の定休グループ(sunday_off / wednesday_off)。devモードは null(絞り込みなし)。
+    部署はGraph /me から取得(User.Read。サインイン時に同意済み)。バッジと全社スケジュールの絞り込みで共用 */
+function getMyCalendarGroup() {
+  if (!myCalendarGroupPromise) {
+    myCalendarGroupPromise = (async () => {
+      if (Auth.mode !== 'entra') return null;
+      const token = await Auth.getGraphToken(['User.Read']);
+      const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=department', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`自分のプロフィール取得に失敗しました(HTTP ${res.status})`);
+      const me = await res.json();
+      return calendarGroupFor(Auth.me.email, me.department || '');
+    })();
+    myCalendarGroupPromise.catch(() => { myCalendarGroupPromise = null; }); // 失敗は次回再試行できるようにする
+  }
+  return myCalendarGroupPromise;
+}
+
+/** 全社スケジュール1件が自分に表示されるか(calendar_scope が both か、自分の定休グループと一致)。
+    グループ不明(devモード・取得失敗)のときは絞り込まず全件表示する */
+function scheduleVisibleFor(s, myGroup) {
+  return !myGroup || !s.calendar_scope || s.calendar_scope === 'both' || s.calendar_scope === myGroup;
+}
+
 /** 「こんにちは、〜さん」の横に「〜班出勤日」バッジを表示する。対象は@yoshimuraichi.comの
     社員のみ(isShiftTeamEligible)。本日、自分の定休グループ(calendarGroupFor)で出勤番
     (shift_work)の班があれば表示し、クリックするとその班の出勤者一覧(today-attendance.html)
@@ -455,13 +481,7 @@ async function renderShiftBadge() {
   const el = document.getElementById('shift-badge');
   if (!el || Auth.mode !== 'entra' || !isShiftTeamEligible((Auth.me && Auth.me.email) || '')) return;
 
-  const token = await Auth.getGraphToken(['User.Read']);
-  const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=department', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error(`自分のプロフィール取得に失敗しました(HTTP ${res.status})`);
-  const me = await res.json();
-  const group = calendarGroupFor(Auth.me.email, me.department || '');
+  const group = await getMyCalendarGroup();
   if (!group) return;
 
   const pad = n => String(n).padStart(2, '0');
@@ -499,11 +519,13 @@ async function renderShiftBadge() {
     });
     // 全社スケジュールは今月分だけトップに表示(日付なしは表示継続)。全期間は「年間予定表」から
     const thisYm = todayIso.slice(0, 7);
-    renderSchedule(content.schedule.filter(s => !s.date || String(s.date).slice(0, 7) === thisYm));
+    const myGroup = await getMyCalendarGroup().catch(() => null);
+    const mySchedule = content.schedule.filter(s => scheduleVisibleFor(s, myGroup));
+    renderSchedule(mySchedule.filter(s => !s.date || String(s.date).slice(0, 7) === thisYm));
     const schAllLink = document.getElementById('schedule-all-link');
     if (schAllLink) schAllLink.addEventListener('click', e => {
       e.preventDefault();
-      openScheduleListModal(content.schedule);
+      openScheduleListModal(mySchedule);
     });
     renderTileGrid('quick-links', content.links);
     renderTileGrid('policy-links', content.policies);

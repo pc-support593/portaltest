@@ -2,6 +2,9 @@
 // データはサーバー(SQLite)に保存され、ポータルトップに即時反映される。
 'use strict';
 
+// 全社スケジュールの表示対象グループ(一覧に出す注記。'both'は注記なし)
+const SCOPE_LABEL = { sunday_off: '【日曜定休のみ】', wednesday_off: '【水曜定休のみ】' };
+
 const CONFIG = {
   news: {
     label: 'お知らせ', hasBody: true,
@@ -20,9 +23,12 @@ const CONFIG = {
     fields: [
       { key: 'date', label: '日付', type: 'date' },
       { key: 'title', label: '行事名', ph: '例: 全社朝会' },
-      { key: 'sub', label: '補足(場所など)', ph: '例: 9:00– 全社員' }
+      { key: 'sub', label: '補足(場所など)', ph: '例: 9:00– 全社員' },
+      { key: 'calendar_scope', label: '表示する定休グループ', type: 'select', defaultValue: 'both', options: [
+        ['both', '両方(日曜定休・水曜定休)'], ['sunday_off', '日曜定休のみ'], ['wednesday_off', '水曜定休のみ']
+      ] }
     ],
-    cells: it => [fmtMD(it.date), it.title, it.sub]
+    cells: it => [fmtMD(it.date), it.title, [it.sub, SCOPE_LABEL[it.calendar_scope] || ''].filter(Boolean).join(' ')]
   },
   links: {
     label: 'クイックリンク', hasBody: false,
@@ -393,7 +399,10 @@ function renderModal() {
           ${cfg.fields.map(f => `
           <label style="display:flex;flex-direction:column;gap:5px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.label}</span>
-            <input class="in-input" type="${f.type || 'text'}" data-field="${f.key}" value="${esc(d[f.key] || '')}" placeholder="${esc(f.ph || '')}">
+            ${f.type === 'select'
+              ? `<select class="in-input" data-field="${f.key}">${f.options.map(([v, t]) =>
+                  `<option value="${esc(v)}" ${(d[f.key] || f.defaultValue) === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`
+              : `<input class="in-input" type="${f.type || 'text'}" data-field="${f.key}" value="${esc(d[f.key] || '')}" placeholder="${esc(f.ph || '')}">`}
           </label>`).join('')}
         </div>
         ${cfg.hasBody ? `
@@ -434,7 +443,7 @@ function renderModal() {
     const payload = {};
     cfg2.fields.forEach(f => payload[f.key] = (state.draft[f.key] || '').trim());
     if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, 500);
-    if (!cfg2.fields.some(f => payload[f.key])) {
+    if (!cfg2.fields.some(f => f.type !== 'select' && payload[f.key])) {
       root.querySelector('#admin-error').textContent = 'いずれかの項目を入力してください';
       return;
     }
