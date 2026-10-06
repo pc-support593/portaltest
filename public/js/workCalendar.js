@@ -48,6 +48,7 @@ function dayLabelsHtml(rows) {
   if (!rows || !rows.length) return '';
   return rows.map(r => {
     const isShift = r.type === 'shift_work' || r.type === 'shift_off';
+    if (!isShift && !r.label) return ''; // labelなし(CSVで省略)の行はラベルを出さない
     const bg = r.type === 'shift_work' ? '#1f6b45' : r.type === 'holiday_1' ? '#fff1e0' : r.type === 'shift_off' ? '#e9f1fa' : '#f0f4f8';
     const color = r.type === 'shift_work' ? '#ffffff' : r.type === 'holiday_1' ? '#c25e00' : r.type === 'shift_off' ? '#1e5fa8' : '#4a5a6a';
     return `<div title="${esc(r.label)}" style="font-size:10px;font-weight:700;color:${color};background:${bg};border-radius:4px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(isShift ? `${r.team}班 ${r.type === 'shift_work' ? '出勤' : '振休'}` : r.label)}</div>`;

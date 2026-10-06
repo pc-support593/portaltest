@@ -280,8 +280,7 @@ function validateWorkCalendarRow(cols) {
   if (!CAL_DATE_RE.test(date)) return `日付の形式が不正です: "${date}"`;
   if (!CALENDAR_GROUPS.includes(calendar_group)) return `calendar_groupが不正です: "${calendar_group}"`;
   if (team !== '' && !SHIFT_TEAMS.includes(team)) return `teamが不正です: "${team}"`;
-  if (!WORK_CALENDAR_TYPES.includes(type)) return `typeが不正です: "${type}"`;
-  if (!label) return 'labelが空です';
+  if (type !== '' && !WORK_CALENDAR_TYPES.includes(type)) return `typeが不正です: "${type}"`;
   return null;
 }
 
