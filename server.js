@@ -271,7 +271,7 @@ app.delete('/api/admin/:kind/:id', (req, res) => {
 const CAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CALENDAR_GROUPS = ['sunday_off', 'wednesday_off'];
 const SHIFT_TEAMS = ['A', 'B', 'C'];
-const WORK_CALENDAR_TYPES = ['holiday', 'event', 'shift_work', 'shift_off'];
+const WORK_CALENDAR_TYPES = ['holiday', 'holiday_1', 'event', 'shift_work', 'shift_off'];
 const WORK_CALENDAR_HEADER = 'date,calendar_group,team,type,label';
 
 /** CSV 1行(5列の配列)を検証する。問題なければ null、問題があればエラー文言を返す */

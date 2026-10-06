@@ -48,8 +48,8 @@ function dayLabelsHtml(rows) {
   if (!rows || !rows.length) return '';
   return rows.map(r => {
     const isShift = r.type === 'shift_work' || r.type === 'shift_off';
-    const bg = r.type === 'shift_work' ? '#fdf4e7' : r.type === 'shift_off' ? '#e9f1fa' : '#f0f4f8';
-    const color = r.type === 'shift_work' ? '#b0721f' : r.type === 'shift_off' ? '#1e5fa8' : '#4a5a6a';
+    const bg = r.type === 'shift_work' ? '#1f6b45' : r.type === 'holiday_1' ? '#fff1e0' : r.type === 'shift_off' ? '#e9f1fa' : '#f0f4f8';
+    const color = r.type === 'shift_work' ? '#ffffff' : r.type === 'holiday_1' ? '#c25e00' : r.type === 'shift_off' ? '#1e5fa8' : '#4a5a6a';
     return `<div title="${esc(r.label)}" style="font-size:10px;font-weight:700;color:${color};background:${bg};border-radius:4px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(isShift ? `${r.team}班 ${r.type === 'shift_work' ? '出勤' : '振休'}` : r.label)}</div>`;
   }).join('');
 }
@@ -77,10 +77,17 @@ function renderGrid() {
     const d = new Date(state.month.getFullYear(), state.month.getMonth(), day);
     const key = isoDate(d);
     const rows = state.rowsByDate[key] || [];
-    const isOff = d.getDay() === offWeekday || rows.some(r => r.type === 'holiday');
+    const isHoliday1 = rows.some(r => r.type === 'holiday_1');
+    const isHoliday = rows.some(r => r.type === 'holiday');
+    const isOffWeekday = d.getDay() === offWeekday;
+    // 優先順位: holiday_1(オレンジ) > holiday(赤) > 定休曜日(青)
+    const cellStyle = isHoliday1 ? 'background:#fff1e0;border-color:#f8dcb8'
+      : isHoliday ? 'background:#fdecec;border-color:#f6d3d3'
+      : isOffWeekday ? 'background:#f7fafd' : '';
+    const dayColor = isHoliday1 ? '#e07b00' : isHoliday ? '#d64545' : isOffWeekday ? '#1e5fa8' : '#1c2b3a';
     return `
-    <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${isOff ? 'background:#fdecec;border-color:#f6d3d3' : ''}">
-      <div style="font-size:12px;font-weight:700;color:${isOff ? '#d64545' : '#1c2b3a'}">${day}</div>
+    <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${cellStyle}">
+      <div style="font-size:12px;font-weight:700;color:${dayColor}">${day}</div>
       ${dayLabelsHtml(rows)}
     </div>`;
   }).join('');
