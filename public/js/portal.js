@@ -41,7 +41,7 @@ async function fetchTodayEvents() {
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
     `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
-    '&$select=subject,start,end,location,isAllDay&$orderby=start/dateTime';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer&$orderby=start/dateTime';
 
   const res = await fetch(url, {
     headers: {
@@ -54,6 +54,9 @@ async function fetchTodayEvents() {
   const data = await res.json();
 
   return (data.value || []).map((ev, i) => ({
+    id: ev.id,
+    // 主催者かつ終日でない予定のみ変更可能(schedule.jsと同じ基準。クリックでスケジュール画面の変更フォームへ)
+    editable: !!ev.isOrganizer && !ev.isAllDay,
     time: ev.isAllDay ? '終日' : `${ev.start.dateTime.slice(11, 16)}–${ev.end.dateTime.slice(11, 16)}`,
     title: ev.subject || '(件名なし)',
     place: (ev.location && ev.location.displayName) || '',
@@ -131,7 +134,7 @@ function openNewsDetail(n) {
 function renderNews(news) {
   const el = document.getElementById('news-list');
   if (!news.length) {
-    el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">現在表示中のお知らせはありません(過去のお知らせは「すべて見る」から確認できます)</p>';
+    el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">現在表示中のお知らせはありません(過去のお知らせは「過去のお知らせ」から確認できます)</p>';
     return;
   }
   el.innerHTML = news.map((n, i) => {
@@ -205,14 +208,19 @@ function renderTodayEvents(events) {
     el.innerHTML = '<p style="margin:0;padding:6px 0;font-size:13px;color:#8a99a8">本日の予定はありません</p>';
     return;
   }
-  el.innerHTML = events.map(e => `
-    <div style="display:flex;flex-direction:column;gap:3px;background:${e.bg};border-left:4px solid ${e.color};border-radius:8px;padding:11px 15px">
+  el.innerHTML = events.map((e, i) => `
+    <div ${e.editable ? `data-edit-event="${i}" title="クリックで変更"` : ''} style="display:flex;flex-direction:column;gap:3px;background:${e.bg};border-left:4px solid ${e.color};border-radius:8px;padding:11px 15px${e.editable ? ';cursor:pointer' : ''}">
       <div style="display:flex;align-items:baseline;gap:12px">
         <span style="font-size:13px;font-weight:700;color:${e.timeColor};white-space:nowrap">${esc(e.time)}</span>
         <span style="font-size:14px;font-weight:700">${esc(e.title)}</span>
       </div>
       ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${esc(e.place)}</span>` : ''}
     </div>`).join('');
+  // 自分が主催の予定は、クリックでスケジュール画面の変更フォームを開く
+  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', () => {
+    const ev = events[Number(card.dataset.editEvent)];
+    location.href = `schedule.html?edit=${encodeURIComponent(ev.id)}`;
+  }));
 }
 
 /** 全社スケジュール1件の詳細モーダルを開く */

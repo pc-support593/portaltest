@@ -895,6 +895,15 @@ async function autoRefresh() {
 
     await render();
 
+    // トップ画面の「今日の予定」から ?edit=<予定ID> で来た場合、その予定の変更フォームを開く。
+    // 該当する予定が無い(削除済み・変更不可)ときは何もしない。再読み込みで開き直さないようURLから外す
+    const editId = new URLSearchParams(location.search).get('edit');
+    if (editId) {
+      history.replaceState(null, '', location.pathname);
+      const target = (state.personalEvents || []).find(ev => ev.id === editId && ev.editable);
+      if (target) openEditForm(target);
+    }
+
     if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {
     console.error(e);
