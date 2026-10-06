@@ -79,8 +79,8 @@ function renderGrid() {
     const isOff = d.getDay() === offWeekday;
     const rows = state.rowsByDate[key] || [];
     return `
-    <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${isOff ? 'background:#f7fafd' : ''}">
-      <div style="font-size:12px;font-weight:700;color:${isOff ? '#1e5fa8' : '#1c2b3a'}">${day}</div>
+    <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${isOff ? 'background:#fdecec;border-color:#f6d3d3' : ''}">
+      <div style="font-size:12px;font-weight:700;color:${isOff ? '#d64545' : '#1c2b3a'}">${day}</div>
       ${dayLabelsHtml(rows)}
     </div>`;
   }).join('');

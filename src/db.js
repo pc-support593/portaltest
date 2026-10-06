@@ -13,7 +13,8 @@ function open() {
   const db = new DatabaseSync(DB_PATH);
   db.exec('PRAGMA journal_mode = WAL');
   migrate(db);
-  seed(db);
+  // 本番は SEED_SAMPLE_DATA=false でサンプルを入れずに起動する(後で true にして再起動すれば、空のテーブルにだけ投入される)
+  if (process.env.SEED_SAMPLE_DATA !== 'false') seed(db);
   return db;
 }
 
