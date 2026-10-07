@@ -94,6 +94,28 @@ function migrate(db) {
       email_in       TEXT NOT NULL    -- その日だけ代わりに出勤する人
     );
     CREATE INDEX IF NOT EXISTS idx_shift_swaps_date_group ON shift_swaps(date, calendar_group);
+    -- jinjer(人事システム)の休日休暇データのキャッシュ(2026-10-07)。取得はサーバーが定期実行/手動で行い、画面はここだけを読む。
+    -- 休暇理由(reason)は取得しても保存しない(ユーザー指示: 詳細は不要)
+    CREATE TABLE IF NOT EXISTS day_offs (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      date          TEXT NOT NULL,   -- ISO 8601 (YYYY-MM-DD)。対象日
+      employee_id   TEXT NOT NULL,   -- jinjerの社員番号
+      name          TEXT NOT NULL,   -- 職場氏名(姓 名)。取得できなければ社員番号
+      kind          TEXT NOT NULL,   -- 休暇名(年次有休/振休/代休/特別休暇)
+      span          TEXT NOT NULL,   -- 全日 / 午前半休 / 午後半休 / 半休 / 時間休 HH:MM-HH:MM
+      status        TEXT NOT NULL,   -- 'pending'(申請中=未対応) | 'approved'(承認)。否認は保存しない
+      synced_at     TEXT NOT NULL    -- 取得日時(ISO 8601, UTC)
+    );
+    CREATE INDEX IF NOT EXISTS idx_day_offs_date ON day_offs(date);
+    -- jinjer取込の実行状況(1行のみ id=1)
+    CREATE TABLE IF NOT EXISTS day_offs_sync (
+      id          INTEGER PRIMARY KEY CHECK (id = 1),
+      target_date TEXT NOT NULL DEFAULT '',   -- 最後に取り込みを試みた対象日
+      ok          INTEGER NOT NULL DEFAULT 0, -- 最後の実行が成功したか
+      message     TEXT NOT NULL DEFAULT '',   -- 失敗時の理由(秘密情報は含めない)
+      run_at      TEXT NOT NULL DEFAULT '',   -- 最後の実行日時(ISO 8601, UTC)
+      ok_date     TEXT NOT NULL DEFAULT ''    -- 最後に成功した対象日(朝の自動実行の済み判定用)
+    );
   `);
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }

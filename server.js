@@ -6,6 +6,7 @@
 const express = require('express');
 const path = require('path');
 const { open } = require('./src/db');
+const jinjerDayOffs = require('./src/jinjerDayOffs');
 
 // Portal/.env があれば読み込む(環境変数の設定漏れ対策。既に設定済みの環境変数が優先される)
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* .env なしでも可 */ }
@@ -579,6 +580,26 @@ app.delete('/api/bookings/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- 本日のお休み(jinjer連携。2026-10-07) ----
+// 取り込みはサーバーが朝6:00(日本時間)に自動実行する(src/jinjerDayOffs.js)。画面はDBのキャッシュだけを読む。
+// 電話連絡などで当日にjinjerへ入力された休暇を反映するため、サインイン済みなら誰でも手動で再取り込みできる(1分に1回まで)。
+app.get('/api/day-offs', (req, res) => {
+  me(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(jinjerDayOffs.getToday(db));
+});
+
+app.post('/api/day-offs/sync', async (req, res, next) => {
+  try {
+    me(req);
+    const result = await jinjerDayOffs.sync(db, { force: true });
+    res.set('Cache-Control', 'no-store');
+    res.status(result.ok ? 200 : 503).json({ ...result, ...jinjerDayOffs.getToday(db), error: result.ok ? undefined : result.message });
+  } catch (e) {
+    next(e); // Express 4 は async の例外を拾わないため明示的にエラーハンドラへ渡す(→ E001)
+  }
+});
+
 // 1件の失敗でプロセスを落とさない(→ E001)
 app.use((err, _req, res, _next) => {
   console.error(err.message || err);
@@ -592,6 +613,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
+  jinjerDayOffs.startScheduler(db);
   if (AUTH_MODE === 'entra' && (!TENANT_ID || !CLIENT_ID)) {
     console.warn('⚠ AUTH_MODE=entra ですが TENANT_ID / CLIENT_ID が未設定です。Portal/.env に設定してください(docs/entra-setup.md §0)');
   }

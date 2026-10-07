@@ -97,6 +97,7 @@ const PORTAL_PAGES = [
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
+  { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },
   { title: '年間カレンダー', url: 'work-calendar.html', keywords: ['年間カレンダー', '出社日', '定休日', '振替休日', '班'] },
   { title: '社内報', url: 'igrace-login.html', keywords: ['社内報', 'ニュース', 'GRACE', 'igrace'] },
   { title: '管理画面', url: 'admin.html', keywords: ['管理', 'admin', 'お知らせ編集'] }

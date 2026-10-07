@@ -12,3 +12,7 @@ services:
         sync: false
       - key: CLIENT_ID
         sync: false
+      - key: JINJER_API_KEY
+        sync: false
+      - key: JINJER_SECRET_KEY
+        sync: false
