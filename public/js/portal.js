@@ -228,11 +228,14 @@ function openScheduleDetail(s) {
   openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: `${fmtMD(s.date)} ・ ${s.sub}`, title: s.title, body: s.body, owner: '総務部' });
 }
 
-/** トップの全社スケジュール欄: 今月のものだけ表示。前月以前・翌月以降は「年間予定表」から(ユーザー指示 2026-08-21) */
-function renderSchedule(schedule) {
+/** トップの全社スケジュール欄: 選択中の月のものだけ表示(既定は今月。ユーザー指示 2026-08-21・月の切り替えは2026-10-08追加)。
+    月は◀▶・月選択・「今月」で切り替える。全期間は「年間予定表」から。ymは'YYYY-MM' */
+function renderSchedule(schedule, ym) {
   const el = document.getElementById('schedule-list');
   if (!schedule.length) {
-    el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">今月の全社スケジュールはありません(他の月の予定は「年間予定表」から確認できます)</p>';
+    const [y, m] = String(ym || '').split('-').map(Number);
+    const label = y && m ? `${y}年${m}月の` : 'この月の';
+    el.innerHTML = `<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">${label}全社スケジュールはありません(他の月は上の切り替え、全期間は「年間予定表」から確認できます)</p>`;
     return;
   }
   el.innerHTML = schedule.map((s, i) => {
@@ -253,6 +256,29 @@ function renderSchedule(schedule) {
   el.querySelectorAll('[data-sch]').forEach(btn => btn.addEventListener('click', () => {
     openScheduleDetail(schedule[Number(btn.dataset.sch)]);
   }));
+}
+
+/** 全社スケジュール欄の月の切り替え(◀ ▶・月選択・今月)。選択中の月の項目(日付なしは全月で表示)を日付順に描画する */
+function setupScheduleMonthNav(items, currentYm) {
+  const input = document.getElementById('schedule-month-input');
+  let ym = currentYm;
+  const draw = () => {
+    input.value = ym;
+    const inMonth = items.filter(s => !s.date || String(s.date).slice(0, 7) === ym);
+    inMonth.sort((a, b) => (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(a.date).localeCompare(String(b.date)));
+    renderSchedule(inMonth, ym);
+  };
+  const shift = n => {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + n, 1);
+    ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    draw();
+  };
+  document.getElementById('schedule-prev').addEventListener('click', () => shift(-1));
+  document.getElementById('schedule-next').addEventListener('click', () => shift(1));
+  document.getElementById('schedule-this-month').addEventListener('click', () => { ym = currentYm; draw(); });
+  input.addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test(input.value)) { ym = input.value; draw(); } });
+  draw();
 }
 
 /** 「年間予定表」: 全期間の全社スケジュールを月ごとにまとめた一覧モーダル。行クリックで詳細を開く */
@@ -529,7 +555,7 @@ async function renderShiftBadge() {
     const thisYm = todayIso.slice(0, 7);
     const myGroup = await getMyCalendarGroup().catch(() => null);
     const mySchedule = content.schedule.filter(s => scheduleVisibleFor(s, myGroup));
-    renderSchedule(mySchedule.filter(s => !s.date || String(s.date).slice(0, 7) === thisYm));
+    setupScheduleMonthNav(mySchedule, thisYm);
     const schAllLink = document.getElementById('schedule-all-link');
     if (schAllLink) schAllLink.addEventListener('click', e => {
       e.preventDefault();

@@ -1,4 +1,4 @@
-// 管理画面: お知らせ / 全社スケジュール / クイックリンク の CRUD
+// 管理画面: お知らせ / 全社スケジュール / 業務システムリンク(旧クイックリンク) の CRUD
 // データはサーバー(SQLite)に保存され、ポータルトップに即時反映される。
 'use strict';
 
@@ -31,7 +31,7 @@ const CONFIG = {
     cells: it => [fmtMD(it.date), it.title, [it.sub, SCOPE_LABEL[it.calendar_scope] || ''].filter(Boolean).join(' ')]
   },
   links: {
-    label: 'クイックリンク', hasBody: false,
+    label: '業務システムリンク', hasBody: false,
     h1: 'アイコン文字', h2: '名称', h3: 'リンク先URL',
     fields: [
       { key: 'char', label: 'アイコン文字(1文字)', ph: '例: 勤' },

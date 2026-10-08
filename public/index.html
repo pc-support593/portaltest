@@ -17,21 +17,14 @@
       <span style="font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap">吉村一建設 ポータル</span>
     </div>
     <nav class="portal-nav" style="display:flex;align-items:center;gap:20px;min-width:0;overflow:hidden">
-      <a href="index.html" class="nav-link active">ホーム</a>
-      <a href="#" class="nav-link">社内規程</a>
-      <a href="organization.html" class="nav-link">社員名簿</a>
-      <a href="work-calendar.html" class="nav-link">年間カレンダー</a>
-      <a href="rooms.html" class="nav-link">会議室予約</a>
-      <a href="schedule.html" class="nav-link">スケジュール</a>
-      <a href="igrace-login.html" target="_blank" rel="noopener" class="nav-link">社内報</a>
-      <a href="admin.html" id="admin-nav-link" class="nav-link" style="display:none">管理</a>
+      <!-- メニューは js/common.js の PORTAL_NAV で全ページ共通に組み立てる -->
     </nav>
     <div style="margin-left:auto;display:flex;align-items:center;gap:14px;min-width:0;flex-shrink:1">
-      <div class="portal-search" style="position:relative;width:250px;max-width:100%;min-width:60px;flex-shrink:1">
+      <div class="portal-search" hidden style="display:none;position:relative;width:250px;max-width:100%;min-width:60px;flex-shrink:1">
         <input id="header-search-input" placeholder="社内検索(人・ページ)" class="header-search" autocomplete="off" style="background:rgba(255,255,255,0.12);border:none;border-radius:16px;padding:8px 16px;font-size:12px;color:#ffffff;width:100%;font-family:inherit;box-sizing:border-box">
         <div id="header-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#ffffff;border-radius:10px;box-shadow:0 8px 24px rgba(15,35,60,0.25);max-height:360px;overflow-y:auto;z-index:200;color:#1c2b3a"></div>
       </div>
-      <div style="position:relative;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;color:#ffffff;font-size:14px;cursor:pointer">
+      <div hidden style="position:relative;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);display:none;align-items:center;justify-content:center;color:#ffffff;font-size:14px;cursor:pointer">
         <span>🔔</span>
         <span style="position:absolute;top:2px;right:3px;width:8px;height:8px;border-radius:50%;background:#e05c5c;border:2px solid #1e3a5f"></span>
       </div>
@@ -64,22 +57,29 @@
           <div id="news-list" style="display:flex;flex-direction:column;padding:4px 0"></div>
         </section>
 
+        <section id="sec-schedule" data-section="schedule" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+            <span class="drag-handle" title="ドラッグして並び替え" style="cursor:grab;color:#b5c3d1;font-size:14px">⠿</span>
+            <span style="color:#1e5fa8;font-size:14px">◔</span>
+            <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">全社スケジュール</h2>
+            <span style="display:flex;align-items:center;gap:6px">
+              <button id="schedule-prev" class="hv-btn-light" type="button" aria-label="前の月" style="border:1px solid #c8dcf0;background:#ffffff;border-radius:7px;padding:5px 10px;cursor:pointer;color:#1e5fa8;font-size:12px;font-weight:700;font-family:inherit">◀</button>
+              <input id="schedule-month-input" class="in-input" type="month" aria-label="表示する月" style="width:auto;padding:5px 8px;font-size:13px;font-weight:700;font-family:inherit">
+              <button id="schedule-next" class="hv-btn-light" type="button" aria-label="次の月" style="border:1px solid #c8dcf0;background:#ffffff;border-radius:7px;padding:5px 10px;cursor:pointer;color:#1e5fa8;font-size:12px;font-weight:700;font-family:inherit">▶</button>
+              <button id="schedule-this-month" class="hv-btn-light" type="button" style="border:1px solid #c8dcf0;background:#ffffff;border-radius:7px;padding:5px 12px;cursor:pointer;color:#1e5fa8;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap">今月</button>
+            </span>
+            <a href="#" id="schedule-all-link" class="hv-btn-primary" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none">年間予定表</a>
+          </div>
+          <div id="schedule-list" style="display:flex;flex-direction:column;padding:6px 0"></div>
+        </section>
+
         <section id="sec-links" data-section="links" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
           <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3">
             <span class="drag-handle" title="ドラッグして並び替え" style="cursor:grab;color:#b5c3d1;font-size:14px">⠿</span>
             <span style="color:#1e5fa8;font-size:14px">⊞</span>
-            <h2 style="margin:0;font-size:15px;font-weight:700">クイックリンク</h2>
+            <h2 style="margin:0;font-size:15px;font-weight:700">業務システムリンク</h2>
           </div>
           <div id="quick-links" style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
-        </section>
-
-        <section id="sec-policies" data-section="policies" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
-          <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3">
-            <span class="drag-handle" title="ドラッグして並び替え" style="cursor:grab;color:#b5c3d1;font-size:14px">⠿</span>
-            <span style="color:#1e5fa8;font-size:14px">▦</span>
-            <h2 style="margin:0;font-size:15px;font-weight:700">社内規程</h2>
-          </div>
-          <div id="policy-links" style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
         </section>
       </div>
 
@@ -94,17 +94,16 @@
           <div id="today-events" style="padding:14px 20px;display:flex;flex-direction:column;gap:10px"></div>
         </section>
 
-        <section id="sec-schedule" data-section="schedule" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <section id="sec-policies" data-section="policies" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
           <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3">
             <span class="drag-handle" title="ドラッグして並び替え" style="cursor:grab;color:#b5c3d1;font-size:14px">⠿</span>
-            <span style="color:#1e5fa8;font-size:14px">◔</span>
-            <h2 style="margin:0;font-size:15px;font-weight:700">全社スケジュール</h2>
-            <a href="#" id="schedule-all-link" class="hv-btn-primary" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none">年間予定表</a>
+            <span style="color:#1e5fa8;font-size:14px">▦</span>
+            <h2 style="margin:0;font-size:15px;font-weight:700">社内規程</h2>
           </div>
-          <div id="schedule-list" style="display:flex;flex-direction:column;padding:6px 0"></div>
+          <div id="policy-links" style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
         </section>
 
-        <section id="sec-tasks" data-section="tasks" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <section id="sec-tasks" data-section="tasks" hidden style="display:none;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
           <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3">
             <span class="drag-handle" title="ドラッグして並び替え" style="cursor:grab;color:#b5c3d1;font-size:14px">⠿</span>
             <span style="color:#1e5fa8;font-size:14px">☑</span>

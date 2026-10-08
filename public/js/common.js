@@ -89,7 +89,7 @@ async function searchMembers(q) {
 
 /** ヘッダー社内検索のページ検索対象(2026-09-07追加。新しい画面を追加したらここにも追記する) */
 const PORTAL_PAGES = [
-  { title: 'ホーム', url: 'index.html', keywords: ['ホーム', 'トップ', 'ポータル', '社内規程', '就業規則', 'クイックリンク'] },
+  { title: 'ホーム', url: 'index.html', keywords: ['ホーム', 'トップ', 'ポータル', '社内規程', '就業規則', 'クイックリンク', '業務システムリンク'] },
   { title: '会議室予約(ゆめすみか展示場)', url: 'rooms.html', keywords: ['会議室', '予約', 'ゆめすみか', '展示場'] },
   { title: '会議室予約(吉村一建設会議室)', url: 'rooms.html?view=yoshimura', keywords: ['会議室', '予約', '吉村一建設', 'アネックスプラザ', 'ゲストプラザ', '本社', '社長室', '会長室'] },
   { title: '予約(社用車)', url: 'rooms.html?view=cars', keywords: ['社用車', '車', '予約', '車両'] },
@@ -97,7 +97,8 @@ const PORTAL_PAGES = [
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
-  { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },
+  // 「本日のお休み」(today-off.html)は一時停止中のため検索対象から外している(2026-10-07。再開時は ENABLE_DAYOFFS=true とあわせて戻す):
+  // { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },
   { title: '年間カレンダー', url: 'work-calendar.html', keywords: ['年間カレンダー', '出社日', '定休日', '振替休日', '班'] },
   { title: '社内報', url: 'igrace-login.html', keywords: ['社内報', 'ニュース', 'GRACE', 'igrace'] },
   { title: '管理画面', url: 'admin.html', keywords: ['管理', 'admin', 'お知らせ編集'] }
@@ -138,3 +139,57 @@ function searchPortalPages(q) {
   );
 }
 
+
+// ---- 全ページ共通のヘッダー: 「吉村一建設 ポータル」=TOPへのリンク + ナビメニュー(2026-10-08・ユーザー指示) ----
+// 各ページのヘッダーのマークアップは個別に持つため、ここで一括して組み立てる(メニューの定義はこの1か所だけ)。
+// 並び・追加・削除はこの PORTAL_NAV を直す。管理(admin)は Portal.Admin ロールの人にだけ表示する(showPortalAdminLink)。
+const PORTAL_NAV = [
+  { label: 'ホーム', href: 'index.html' },
+  { label: '社員名簿', href: 'organization.html' },
+  { label: '年間カレンダー', href: 'work-calendar.html' },
+  { label: '会議室予約', href: 'rooms.html' },
+  { label: 'スケジュール', href: 'schedule.html', also: ['yumesumika-schedule.html'] },
+  { label: '社内報', href: 'igrace-login.html', external: true },
+  { label: '管理', href: 'admin.html', id: 'admin-nav-link', hidden: true }
+];
+
+function setupPortalHeader() {
+  const header = document.querySelector('header');
+  const brand = header && header.firstElementChild;
+  if (!brand || brand.querySelector('a.portal-brand')) return;
+
+  // アイコンとタイトルをTOPページへのリンクにする(右側の「｜ ページ名」はリンクにしない)
+  const icon = brand.children[0];
+  const title = brand.children[1];
+  if (icon && title && title.textContent.includes('ポータル')) {
+    const a = document.createElement('a');
+    a.href = 'index.html';
+    a.className = 'portal-brand';
+    a.title = 'ポータルのトップへ';
+    a.style.cssText = 'display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit';
+    brand.insertBefore(a, icon);
+    a.appendChild(icon);
+    a.appendChild(title);
+  }
+
+  let nav = header.querySelector('nav.portal-nav');
+  if (!nav) {
+    nav = document.createElement('nav');
+    nav.className = 'portal-nav';
+    nav.style.cssText = 'display:flex;align-items:center;gap:20px;min-width:0;overflow:hidden;margin-left:10px';
+    brand.after(nav);
+  }
+  const current = location.pathname.split('/').pop() || 'index.html';
+  nav.innerHTML = PORTAL_NAV.map(item => {
+    const active = item.href === current || (item.also || []).includes(current);
+    return `<a href="${item.href}"${item.external ? ' target="_blank" rel="noopener"' : ''}${item.id ? ` id="${item.id}"` : ''} class="nav-link${active ? ' active' : ''}"${item.hidden ? ' style="display:none"' : ''}>${item.label}</a>`;
+  }).join('');
+}
+
+/** 「管理」メニューは Portal.Admin ロールを持つ人にだけ表示する(実際の操作はサーバー側でも強制される) */
+function showPortalAdminLink(user) {
+  const link = document.getElementById('admin-nav-link');
+  if (link && (user.roles || []).includes('Portal.Admin')) link.style.display = '';
+}
+
+setupPortalHeader();

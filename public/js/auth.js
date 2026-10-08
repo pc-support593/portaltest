@@ -21,6 +21,7 @@ const Auth = {
     }
     this.me = await api('/api/me');
     fillMe(this.me);
+    showPortalAdminLink(this.me);
     this._initLogoutLink();
     return this.me;
   },

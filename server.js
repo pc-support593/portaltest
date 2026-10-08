@@ -17,6 +17,20 @@ const PORT = process.env.PORT || 3100;
 const AUTH_MODE = process.env.AUTH_MODE || 'dev'; // 'dev' | 'entra'
 
 app.use(express.json({ limit: '256kb' }));
+
+// 「本日のお休み」(jinjer連携)は一時停止中(2026-10-07・ユーザー指示)。
+// jinjerに所定休日・法定休日を取得できるAPIが無く、要件(定休日も休みとして表示)を満たせないため。
+// ENABLE_DAYOFFS=true を設定したときだけ、ページ・API・自動取り込みが有効になる(コードは残してある)。
+const DAYOFFS_ENABLED = process.env.ENABLE_DAYOFFS === 'true';
+if (!DAYOFFS_ENABLED) {
+  app.use((req, res, next) => {
+    if (req.path === '/today-off.html' || req.path === '/js/todayOff.js' || req.path.startsWith('/api/day-offs')) {
+      return res.status(404).send('Not Found');
+    }
+    next();
+  });
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // devモードのモックユーザー
@@ -179,7 +193,9 @@ app.get('/api/content', (_req, res) => {
 // ---- ポータルトップの配置(個人ごとのドラッグ&ドロップ並び順) ----
 
 const LAYOUT_SECTIONS = ['news', 'links', 'policies', 'today', 'schedule', 'tasks'];
-const DEFAULT_LAYOUT = { left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks'] };
+// 初期配置(個人の保存済み配置があればそちらが優先され、これには戻さない)。tasks(タスク・承認待ち)は画面で非表示だが、
+// 既存の保存済み配置(6セクション)を無効にしないためLAYOUT_SECTIONSには残す(2026-10-08)
+const DEFAULT_LAYOUT = { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] };
 
 /** left/rightの合計がLAYOUT_SECTIONSの過不足ない並べ替えであることを検証 */
 function isValidLayout(body) {
@@ -613,7 +629,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
-  jinjerDayOffs.startScheduler(db);
+  if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
   if (AUTH_MODE === 'entra' && (!TENANT_ID || !CLIENT_ID)) {
     console.warn('⚠ AUTH_MODE=entra ですが TENANT_ID / CLIENT_ID が未設定です。Portal/.env に設定してください(docs/entra-setup.md §0)');
   }
