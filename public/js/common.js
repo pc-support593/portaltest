@@ -147,7 +147,7 @@ const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
   { label: '年間カレンダー', href: 'work-calendar.html' },
-  { label: '会議室予約', href: 'rooms.html' },
+  { label: '会議室予約', href: 'schedule.html' }, // 2026-10-09・ユーザー指示でrooms.htmlからschedule.htmlへ変更(「スケジュール」と同じ遷移先)
   { label: 'スケジュール', href: 'schedule.html', also: ['yumesumika-schedule.html'] },
   { label: '社内報', href: 'igrace-login.html', external: true },
   { label: '管理', href: 'admin.html', id: 'admin-nav-link', hidden: true }

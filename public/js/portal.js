@@ -103,18 +103,18 @@ function renderModal() {
       </div>
       <div style="padding:20px 26px;overflow-y:auto">
         <p style="margin:0;font-size:14px;line-height:1.9;white-space:pre-wrap">${esc(m.body)}</p>
-        ${(m.attachments || []).length ? `
-        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #eef1f5">
-          <div style="font-size:12px;font-weight:700;color:#6b7d8f;margin-bottom:8px">添付ファイル</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${m.attachments.map((a, i) => `
-            <button class="hv-btn-light" data-attach="${i}" type="button" style="display:flex;align-items:center;gap:8px;text-align:left;border:1px solid #c8dcf0;background:#ffffff;border-radius:8px;padding:8px 12px;cursor:pointer;color:#1e5fa8;font-size:13px;font-family:inherit">
-              <span>📎</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
-              <span style="margin-left:auto;font-size:11px;color:#8a99a8;white-space:nowrap">${esc(fmtFileSize(a.size))}</span>
-            </button>`).join('')}
-          </div>
-        </div>` : ''}
       </div>
+      ${(m.attachments || []).length ? `
+      <div style="padding:12px 26px;border-top:1px solid #e4ebf2;background:#fafcfe;flex-shrink:0;max-height:40%;overflow-y:auto">
+        <div style="font-size:12px;font-weight:700;color:#6b7d8f;margin-bottom:8px">添付ファイル</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${m.attachments.map((a, i) => `
+          <button class="hv-btn-light" data-attach="${i}" type="button" style="display:flex;align-items:center;gap:8px;text-align:left;border:1px solid #c8dcf0;background:#ffffff;border-radius:8px;padding:8px 12px;cursor:pointer;color:#1e5fa8;font-size:13px;font-family:inherit">
+            <span>📎</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
+            <span style="margin-left:auto;font-size:11px;color:#8a99a8;white-space:nowrap">${esc(fmtFileSize(a.size))}</span>
+          </button>`).join('')}
+        </div>
+      </div>` : ''}
       <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex;align-items:center">
         <span style="font-size:12px;color:#8a99a8">発信: ${esc(m.owner)}</span>
         <button class="hv-btn-plain" data-close style="margin-left:auto;border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit">閉じる</button>

@@ -471,6 +471,8 @@ function renderModal() {
           </span>
           <textarea id="body-input" class="in-input" rows="7" maxlength="${BODY_MAX_LEN}" placeholder="詳細を入力してください(最大${BODY_MAX_LEN}文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
         </label>` : ''}
+      </div>
+      <div style="padding:12px 26px;border-top:1px solid #eef1f5;flex-shrink:0;display:flex;flex-direction:column;gap:8px;max-height:45%;overflow-y:auto">
         ${cfg.hasBody ? attachBlockHtml(d) : ''}
         <span id="admin-error" style="font-size:12px;color:#c05a5a"></span>
       </div>
