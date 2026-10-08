@@ -153,7 +153,7 @@ function pickFields(kind, body) {
   const row = {};
   for (const f of KINDS[kind]) {
     let v = typeof body[f] === 'string' ? body[f].trim() : '';
-    if (f === 'body') v = v.slice(0, 500);
+    if (f === 'body') v = v.slice(0, 2000);
     if (f === 'calendar_scope' && !SCHEDULE_SCOPES.includes(v)) v = 'both';
     row[f] = v;
   }

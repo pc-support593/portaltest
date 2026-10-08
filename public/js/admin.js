@@ -5,6 +5,10 @@
 // 全社スケジュールの表示対象グループ(一覧に出す注記。'both'は注記なし)
 const SCOPE_LABEL = { sunday_off: '【日曜定休のみ】', wednesday_off: '【水曜定休のみ】' };
 
+// 本文(body)の最大文字数。お知らせ・全社スケジュールで共通(2026-10-08・ユーザー指示で500→2000に変更。
+// server.js の pickFields() 側の上限とあわせて変更すること)
+const BODY_MAX_LEN = 2000;
+
 const CONFIG = {
   news: {
     label: 'お知らせ', hasBody: true,
@@ -409,9 +413,9 @@ function renderModal() {
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="display:flex;align-items:baseline;gap:10px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">本文(詳細画面に表示)</span>
-            <span id="body-count" style="margin-left:auto;font-size:12px;color:${body.length >= 500 ? '#c05a5a' : '#8a99a8'}">${body.length} / 500文字</span>
+            <span id="body-count" style="margin-left:auto;font-size:12px;color:${body.length >= BODY_MAX_LEN ? '#c05a5a' : '#8a99a8'}">${body.length} / ${BODY_MAX_LEN}文字</span>
           </span>
-          <textarea id="body-input" class="in-input" rows="7" maxlength="500" placeholder="詳細を入力してください(最大500文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
+          <textarea id="body-input" class="in-input" rows="7" maxlength="${BODY_MAX_LEN}" placeholder="詳細を入力してください(最大${BODY_MAX_LEN}文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
         </label>` : ''}
         <span id="admin-error" style="font-size:12px;color:#c05a5a"></span>
       </div>
@@ -432,17 +436,17 @@ function renderModal() {
   }));
   const bodyInput = root.querySelector('#body-input');
   if (bodyInput) bodyInput.addEventListener('input', () => {
-    state.draft.body = bodyInput.value.slice(0, 500);
+    state.draft.body = bodyInput.value.slice(0, BODY_MAX_LEN);
     const counter = root.querySelector('#body-count');
-    counter.textContent = `${state.draft.body.length} / 500文字`;
-    counter.style.color = state.draft.body.length >= 500 ? '#c05a5a' : '#8a99a8';
+    counter.textContent = `${state.draft.body.length} / ${BODY_MAX_LEN}文字`;
+    counter.style.color = state.draft.body.length >= BODY_MAX_LEN ? '#c05a5a' : '#8a99a8';
   });
 
   root.querySelector('#admin-save').addEventListener('click', async () => {
     const cfg2 = CONFIG[state.tab];
     const payload = {};
     cfg2.fields.forEach(f => payload[f.key] = (state.draft[f.key] || '').trim());
-    if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, 500);
+    if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, BODY_MAX_LEN);
     if (!cfg2.fields.some(f => f.type !== 'select' && payload[f.key])) {
       root.querySelector('#admin-error').textContent = 'いずれかの項目を入力してください';
       return;

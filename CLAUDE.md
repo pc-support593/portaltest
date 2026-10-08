@@ -135,6 +135,8 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
       }
       ```
 
+16. **お知らせ・全社スケジュールの本文(body)は最大2000文字(2026-10-08・ユーザー指示。旧500文字)**: `server.js`の`pickFields()`での切り詰め、`admin.js`の`BODY_MAX_LEN`定数(textareaの`maxlength`・文字数カウンター・保存前の切り詰めで共通使用)の両方を変更する。news/scheduleとも同じ`pickFields`を通るため**本文の上限は常に両方同時に変わる**(片方だけ変えることはできない)
+
 ## 今後のロードマップ(統括計画)
 
 1. ✅ プロジェクト化・devモードで4画面稼働
