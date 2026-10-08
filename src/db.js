@@ -72,6 +72,13 @@ function migrate(db) {
       layout TEXT NOT NULL,          -- JSON { left: [sectionId...], right: [sectionId...] }
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS user_tile_orders (
+      email TEXT NOT NULL,           -- ユーザーの同一性はメールで判定(user_layoutsと同方式)
+      kind TEXT NOT NULL,            -- 'links'(業務システムリンク) | 'policies'(社内規程)
+      item_ids TEXT NOT NULL,        -- JSON [id, ...] メンバー個人の並び順(未保存の項目は末尾に出る)
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (email, kind)
+    );
     CREATE TABLE IF NOT EXISTS shift_teams (
       email TEXT PRIMARY KEY,
       calendar_group TEXT NOT NULL,  -- 'sunday_off' | 'wednesday_off'

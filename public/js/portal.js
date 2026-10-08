@@ -188,18 +188,71 @@ function openNewsListModal(allNews) {
   }));
 }
 
-/** クイックリンク・社内規程で共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化) */
-function renderTileGrid(elId, items) {
+/** メンバー個人の並びに沿ってタイルを並べる。保存が無い項目・保存後に追加された項目は、登録順(IDの順)で末尾 */
+function orderTiles(items, savedIds) {
+  const pos = new Map((savedIds || []).map((id, i) => [id, i]));
+  return items
+    .map((it, i) => ({ it, i, p: pos.has(it.id) ? pos.get(it.id) : null }))
+    .sort((a, b) => {
+      if (a.p !== null && b.p !== null) return a.p - b.p;
+      if (a.p !== null) return -1;
+      if (b.p !== null) return 1;
+      return a.i - b.i;
+    })
+    .map(x => x.it);
+}
+
+/** クイックリンク(業務システムリンク)・社内規程で共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化)。
+    kind('links'|'policies')と savedIds で、メンバー個人の並びを適用し、ドラッグ&ドロップで並べ替えて保存できる(2026-10-09) */
+function renderTileGrid(elId, items, kind, savedIds) {
   const el = document.getElementById(elId);
-  el.innerHTML = items.map((l, i) => {
+  el.innerHTML = orderTiles(items, savedIds).map(l => {
+    // 色はリンクごとに固定(並べ替えても色が入れ替わらないよう、登録順の位置で決める)
+    const colorIdx = items.indexOf(l);
     // 外部システム(http/https)へのリンクは新しいタブで開く。ポータル内の遷移(rooms.html等)は同じタブのまま
     const external = /^https?:\/\//i.test(l.url || '');
     return `
-    <a href="${esc(l.url || '#')}"${external ? ' target="_blank" rel="noopener"' : ''} class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
-      <span style="width:38px;height:38px;border-radius:10px;background:${LINK_COLORS[i % LINK_COLORS.length]};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">${esc(l.char)}</span>
+    <a href="${esc(l.url || '#')}"${external ? ' target="_blank" rel="noopener"' : ''} data-tile-id="${esc(String(l.id))}" draggable="true" title="ドラッグして並べ替え" class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
+      <span style="width:38px;height:38px;border-radius:10px;background:${LINK_COLORS[colorIdx % LINK_COLORS.length]};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">${esc(l.char)}</span>
       <span style="font-size:13px;font-weight:500">${esc(l.label)}</span>
     </a>`;
   }).join('');
+  if (kind) setupTileDnD(el, kind);
+}
+
+/** タイルのドラッグ&ドロップ(HTML5 DnD)。ドロップ位置は、カーソルが乗っているタイルの左右どちら寄りかで決め、
+    終了時に並びをサーバーへ保存する(失敗しても画面の並びはそのまま。次回表示で保存済みの並びに戻る) */
+function setupTileDnD(grid, kind) {
+  let dragged = null;
+  grid.addEventListener('dragstart', e => {
+    const tile = e.target.closest && e.target.closest('[data-tile-id]');
+    if (!tile) return;
+    dragged = tile;
+    tile.style.opacity = '0.45';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tile.dataset.tileId);
+  });
+  grid.addEventListener('dragover', e => {
+    if (!dragged) return;
+    e.preventDefault();
+    const over = e.target.closest && e.target.closest('[data-tile-id]');
+    if (!over || over === dragged) return;
+    const rect = over.getBoundingClientRect();
+    const before = (e.clientX - rect.left) < rect.width / 2;
+    grid.insertBefore(dragged, before ? over : over.nextSibling);
+  });
+  grid.addEventListener('drop', e => { if (dragged) e.preventDefault(); });
+  grid.addEventListener('dragend', async () => {
+    if (!dragged) return;
+    dragged.style.opacity = '';
+    dragged = null;
+    const ids = [...grid.querySelectorAll('[data-tile-id]')].map(t => Number(t.dataset.tileId)).filter(Number.isInteger);
+    try {
+      await api('/api/tile-order', { method: 'PUT', body: { kind, ids } });
+    } catch (e) {
+      console.error('リンクの並びの保存に失敗しました', e);
+    }
+  });
 }
 
 function renderTodayEvents(events) {
@@ -545,7 +598,11 @@ async function renderShiftBadge() {
     const pad = n => String(n).padStart(2, '0');
     const now = new Date();
     const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    renderNews(content.news.filter(n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso)));
+    // 並びは掲載日の新しい順(同じ日は後から登録したものが上。掲載日なしは末尾)。「過去のお知らせ」の一覧と同じ並び
+    const topNews = content.news
+      .filter(n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso))
+      .sort((a, b) => (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
+    renderNews(topNews);
     const allLink = document.getElementById('news-all-link');
     if (allLink) allLink.addEventListener('click', e => {
       e.preventDefault();
@@ -561,8 +618,11 @@ async function renderShiftBadge() {
       e.preventDefault();
       openScheduleListModal(mySchedule);
     });
-    renderTileGrid('quick-links', content.links);
-    renderTileGrid('policy-links', content.policies);
+    // メンバー個人のリンクの並び(取得に失敗しても登録順で表示する)
+    const savedOrder = async kind => (await api(`/api/tile-order?kind=${kind}`).catch(() => ({ ids: [] }))).ids || [];
+    const [linkOrder, policyOrder] = await Promise.all([savedOrder('links'), savedOrder('policies')]);
+    renderTileGrid('quick-links', content.links, 'links', linkOrder);
+    renderTileGrid('policy-links', content.policies, 'policies', policyOrder);
     initHeaderSearch();
   } catch (e) {
     console.error(e);

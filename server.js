@@ -224,6 +224,36 @@ app.put('/api/layout', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- メンバー個人のリンク並び順(業務システムリンク・社内規程。2026-10-09・ユーザー指示) ----
+// 管理者が並びを決めるのではなく、各メンバーがトップ画面のタイルをドラッグして並べ替え、その人だけに反映する。
+// 保存するのはリンクIDの並びだけ(リンク本体は links / policies テーブル)。保存が無い人・保存後に追加された
+// リンクは、登録順(IDの順)で末尾に出る。
+
+const TILE_KINDS = ['links', 'policies'];
+
+app.get('/api/tile-order', (req, res) => {
+  const kind = String(req.query.kind || '');
+  if (!TILE_KINDS.includes(kind)) return res.status(400).json({ error: 'kindが不正です' });
+  const row = db.prepare('SELECT item_ids FROM user_tile_orders WHERE email = ? AND kind = ?').get(me(req).email, kind);
+  let ids = [];
+  try { ids = row ? JSON.parse(row.item_ids) : []; } catch { ids = []; }
+  res.json({ ids: Array.isArray(ids) ? ids.filter(Number.isInteger) : [] });
+});
+
+app.put('/api/tile-order', (req, res) => {
+  const { kind, ids } = req.body || {};
+  if (!TILE_KINDS.includes(kind)) return res.status(400).json({ error: 'kindが不正です' });
+  if (!Array.isArray(ids) || ids.length > 500 || !ids.every(Number.isInteger)) {
+    return res.status(400).json({ error: 'idsが不正です' });
+  }
+  const unique = [...new Set(ids)];
+  db.prepare(
+    `INSERT INTO user_tile_orders (email, kind, item_ids, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(email, kind) DO UPDATE SET item_ids = excluded.item_ids, updated_at = excluded.updated_at`
+  ).run(me(req).email, kind, JSON.stringify(unique));
+  res.json({ ok: true });
+});
+
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
 // パスの形が重なってしまうため(例: GET/POST /api/admin/shift-swaps, DELETE /api/admin/shift-swaps/:id)、
 // 汎用ルートより前に登録して先にマッチさせる(でなければ kind='shift-swaps' が KINDS になく 404 になる)
