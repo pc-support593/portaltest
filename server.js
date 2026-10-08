@@ -5,6 +5,8 @@
 // 認証は現在 devモード(モックユーザー)。Entra ID 移行手順は docs/entra-setup.md を参照。
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
 
@@ -182,9 +184,14 @@ function requireAdmin(req, res) {
 
 // ポータルトップ用: まとめて取得
 app.get('/api/content', (_req, res) => {
+  // お知らせ・全社スケジュールの添付ファイル(名前・大きさのみ。本体は /api/attachments/:id/download から取得)
+  const files = {};
+  db.prepare('SELECT id, kind, item_id, original_name, size FROM attachments ORDER BY created_at, rowid').all()
+    .forEach(a => { (files[`${a.kind}:${a.item_id}`] ||= []).push({ id: a.id, name: a.original_name, size: a.size }); });
+  const withFiles = (kind, rows) => rows.map(r => ({ ...r, attachments: files[`${kind}:${r.id}`] || [] }));
   res.json({
-    news: db.prepare('SELECT * FROM news ORDER BY id').all(),
-    schedule: db.prepare('SELECT * FROM schedule ORDER BY id').all(),
+    news: withFiles('news', db.prepare('SELECT * FROM news ORDER BY id').all()),
+    schedule: withFiles('schedule', db.prepare('SELECT * FROM schedule ORDER BY id').all()),
     links: db.prepare('SELECT * FROM links ORDER BY id').all(),
     policies: db.prepare('SELECT * FROM policies ORDER BY id').all()
   });
@@ -252,6 +259,119 @@ app.put('/api/tile-order', (req, res) => {
      ON CONFLICT(email, kind) DO UPDATE SET item_ids = excluded.item_ids, updated_at = excluded.updated_at`
   ).run(me(req).email, kind, JSON.stringify(unique));
   res.json({ ok: true });
+});
+
+// ---- お知らせ・全社スケジュールの添付ファイル(2026-10-09・ユーザー指示: 1件につき3つまで・1ファイル10MBまで) ----
+// ファイル本体は data/uploads/<UUID> に保存(元のファイル名は使わない)。DBには名前・大きさ・添付先だけを持つ。
+// アップロード・削除は管理者のみ、ダウンロードはサインイン済みなら誰でも(認証付きAPI経由。URL直打ちでは取得できない)。
+// 保存層はこの節(saveAttachmentFile / readAttachmentStream / removeAttachmentFile)に閉じているので、
+// 将来SharePoint・Box等へ差し替えるときはここだけ変える。
+
+const ATTACH_DIR = path.join(__dirname, 'data', 'uploads');
+const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACH_MAX_COUNT = 3;
+const ATTACH_KINDS = ['news', 'schedule'];
+
+function isZip(b) { return b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04; }
+/** Officeファイル(zip)の判定。ファイル名一覧は平文で入っているため、種類ごとの必須フォルダの有無と、
+    マクロ(vbaProject.bin)の混入を文字列検索で確認する */
+function isOoxml(b, folder) {
+  if (!isZip(b)) return false;
+  const text = b.toString('latin1');
+  return text.includes('[Content_Types].xml') && text.includes(folder) && !text.includes('vbaProject.bin');
+}
+// 拡張子 → 許可するMIMEと、中身(先頭バイト等)の検査。HTML・SVG・実行形式・マクロ付きOfficeは許可しない
+const ATTACH_TYPES = {
+  pdf: { mime: 'application/pdf', ok: b => b.slice(0, 5).toString('latin1') === '%PDF-' },
+  png: { mime: 'image/png', ok: b => b.length > 8 && b[0] === 0x89 && b.slice(1, 4).toString('latin1') === 'PNG' },
+  jpg: { mime: 'image/jpeg', ok: b => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  jpeg: { mime: 'image/jpeg', ok: b => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  gif: { mime: 'image/gif', ok: b => ['GIF87a', 'GIF89a'].includes(b.slice(0, 6).toString('latin1')) },
+  docx: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ok: b => isOoxml(b, 'word/') },
+  xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ok: b => isOoxml(b, 'xl/') },
+  pptx: { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ok: b => isOoxml(b, 'ppt/') }
+};
+
+function saveAttachmentFile(id, buf) {
+  fs.mkdirSync(ATTACH_DIR, { recursive: true });
+  fs.writeFileSync(path.join(ATTACH_DIR, id), buf);
+}
+function readAttachmentStream(id) { return fs.createReadStream(path.join(ATTACH_DIR, id)); }
+function removeAttachmentFile(id) {
+  try { fs.unlinkSync(path.join(ATTACH_DIR, id)); } catch { /* 既に無い場合は無視 */ }
+}
+
+/** 添付先の項目(お知らせ・全社スケジュール)を消すときに、添付のDB行とファイルも消す */
+function deleteAttachmentsFor(kind, itemId) {
+  const rows = db.prepare('SELECT id FROM attachments WHERE kind = ? AND item_id = ?').all(kind, itemId);
+  rows.forEach(r => removeAttachmentFile(r.id));
+  db.prepare('DELETE FROM attachments WHERE kind = ? AND item_id = ?').run(kind, itemId);
+}
+
+/** ファイル名を安全な表示名にする(パス区切り・制御文字を除去。長すぎる名前は切る) */
+function safeFileName(raw) {
+  const base = String(raw || '').split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f"<>|?*:]/g, '').trim();
+  return base.slice(-120) || 'file';
+}
+
+/** アップロード本体の読み取り。サイズ超過などの失敗は、画面に出せる日本語メッセージで返す */
+function readRawBody(req, res, next) {
+  express.raw({ type: '*/*', limit: ATTACH_MAX_BYTES })(req, res, err => {
+    if (!err) return next();
+    const tooLarge = err.type === 'entity.too.large';
+    res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? 'ファイルが大きすぎます(1ファイル10MBまで)' : 'ファイルを読み込めませんでした' });
+  });
+}
+
+app.post('/api/attachments', readRawBody, (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const kind = String(req.query.kind || '');
+  const itemId = Number(req.query.itemId);
+  if (!ATTACH_KINDS.includes(kind) || !Number.isInteger(itemId)) return res.status(400).json({ error: '添付先が不正です' });
+  if (!db.prepare(`SELECT 1 FROM ${kind} WHERE id = ?`).get(itemId)) return res.status(404).json({ error: '添付先が見つかりません' });
+
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'ファイルが空です' });
+  const name = safeFileName(req.query.name);
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const type = ATTACH_TYPES[ext];
+  if (!type) return res.status(400).json({ error: `この種類のファイルは添付できません(使えるもの: ${Object.keys(ATTACH_TYPES).join('・')})` });
+  if (!type.ok(buf)) return res.status(400).json({ error: 'ファイルの中身が拡張子と一致しないか、マクロを含んでいるため添付できません' });
+
+  const count = db.prepare('SELECT COUNT(*) AS c FROM attachments WHERE kind = ? AND item_id = ?').get(kind, itemId).c;
+  if (count >= ATTACH_MAX_COUNT) return res.status(400).json({ error: `添付できるのは1件につき${ATTACH_MAX_COUNT}つまでです` });
+
+  const id = crypto.randomUUID();
+  saveAttachmentFile(id, buf);
+  db.prepare('INSERT INTO attachments (id, kind, item_id, original_name, size, mime) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, kind, itemId, name, buf.length, type.mime);
+  // CSV由来の行事に添付した場合は手入力扱いに切り替える(次回のCSV取込で、添付ごと消されないようにする)
+  if (kind === 'schedule') db.prepare("UPDATE schedule SET source = '' WHERE id = ?").run(itemId);
+  res.json({ id, name, size: buf.length });
+});
+
+app.delete('/api/attachments/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const id = String(req.params.id);
+  const info = db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  removeAttachmentFile(id);
+  res.json({ ok: true });
+});
+
+app.get('/api/attachments/:id/download', (req, res, next) => {
+  me(req);
+  const row = db.prepare('SELECT original_name, mime FROM attachments WHERE id = ?').get(String(req.params.id));
+  if (!row) return res.status(404).json({ error: 'not found' });
+  const stream = readAttachmentStream(String(req.params.id));
+  stream.on('error', () => { if (!res.headersSent) res.status(404).json({ error: 'ファイルが見つかりません' }); else res.destroy(); });
+  res.set({
+    'Content-Type': row.mime,
+    'Content-Disposition': `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(row.original_name)}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'private, no-store'
+  });
+  stream.pipe(res);
 });
 
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
@@ -342,6 +462,7 @@ app.delete('/api/admin/:kind/:id', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const info = db.prepare(`DELETE FROM ${kind} WHERE id = ?`).run(Number(req.params.id));
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  if (ATTACH_KINDS.includes(kind)) deleteAttachmentsFor(kind, Number(req.params.id)); // 添付ファイルも一緒に消す
   res.json({ ok: true });
 });
 

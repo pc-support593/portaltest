@@ -72,6 +72,16 @@ function migrate(db) {
       layout TEXT NOT NULL,          -- JSON { left: [sectionId...], right: [sectionId...] }
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,           -- ランダムID(UUID)。保存ファイル名も同じ(元のファイル名は使わない)
+      kind TEXT NOT NULL,            -- 'news'(お知らせ) | 'schedule'(全社スケジュール)
+      item_id INTEGER NOT NULL,      -- 添付先の news.id / schedule.id
+      original_name TEXT NOT NULL,   -- 表示・ダウンロード時のファイル名
+      size INTEGER NOT NULL,
+      mime TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_item ON attachments(kind, item_id);
     CREATE TABLE IF NOT EXISTS user_tile_orders (
       email TEXT NOT NULL,           -- ユーザーの同一性はメールで判定(user_layoutsと同方式)
       kind TEXT NOT NULL,            -- 'links'(業務システムリンク) | 'policies'(社内規程)

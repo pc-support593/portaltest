@@ -9,6 +9,60 @@ const SCOPE_LABEL = { sunday_off: '【日曜定休のみ】', wednesday_off: '�
 // server.js の pickFields() 側の上限とあわせて変更すること)
 const BODY_MAX_LEN = 2000;
 
+// 添付ファイル(お知らせ・全社スケジュール。2026-10-09・ユーザー指示: 1件につき3つまで・1ファイル10MBまで)。
+// 上限・許可する種類は server.js の ATTACH_* と合わせること(サーバー側でも検査される)
+const ATTACH_MAX_COUNT = 3;
+const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACH_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'docx', 'xlsx', 'pptx'];
+
+/** 編集モーダルの「添付ファイル」欄。登録済み(draft.attachments)と、これから追加するファイル(draft.newFiles)を並べる */
+function attachBlockHtml(d) {
+  const saved = d.attachments || [];
+  const added = d.newFiles || [];
+  const room = ATTACH_MAX_COUNT - saved.length - added.length;
+  const row = (icon, name, size, btn) => `
+    <div style="display:flex;align-items:center;gap:8px;border:1px solid #e4eaf1;border-radius:8px;padding:7px 10px;font-size:13px">
+      <span>${icon}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span>
+      <span style="margin-left:auto;font-size:11px;color:#8a99a8;white-space:nowrap">${esc(fmtFileSize(size))}</span>${btn}
+    </div>`;
+  return `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">添付ファイル(${ATTACH_MAX_COUNT}つまで・1つ${ATTACH_MAX_BYTES / 1024 / 1024}MBまで。PDF・画像・Word・Excel・PowerPoint)</span>
+          ${saved.map((a, i) => row('📎', a.name, a.size,
+            `<button type="button" data-del-saved="${i}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 10px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button>`)).join('')}
+          ${added.map((f, i) => row('🆕', f.name, f.size,
+            `<button type="button" data-del-new="${i}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 10px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">取消</button>`)).join('')}
+          ${room > 0
+            ? `<input id="attach-input" type="file" multiple accept=".${ATTACH_EXTS.join(',.')}" style="font-size:12px;font-family:inherit"><span style="font-size:11px;color:#8a99a8">あと${room}つ追加できます。追加したファイルは「${state.editId != null ? '更新する' : '追加する'}」を押したときに保存されます</span>`
+            : '<span style="font-size:11px;color:#8a99a8">添付の上限(3つ)に達しています</span>'}
+        </div>`;
+}
+
+/** 選んだファイルを順にアップロードする。失敗したファイルと理由を返す(1件の失敗で残りを止めない) */
+async function uploadAttachments(kind, itemId, files) {
+  const failed = [];
+  const headers = { 'Content-Type': 'application/octet-stream' };
+  if (Auth.mode === 'entra') {
+    const token = await Auth.getApiToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  for (const file of files) {
+    try {
+      const res = await fetch(`/api/attachments?kind=${kind}&itemId=${itemId}&name=${encodeURIComponent(file.name)}`, {
+        method: 'POST', headers, body: file
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).error || msg; } catch { /* 本文なし */ }
+        throw new Error(msg);
+      }
+    } catch (e) {
+      failed.push({ file, message: e.message || String(e) });
+    }
+  }
+  return failed;
+}
+
 const CONFIG = {
   news: {
     label: 'お知らせ', hasBody: true,
@@ -417,6 +471,7 @@ function renderModal() {
           </span>
           <textarea id="body-input" class="in-input" rows="7" maxlength="${BODY_MAX_LEN}" placeholder="詳細を入力してください(最大${BODY_MAX_LEN}文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
         </label>` : ''}
+        ${cfg.hasBody ? attachBlockHtml(d) : ''}
         <span id="admin-error" style="font-size:12px;color:#c05a5a"></span>
       </div>
       <div style="padding:16px 26px;border-top:1px solid #e4ebf2;display:flex;gap:10px;justify-content:flex-end">
@@ -434,6 +489,38 @@ function renderModal() {
   root.querySelectorAll('[data-field]').forEach(inp => inp.addEventListener('input', () => {
     state.draft[inp.dataset.field] = inp.value;
   }));
+  // 添付ファイルの操作(選択・取消・登録済みの削除)。入力中の内容は state.draft に保持されているので、再描画しても消えない
+  const setError = msg => { root.querySelector('#admin-error').textContent = msg; };
+  const attachInput = root.querySelector('#attach-input');
+  if (attachInput) attachInput.addEventListener('change', () => {
+    const d2 = state.draft;
+    d2.newFiles = d2.newFiles || [];
+    const problems = [];
+    for (const file of attachInput.files) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!ATTACH_EXTS.includes(ext)) problems.push(`「${file.name}」は添付できない種類です`);
+      else if (file.size > ATTACH_MAX_BYTES) problems.push(`「${file.name}」は大きすぎます(${fmtFileSize(file.size)}。10MBまで)`);
+      else if ((d2.attachments || []).length + d2.newFiles.length >= ATTACH_MAX_COUNT) problems.push(`「${file.name}」は上限(${ATTACH_MAX_COUNT}つ)を超えるため追加しませんでした`);
+      else d2.newFiles.push(file);
+    }
+    renderModal();
+    if (problems.length) root.querySelector('#admin-error').textContent = problems.join(' / ');
+  });
+  root.querySelectorAll('[data-del-new]').forEach(b => b.addEventListener('click', () => {
+    state.draft.newFiles.splice(Number(b.dataset.delNew), 1);
+    renderModal();
+  }));
+  root.querySelectorAll('[data-del-saved]').forEach(b => b.addEventListener('click', async () => {
+    const a = state.draft.attachments[Number(b.dataset.delSaved)];
+    if (!confirm(`添付ファイル「${a.name}」を削除しますか?`)) return;
+    try {
+      await api(`/api/attachments/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+      state.draft.attachments.splice(Number(b.dataset.delSaved), 1);
+      await loadAll();
+      renderModal();
+    } catch (e) { setError(e.message); }
+  }));
+
   const bodyInput = root.querySelector('#body-input');
   if (bodyInput) bodyInput.addEventListener('input', () => {
     state.draft.body = bodyInput.value.slice(0, BODY_MAX_LEN);
@@ -452,8 +539,25 @@ function renderModal() {
       return;
     }
     try {
+      let savedId = state.editId;
       if (isEdit) await api(`/api/admin/${state.tab}/${state.editId}`, { method: 'PUT', body: payload });
-      else await api(`/api/admin/${state.tab}`, { method: 'POST', body: payload });
+      else savedId = (await api(`/api/admin/${state.tab}`, { method: 'POST', body: payload })).id;
+
+      // 選んだ添付ファイルをアップロード。失敗したものがあれば、項目は保存済みのまま編集画面に戻して理由を示す
+      const files = cfg2.hasBody ? (state.draft.newFiles || []) : [];
+      if (files.length) {
+        const failed = await uploadAttachments(state.tab, savedId, files);
+        if (failed.length) {
+          await loadAll();
+          const saved = (state.data[state.tab] || []).find(x => x.id === savedId);
+          state.editId = savedId;
+          state.draft = { ...saved, newFiles: failed.map(f => f.file) };
+          render();
+          document.getElementById('admin-error').textContent =
+            '内容は保存しましたが、次のファイルを添付できませんでした: ' + failed.map(f => `「${f.file.name}」${f.message}`).join(' / ');
+          return;
+        }
+      }
       state.draft = null; state.editId = null;
       await loadAll();
       render();

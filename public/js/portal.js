@@ -103,6 +103,17 @@ function renderModal() {
       </div>
       <div style="padding:20px 26px;overflow-y:auto">
         <p style="margin:0;font-size:14px;line-height:1.9;white-space:pre-wrap">${esc(m.body)}</p>
+        ${(m.attachments || []).length ? `
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #eef1f5">
+          <div style="font-size:12px;font-weight:700;color:#6b7d8f;margin-bottom:8px">添付ファイル</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${m.attachments.map((a, i) => `
+            <button class="hv-btn-light" data-attach="${i}" type="button" style="display:flex;align-items:center;gap:8px;text-align:left;border:1px solid #c8dcf0;background:#ffffff;border-radius:8px;padding:8px 12px;cursor:pointer;color:#1e5fa8;font-size:13px;font-family:inherit">
+              <span>📎</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
+              <span style="margin-left:auto;font-size:11px;color:#8a99a8;white-space:nowrap">${esc(fmtFileSize(a.size))}</span>
+            </button>`).join('')}
+          </div>
+        </div>` : ''}
       </div>
       <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex;align-items:center">
         <span style="font-size:12px;color:#8a99a8">発信: ${esc(m.owner)}</span>
@@ -113,6 +124,10 @@ function renderModal() {
   root.querySelector('#modal-overlay').addEventListener('click', closeModal);
   root.querySelector('#modal-box').addEventListener('click', e => e.stopPropagation());
   root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
+  root.querySelectorAll('[data-attach]').forEach(b => b.addEventListener('click', () => {
+    const a = m.attachments[Number(b.dataset.attach)];
+    downloadAttachment(a.id, a.name);
+  }));
 }
 
 function renderGreeting(user) {
@@ -127,7 +142,7 @@ function renderGreeting(user) {
 /** お知らせ1件の詳細モーダルを開く */
 function openNewsDetail(n) {
   const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
-  openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部' });
+  openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部', attachments: n.attachments || [] });
 }
 
 /** トップのお知らせ欄: 掲載日が今日以降のものだけ表示。過ぎたものは「すべて見る」から(ユーザー指示 2026-08-21) */
@@ -278,7 +293,7 @@ function renderTodayEvents(events) {
 
 /** 全社スケジュール1件の詳細モーダルを開く */
 function openScheduleDetail(s) {
-  openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: `${fmtMD(s.date)} ・ ${s.sub}`, title: s.title, body: s.body, owner: '総務部' });
+  openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: `${fmtMD(s.date)} ・ ${s.sub}`, title: s.title, body: s.body, owner: '総務部', attachments: s.attachments || [] });
 }
 
 /** トップの全社スケジュール欄: 選択中の月のものだけ表示(既定は今月。ユーザー指示 2026-08-21・月の切り替えは2026-10-08追加)。

@@ -193,3 +193,39 @@ function showPortalAdminLink(user) {
 }
 
 setupPortalHeader();
+
+// ---- 添付ファイル(お知らせ・全社スケジュール。2026-10-09) ----
+// ダウンロードはAPIが認証必須(Bearerトークン)のため、通常のリンクでは取得できない。fetchで取得して保存する。
+
+/** 添付ファイルの大きさを読みやすい表記にする(例: 1.2MB / 340KB) */
+function fmtFileSize(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+}
+
+/** 添付ファイルを認証付きで取得し、ブラウザの保存として開始する。失敗時は alert で理由を示す */
+async function downloadAttachment(id, name) {
+  try {
+    const headers = {};
+    if (typeof Auth !== 'undefined' && Auth.mode === 'entra') {
+      const token = await Auth.getApiToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    const res = await fetch(`/api/attachments/${encodeURIComponent(id)}/download`, { headers });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { msg = (await res.json()).error || msg; } catch { /* 本文なし */ }
+      throw new Error(msg);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (e) {
+    alert(`ダウンロードできませんでした: ${e.message || e}`);
+  }
+}
