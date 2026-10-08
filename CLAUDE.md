@@ -96,10 +96,10 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 
 ## 本番環境(AWS Lightsail。2026-10-08構築)
 
+- **本番は別リポジトリ**: `pc-support593/yoshimura-portal-prod`(非公開・履歴なし・`main`)。このリポジトリ(`pc-support593/portaltest`)はテスト(Render)用。旧`production`ブランチは削除済み。**本番に載せない変更**: コミット`1e355dc`(別作業で入った「本日のお休み」機能)。テストで確認した変更を本番に載せるときは、該当の変更を`yoshimura-portal-prod`へ反映する(本番リポジトリの`CLAUDE.md`にも同じ内容の本番環境の説明がある)
 - **URL**: https://portal.yoshimuraichi.co.jp / サーバー: AWS Lightsail(東京。インスタンス名`Portal`・Ubuntu 22.04・固定IP 13.112.30.81)。Nginx(80/443)→ Node.js(127.0.0.1:3100、systemdサービス`portal`・ユーザー`portal`)。TLSはLet's Encrypt(Certbot自動更新。失敗通知先=system@yoshimuraichi.com)。DNSはLightsail DNSゾーン(`yoshimuraichi.co.jp`)
-- **配置**: `/opt/portal/app`(GitHubの**`production`ブランチ**をclone)。DBは`/opt/portal/app/data/portal.db`(git管理外。**更新で触らない**)。設定は`/opt/portal/app/.env`(`AUTH_MODE=entra`・`TENANT_ID`・`CLIENT_ID`・`SEED_SAMPLE_DATA=false`・社内報を使うなら`IGRACE_USER`/`IGRACE_PASSWORD`。権限600)
-- **`production`ブランチの位置づけ**: `main`から、コミット`1e355dc`(別作業で入った「本日のお休み」機能)を**外した**もの(ユーザー指示・2026-10-08)。`main`の変更を本番に載せるときは`production`へ取り込む(`git merge main`。1e355dc側の変更が衝突する場合は、外す側を選ぶ)
-- **更新手順(データを消さない)**: ①Lightsailで手動スナップショットを取る → ②`production`を更新してpush → ③サーバーで `sudo -u portal bash -c 'cd /opt/portal/app && git pull --ff-only && npm ci --omit=dev'` の後に `sudo systemctl restart portal`(数秒止まる)→ ④画面で確認。DBの構造変更は列・テーブルの追加のみ(`src/db.js`が起動時に実行)
+- **配置**: `/opt/portal/app`(`yoshimura-portal-prod`の`main`をclone。読み取り専用のデプロイキーでSSH取得)。DBは`/opt/portal/app/data/portal.db`(git管理外。**更新で触らない**)。設定は`/opt/portal/app/.env`(`AUTH_MODE=entra`・`TENANT_ID`・`CLIENT_ID`・`SEED_SAMPLE_DATA=false`・社内報の自動ログイン用`IGRACE_USER`/`IGRACE_PASSWORD`。権限600)。社内報のIDとパスワードは**サーバーの`.env`にだけ**置き、社員の入力は不要
+- **更新手順(データを消さない)**: ①Lightsailで手動スナップショットを取る → ②`yoshimura-portal-prod`の`main`を更新してpush → ③サーバーで `sudo -u portal bash -c 'cd /opt/portal/app && git pull --ff-only && npm ci --omit=dev'` の後に `sudo systemctl restart portal`(数秒止まる)→ ④画面で確認。DBの構造変更は列・テーブルの追加のみ(`src/db.js`が起動時に実行)
 - **バックアップ**: Lightsail自動スナップショット(毎日18:00 UTC=日本時間3:00)+初期スナップショット`portal-initial-20261008`。復旧=スナップショットから新インスタンスを作成→固定IPを付け替え
 - **Entra ID**: アプリ登録(Yoshimura-Portal)のSPAリダイレクトURIに`https://portal.yoshimuraichi.co.jp`の追加が必要(追加後に[_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md)も更新する)
 
