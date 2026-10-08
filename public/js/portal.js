@@ -453,12 +453,14 @@ function initDragAndDrop() {
       section.draggable = !!e.target.closest('.drag-handle');
     });
     section.addEventListener('dragstart', e => {
+      if (e.target !== section) return; // 枠の中のリンクタイル等のドラッグ(setupTileDnD)を、枠全体のドラッグと取り違えない
       draggedSection = section;
       section.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', section.dataset.section);
     });
-    section.addEventListener('dragend', () => {
+    section.addEventListener('dragend', e => {
+      if (e.target !== section) return;
       section.classList.remove('dragging');
       section.draggable = false;
       draggedSection = null;
@@ -601,6 +603,15 @@ async function renderShiftBadge() {
   try {
     const user = await Auth.init();
     renderGreeting(user);
+    // 配置(保存済みの並び)の適用とドラッグ操作の有効化は、お知らせ・予定・リンク等の読み込み(Graphなど外部呼び出しを含む)を
+    // **待たずに先に行う**。以前は読み込みの後ろにあり、読み込みが遅い・止まっている間は、各枠をドラッグで動かせなかった
+    // (2026-10-09修正)。配置の取得に失敗しても、既定の並びのままドラッグ操作は有効にする
+    try {
+      applyLayout(await api('/api/layout'));
+    } catch (e) {
+      console.error('配置の取得に失敗しました', e);
+    }
+    initDragAndDrop();
     // 「管理」リンクはPortal.Adminロールを持つユーザーのみ表示(実際のCRUD操作はサーバー側requireAdminでも強制済み)
     if ((user.roles || []).includes('Portal.Admin')) {
       const adminLink = document.getElementById('admin-nav-link');
@@ -646,13 +657,7 @@ async function renderShiftBadge() {
     return;
   }
 
-  // 配置の並び順はニュース等と独立して失敗しうるため、取得に失敗しても既定の並びのままドラッグ操作は有効にする
-  try {
-    applyLayout(await api('/api/layout'));
-  } catch (e) {
-    console.error('配置の取得に失敗しました', e);
-  }
-  initDragAndDrop();
+  // (配置の適用・ドラッグ操作の有効化は、上のtryの冒頭で先に行っている)
 
   // 予定表はニュース等と独立して失敗しうるため(権限未同意など)、別枠でエラー表示する
   let lastTodayEvents = [];
