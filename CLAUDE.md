@@ -94,6 +94,15 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
   - **DB**: `day_offs`(当日分のキャッシュ。取込のたびに当日以前の行を入れ替え)・`day_offs_sync`(最終実行の成否・理由。1行のみ)。データ台帳に記載済み
   - **データ元の注意**: jinjerに入力されるまでは表示できない(電話で休みの連絡を受けても、誰かがjinjerに入力→手動更新で反映される)。キー・シークレットはチャットに貼られた履歴があるため、運用前にjinjer側での再発行を推奨
 
+## 本番環境(AWS Lightsail。2026-10-08構築)
+
+- **URL**: https://portal.yoshimuraichi.co.jp / サーバー: AWS Lightsail(東京。インスタンス名`Portal`・Ubuntu 22.04・固定IP 13.112.30.81)。Nginx(80/443)→ Node.js(127.0.0.1:3100、systemdサービス`portal`・ユーザー`portal`)。TLSはLet's Encrypt(Certbot自動更新。失敗通知先=system@yoshimuraichi.com)。DNSはLightsail DNSゾーン(`yoshimuraichi.co.jp`)
+- **配置**: `/opt/portal/app`(GitHubの**`production`ブランチ**をclone)。DBは`/opt/portal/app/data/portal.db`(git管理外。**更新で触らない**)。設定は`/opt/portal/app/.env`(`AUTH_MODE=entra`・`TENANT_ID`・`CLIENT_ID`・`SEED_SAMPLE_DATA=false`・社内報を使うなら`IGRACE_USER`/`IGRACE_PASSWORD`。権限600)
+- **`production`ブランチの位置づけ**: `main`から、コミット`1e355dc`(別作業で入った「本日のお休み」機能)を**外した**もの(ユーザー指示・2026-10-08)。`main`の変更を本番に載せるときは`production`へ取り込む(`git merge main`。1e355dc側の変更が衝突する場合は、外す側を選ぶ)
+- **更新手順(データを消さない)**: ①Lightsailで手動スナップショットを取る → ②`production`を更新してpush → ③サーバーで `sudo -u portal bash -c 'cd /opt/portal/app && git pull --ff-only && npm ci --omit=dev'` の後に `sudo systemctl restart portal`(数秒止まる)→ ④画面で確認。DBの構造変更は列・テーブルの追加のみ(`src/db.js`が起動時に実行)
+- **バックアップ**: Lightsail自動スナップショット(毎日18:00 UTC=日本時間3:00)+初期スナップショット`portal-initial-20261008`。復旧=スナップショットから新インスタンスを作成→固定IPを付け替え
+- **Entra ID**: アプリ登録(Yoshimura-Portal)のSPAリダイレクトURIに`https://portal.yoshimuraichi.co.jp`の追加が必要(追加後に[_governance/identity/app-registrations.md](../_governance/identity/app-registrations.md)も更新する)
+
 ## 実装ルール
 
 1. **デザインは design/README.md が正**(色・余白・挙動は確定値)。見た目を変えるときは必ず照合する。ZIP内プロトタイプはREADMEより古い版なので仕様の根拠にしない
