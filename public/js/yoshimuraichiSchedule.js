@@ -1,39 +1,34 @@
-// ゆめすみかスタッフ予定ページ(2026-10-01追加。ユーザー指示)。
-// @yumesumika.com のスタッフだけを対象に、展示場(+設計)ごとのMS365グループのメンバー全員の
-// 予定を表示する。メンバーの判定は Entra ID の department 属性ではなく、実際に運用されている
-// MS365グループのメンバーシップを使う(ユーザー指示 2026-09-30〜10-01)。
-// 表示形式は「日単位×2週間」の表(2026-10-02変更。ユーザー指示: 時間単位ではなく日単位で
-// 2週分を見たい)。各日のマスには、その日の予定の件名を簡潔に並べる(複数件は改行)。
-// 必要な追加Graph権限: GroupMember.Read.All(委任。グループメンバー一覧の取得に必要。要管理者同意)。
-// 「本社」タブ(2026-10-02追加)のみMS365グループを介さず、指定されたメールアドレスを直接
-// メンバーとして扱う(ユーザー指示。表示名の取得は既存のUser.Read.Allで足り新規権限は不要)。
-// 予定の件名まで表示するには、各スタッフの個人カレンダーにもReviewer権限の付与が必要
-// (会議室と同じ要領。未実行の場合は403になりその人の行にエラー表示。powershell.txt参照)。
-// スタッフ予定の下に、その拠点の会議室予約状況も表示する(2026-10-02追加。ユーザー指示。
-// ゆめすみか展示場の5拠点タブのみ対象。「本社」タブはメンバー表示のみでよいとのこと)。
+// 吉村一建設スタッフ予定ページ(2026-10-09追加。ユーザー指示)。ゆめすみかスタッフ予定(yumesumikaSchedule.js)と
+// 同じ仕組みで、@yoshimuraichi.com のスタッフを、部署ごとのMS365グループのメンバーシップで分けて、
+// 全員の予定を「日単位×2週間」の表で表示する。
+// 必要なGraph権限は、ゆめすみか側と同じ(GroupMember.Read.All=グループメンバー取得、Calendars.ReadWrite.Shared=予定取得。
+// いずれも同意済み。新規権限なし)。予定の件名まで表示するには、各スタッフの個人カレンダーにReviewer権限が必要
+// (未付与の場合はその人の行に「取得失敗」と表示される。powershell.txt 8番)。
+// ページ下の会議室予約状況は、ゆめすみか(展示場=タブごとに会議室が決まる)と異なり、吉村一建設の会議室は
+// 人のグループと対応しないため、スタッフのタブとは別に、会議室専用のタブ(区分けごと)で切り替えて表示する
+// (ユーザー指示 2026-10-09: 最初は全区分けを縦に並べていたが、タブで分けて表示する形に変更)。
+// 会議室マスタは roomsData.js の YOSHIMURA_GROUPS / YOSHIMURA_ROOMS / yoshimuraGroupRooms を使う。
 'use strict';
 
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-// 展示場(+設計)ごとのMS365グループ。泉佐野は対応するグループが未作成のため対象外
-// (ユーザー指示 2026-10-01。グループが用意され次第ここに追記する)。
-// 設計(sekkei)は hidden:true で一旦タブから非表示にしている(ユーザー指示 2026-10-02。
-// 後で使う可能性があるため、仕組み(グループ定義・取得ロジック)はそのまま残す。
-// 再表示する場合は hidden: true の行を削除するだけでよい)
-// 「本社」(honsha)はMS365グループを介さず、指定された特定メンバーを直接扱う
-// (ユーザー指示 2026-10-02。groupMailの代わりにmembers配列を持たせる)
-const SHOWROOM_GROUPS = [
-  { id: 'fukuda', name: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
-  { id: 'nakamozu', name: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
-  { id: 'hirano', name: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
-  { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
-  { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
-  { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true },
-  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com'] }
+// 部署ごとのMS365グループ(ユーザー提供・2026-10-09。タブはこの並び順)。メンバーを変えたいときは
+// グループのメンバーを変更する(コードの修正は不要)。グループを増やすときはここに1行足す
+const STAFF_GROUPS = [
+  { id: 'soumu', name: '総務部', groupMail: 'soumu@yoshimuraichi.com' },
+  { id: 'fudosan', name: '不動産部', groupMail: 'fudosan@yoshimuraichi.com' },
+  { id: 'sekkei_kikaku', name: '設計企画部', groupMail: 'sekkei_kikaku@yoshimuraichi.com' },
+  { id: 'koubai', name: '購買部', groupMail: 'koubai@yoshimuraichi.com' },
+  { id: 'customer', name: 'カスタマーサポート室', groupMail: 'customer@yoshimuraichi.com' },
+  { id: 'exterior', name: 'エクステリア事業係', groupMail: 'exterior@yoshimuraichi.com' },
+  { id: 'logistics', name: '物流事業係', groupMail: 'logistics@yoshimuraichi.com' },
+  { id: 'carpenter', name: 'フレミング大工', groupMail: 'carpenter@yoshimuraichi.com' },
+  { id: 'kenchiku', name: '建築営業部', groupMail: 'kenchiku@yoshimuraichi.com' },
+  { id: 'koumu_1', name: '工務部(本社)', groupMail: 'koumu_1@yoshimuraichi.com' },
+  { id: 'koumu_2', name: '工務部(平野)', groupMail: 'koumu_2@yoshimuraichi.com' },
+  { id: 'koumu_3', name: '工務部(西宮)', groupMail: 'koumu_3@yoshimuraichi.com' },
+  { id: 'reform', name: 'リフォーム部', groupMail: 'reform@yoshimuraichi.com' }
 ];
-
-/** タブに表示する(非表示扱いでない)グループ一覧 */
-function visibleGroups() { return SHOWROOM_GROUPS.filter(g => !g.hidden); }
 
 const DAYS_SPAN = 14; // 2週間分
 
@@ -60,24 +55,16 @@ function windowLabel(startDate) {
 }
 
 const state = {
-  groupTab: visibleGroups()[0].id,
-  date: new Date(), // 表示する2週間の開始日(会議室セクションは、このうち開始日ぶんを表示する)
-  members: {},      // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
-  busy: null,       // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
-  roomsBusy: null   // roomId -> [{start,end,subject,organizer,tentative}] | null(読み込み中)
+  groupTab: STAFF_GROUPS[0].id,
+  date: new Date(),    // 表示する2週間の開始日(会議室セクションは、このうち開始日ぶんを表示する)
+  members: {},         // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
+  busy: null,          // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
+  roomsBusy: null,     // roomId -> [{start,end,subject,organizer,tentative}] | null(取得失敗) / 全体がnullなら読み込み中
+  roomsDateKey: null,  // roomsBusy を取得した日付(同じ日のタブ切替では再取得しない)
+  roomTab: YOSHIMURA_GROUPS[0].id // 会議室セクションで選択中の区分け(スタッフのタブとは独立)
 };
 
-/** 会議室予約状況セクションを出すタブ(ゆめすみか展示場の5拠点のみ。本社・設計は対象外。
-    ユーザー指示 2026-10-02: 「本社」タブはメンバー表示のみでよい)。
-    roomsData.js の SITES/siteRooms(ゆめすみか展示場マスタ)をそのまま使う */
-function roomsForTab(groupTab) {
-  const site = SITES.find(s => s.id === groupTab);
-  if (!site) return null;
-  return { label: site.name, rooms: siteRooms(site.id) };
-}
-
-/** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す
-    (HTTPステータスだけだと原因切り分けに時間がかかるため) */
+/** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す */
 async function graphErrorMessage(res) {
   try {
     const data = await res.json();
@@ -86,7 +73,8 @@ async function graphErrorMessage(res) {
   return `HTTP ${res.status}`;
 }
 
-/** メールアドレスからMS365グループを特定し、そのメンバー一覧(社内メンバーのみ)を取得する */
+/** メールアドレスからMS365グループを特定し、そのメンバー一覧(ユーザーのみ)を取得する。
+    ゆめすみか側と異なり、グループの中に別のグループ(入れ子)が含まれていても、ユーザーだけに絞る */
 async function fetchGroupMembers(groupMail) {
   const token = await Auth.getGraphToken(['GroupMember.Read.All']);
   const groupUrl = 'https://graph.microsoft.com/v1.0/groups' +
@@ -106,30 +94,9 @@ async function fetchGroupMembers(groupMail) {
     members.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
   }
+  const isUser = m => (m['@odata.type'] || '#microsoft.graph.user') === '#microsoft.graph.user';
   const collator = (a, b) => (a.displayName || '').localeCompare(b.displayName || '', 'ja');
-  return members.filter(m => m.mail).sort(collator).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail }));
-}
-
-/** 指定したメールアドレスのユーザー情報(表示名)を個別に取得する(MS365グループを介さない
-    固定メンバーリスト用。2026-10-02追加。既存のUser.Read.Allで足りるため新規権限は不要)。
-    1人ずつtry/catchし、取得に失敗した人はメールアドレスをそのまま表示名にする */
-async function fetchStaticMembers(emails) {
-  const token = await Auth.getGraphToken(['User.Read.All']);
-  const results = await Promise.all(emails.map(async email => {
-    try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error(await graphErrorMessage(res));
-      const u = await res.json();
-      return { id: u.id, name: u.displayName || email, email: u.mail || email };
-    } catch (e) {
-      console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
-      return { id: email, name: email, email };
-    }
-  }));
-  const collator = (a, b) => (a.name || '').localeCompare(b.name || '', 'ja');
-  return results.sort(collator);
+  return members.filter(m => isUser(m) && m.mail).sort(collator).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail }));
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで
@@ -166,9 +133,7 @@ async function fetchPeopleBusy(startDate, people) {
   return map;
 }
 
-/** 指定日の各会議室の予約状況(件名・予約者名)を並行取得する(schedule.jsの
-    fetchCalendarViewBusyと同じ処理。このページではschedule.jsを読み込んでいないため
-    同等の処理をここに持つ)。1件ずつtry/catchし、失敗した会議室は空扱いにする */
+/** 指定日の各会議室の予約状況(件名・予約者名)を並行取得する。1件ずつtry/catchし、失敗した会議室は null にする */
 async function fetchRoomsBusy(dateStr, rooms) {
   const token = await Auth.getGraphToken(['Calendars.ReadWrite.Shared']);
   const map = {};
@@ -196,13 +161,11 @@ async function fetchRoomsBusy(dateStr, rooms) {
   return map;
 }
 
-/** 会議室予約状況セクションのHTML(拠点内の各会議室をカード表示。schedule.jsの
-    resourceGridHtmlを簡略化したもの。このページに削除機能は無いため表示のみ) */
-function roomsSectionHtml(rooms, busyMap) {
-  if (!busyMap) return '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
+/** 1つの区分けの会議室カード群のHTML(表示のみ。削除機能は無い) */
+function roomCardsHtml(rooms, busyMap) {
   return rooms.map(r => {
     const items = busyMap[r.id];
-    const body = items === null
+    const body = items === null || items === undefined
       ? '<p style="margin:0;padding:4px 0;font-size:12px;color:#c05a5a">取得に失敗しました</p>'
       : !items.length
         ? '<p style="margin:0;padding:4px 0;font-size:12px;color:#8a99a8">この日の予約はありません</p>'
@@ -222,13 +185,29 @@ function roomsSectionHtml(rooms, busyMap) {
   }).join('');
 }
 
+/** 会議室予約状況セクション: 区分け(アネックスプラザ・ゲストプラザ・本社・社長室・会長室)のタブで切り替えて表示する。
+    スタッフのタブとは独立。全10室は日付ごとに1回だけ取得し、区分けの切替では取得し直さない */
 function renderRooms() {
   const wrap = document.getElementById('rooms-wrap');
-  const info = roomsForTab(state.groupTab);
-  if (!info || Auth.mode !== 'entra') { wrap.style.display = 'none'; return; }
+  if (Auth.mode !== 'entra') { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
-  document.getElementById('rooms-title').textContent = `${info.label}の会議室予約状況(${windowDates(state.date)[0].getMonth() + 1}/${windowDates(state.date)[0].getDate()})`;
-  document.getElementById('rooms-section').innerHTML = roomsSectionHtml(info.rooms, state.roomsBusy);
+  const d = windowDates(state.date)[0];
+  document.getElementById('rooms-title').textContent = `吉村一建設会議室の予約状況(${d.getMonth() + 1}/${d.getDate()})`;
+
+  const tabs = document.getElementById('rooms-tabs');
+  tabs.innerHTML = YOSHIMURA_GROUPS.map(g => {
+    const sel = g.id === state.roomTab;
+    return `<button class="hv-site" data-room-tab="${g.id}" style="border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">${esc(g.name)}</button>`;
+  }).join('');
+  tabs.querySelectorAll('[data-room-tab]').forEach(b => b.addEventListener('click', () => {
+    if (state.roomTab === b.dataset.roomTab) return;
+    state.roomTab = b.dataset.roomTab;
+    renderRooms();
+  }));
+
+  const section = document.getElementById('rooms-section');
+  if (!state.roomsBusy) { section.innerHTML = '<p style="margin:0;padding:8px 0;font-size:13px;color:#8a99a8">読み込み中…</p>'; return; }
+  section.innerHTML = roomCardsHtml(yoshimuraGroupRooms(state.roomTab), state.roomsBusy);
 }
 
 /** 1人・1日ぶんのマスのHTML */
@@ -247,10 +226,10 @@ function dayCellHtml(entry, dateKey, isToday) {
 
 function renderGroupTabs() {
   const title = document.getElementById('group-title');
-  const current = SHOWROOM_GROUPS.find(g => g.id === state.groupTab) || SHOWROOM_GROUPS[0];
+  const current = STAFF_GROUPS.find(g => g.id === state.groupTab) || STAFF_GROUPS[0];
   if (title) title.textContent = `${current.name}のスタッフ予定`;
   const el = document.getElementById('group-tabs');
-  el.innerHTML = visibleGroups().map(g => {
+  el.innerHTML = STAFF_GROUPS.map(g => {
     const sel = g.id === state.groupTab;
     return `<button class="hv-site" data-group-tab="${g.id}" style="border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">${esc(g.name)}</button>`;
   }).join('');
@@ -294,11 +273,9 @@ function renderTimeline() {
 
 async function loadMembers() {
   if (state.members[state.groupTab]) return;
-  const group = SHOWROOM_GROUPS.find(g => g.id === state.groupTab);
+  const group = STAFF_GROUPS.find(g => g.id === state.groupTab);
   try {
-    state.members[state.groupTab] = group.members
-      ? await fetchStaticMembers(group.members)
-      : await fetchGroupMembers(group.groupMail);
+    state.members[state.groupTab] = await fetchGroupMembers(group.groupMail);
   } catch (e) {
     console.error(e);
     document.getElementById('timeline').innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
@@ -306,36 +283,45 @@ async function loadMembers() {
   }
 }
 
+/** 会議室の予約状況を読み込む。同じ日のタブ切替では取得し直さない(全タブで同じ内容のため) */
+async function loadRooms() {
+  const key = isoDate(windowDates(state.date)[0]);
+  if (state.roomsBusy && state.roomsDateKey === key) { renderRooms(); return; }
+  state.roomsBusy = null;
+  renderRooms();
+  const busy = await fetchRoomsBusy(key, YOSHIMURA_ROOMS);
+  state.roomsBusy = busy;
+  state.roomsDateKey = key;
+  renderRooms();
+}
+
 async function render() {
   document.getElementById('date-label').textContent = windowLabel(state.date);
   renderGroupTabs();
   state.busy = null;
-  state.roomsBusy = null;
   renderTimeline();
-  renderRooms();
-  if (Auth.mode !== 'entra') return;
+  if (Auth.mode !== 'entra') { renderRooms(); return; }
 
-  const roomsInfo = roomsForTab(state.groupTab);
-  const roomsPromise = roomsInfo ? fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms) : Promise.resolve(null);
+  const roomsPromise = loadRooms(); // 会議室はメンバー取得と並行して読み込む(1件の失敗で全体を止めない)
 
   try {
     await loadMembers();
   } catch {
     // メンバー一覧のエラーメッセージは loadMembers 内で表示済み。会議室セクションは独立して継続する
-    state.roomsBusy = await roomsPromise;
-    renderRooms();
+    await roomsPromise;
     return;
   }
   renderTimeline();
   const members = state.members[state.groupTab];
-  const [busy, roomsBusy] = await Promise.all([fetchPeopleBusy(state.date, members), roomsPromise]);
+  const tab = state.groupTab;
+  const busy = await fetchPeopleBusy(state.date, members);
+  if (state.groupTab !== tab) return; // 取得中に別のタブへ切り替えられた場合は、古い結果で描き替えない
   state.busy = busy;
-  state.roomsBusy = roomsBusy;
   renderTimeline();
-  renderRooms();
+  await roomsPromise;
 }
 
-/** 表示する2週間を前後にずらす(2026-10-02変更: 1日ずつではなく2週間単位でずらす) */
+/** 表示する2週間を前後にずらす */
 function shiftWindow(n) {
   const d = new Date(state.date);
   d.setDate(d.getDate() + n * DAYS_SPAN);
@@ -347,21 +333,21 @@ function shiftWindow(n) {
 async function autoRefresh() {
   if (document.hidden || Auth.mode !== 'entra') return;
   const members = state.members[state.groupTab];
-  const roomsInfo = roomsForTab(state.groupTab);
+  const tab = state.groupTab;
   try {
     if (members) {
       const busy = await fetchPeopleBusy(state.date, members);
-      if (JSON.stringify(busy) !== JSON.stringify(state.busy)) {
+      if (state.groupTab === tab && JSON.stringify(busy) !== JSON.stringify(state.busy)) {
         state.busy = busy;
         renderTimeline();
       }
     }
-    if (roomsInfo) {
-      const roomsBusy = await fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms);
-      if (JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
-        state.roomsBusy = roomsBusy;
-        renderRooms();
-      }
+    const key = isoDate(windowDates(state.date)[0]);
+    const roomsBusy = await fetchRoomsBusy(key, YOSHIMURA_ROOMS);
+    if (isoDate(windowDates(state.date)[0]) === key && JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
+      state.roomsBusy = roomsBusy;
+      state.roomsDateKey = key;
+      renderRooms();
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
 }

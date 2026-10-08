@@ -94,6 +94,7 @@ const PORTAL_PAGES = [
   { title: '会議室予約(吉村一建設会議室)', url: 'rooms.html?view=yoshimura', keywords: ['会議室', '予約', '吉村一建設', 'アネックスプラザ', 'ゲストプラザ', '本社', '社長室', '会長室'] },
   { title: '予約(社用車)', url: 'rooms.html?view=cars', keywords: ['社用車', '車', '予約', '車両'] },
   { title: 'スケジュール', url: 'schedule.html', keywords: ['スケジュール', '予定', 'カレンダー', '会議室の予約状況'] },
+  { title: '吉村一建設スタッフ予定', url: 'yoshimuraichi-schedule.html', keywords: ['吉村一建設', 'スタッフ', '予定', '部署', '会議室'] },
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
@@ -147,8 +148,7 @@ const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
   { label: '年間カレンダー', href: 'work-calendar.html' },
-  { label: '会議室予約', href: 'schedule.html' }, // 2026-10-09・ユーザー指示でrooms.htmlからschedule.htmlへ変更(「スケジュール」と同じ遷移先)
-  { label: 'スケジュール', href: 'schedule.html', also: ['yumesumika-schedule.html'] },
+  { label: 'スケジュール', href: 'schedule.html', also: ['yumesumika-schedule.html', 'yoshimuraichi-schedule.html'] },
   { label: '社内報', href: 'igrace-login.html', external: true },
   { label: '管理', href: 'admin.html', id: 'admin-nav-link', hidden: true }
 ];

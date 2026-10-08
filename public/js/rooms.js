@@ -404,7 +404,6 @@ function renderDayModal() {
       </div>
       <div style="padding:16px 26px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">${slotsHtml}</div>
       <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex;align-items:center;gap:10px">
-        <span style="font-size:12px;color:#8a99a8">予約は Outlook の予定表に反映されます</span>
         <span style="margin-left:auto;display:flex;gap:10px">
           ${!isAll ? '<button id="quick-book" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit">＋ 時間を指定して予約</button>' : ''}
           <button class="hv-btn-plain" data-close-day style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit">閉じる</button>
@@ -488,7 +487,7 @@ function formError(f) {
   if (f.start >= f.end) return '終了時刻は開始時刻より後にしてください';
   if (VIEW !== 'yumesumika') {
     // 吉村一建設・社用車ビューは全期間実データのみ(サンプル期間・SQLite保存なし)
-    if (Auth.mode !== 'entra') return 'この画面の予約にはMicrosoft 365でのサインインが必要です';
+    if (Auth.mode !== 'entra') return 'この画面の予約にはサインインが必要です';
   } else if (f.date <= SAMPLE_HISTORY_END) {
     // 2026-07-01〜2026-08-23はフローズンなサンプル期間のため予約操作を行わない(ユーザー指示 2026-08-21)
     return 'この期間(8月23日以前)はサンプル表示のため予約の作成・変更はできません';
@@ -498,7 +497,7 @@ function formError(f) {
     const todayIso = isoDate(new Date());
     const nowHHMM = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
     if (f.date < todayIso || (f.date === todayIso && f.end <= nowHHMM)) {
-      return `過去の日時は予約できません(Exchangeが${V_ITEM_LABEL}の予約を処理しません)`;
+      return '過去の日時は予約できません';
     }
   }
   return '';
@@ -572,7 +571,7 @@ function renderFormModal() {
           <span style="display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">社内メンバー</span>
             ${Auth.mode === 'entra'
-              ? '<span style="font-size:10px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:1px 7px">Microsoft 365</span>'
+              ? ''
               : '<span style="font-size:10px;font-weight:700;color:#8a6d1f;background:#f7f0dc;border-radius:4px;padding:1px 7px">サンプル表示</span>'}
           </span>
           ${f.members.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:2px 0">${chips}</div>` : ''}
@@ -1003,10 +1002,10 @@ function calendarFooterHtml() {
   const today = new Date();
   const modeNote = VIEW !== 'yumesumika'
     ? (Auth.mode === 'entra'
-      ? '実際のExchange予約を表示しています(件名・主催者はExchangeから取得)。'
-      : 'Microsoft 365でサインインすると予約状況が表示されます。')
+      ? '実際の予約状況を表示しています(件名・主催者を表示)。'
+      : 'サインインすると予約状況が表示されます。')
     : useRealRooms()
-    ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降は実際のExchange予約です(件名・主催者はExchangeから取得)。'
+    ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降は実際の予約です(件名・主催者を表示)。'
     : (Auth.mode === 'entra'
       ? '7/1〜8/23はサンプル表示(操作不可)。8/24以降はEntra IDでのサインイン後に実データ連携が有効になります。'
       : 'デザインサンプル表示です(Entra IDでサインインすると8/24以降が実データになります)。');

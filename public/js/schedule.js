@@ -281,6 +281,9 @@ function renderGridTabs() {
   // 「ゆめすみかスタッフ予定」へのリンクは「ゆめすみか展示場」タブのときだけ表示する(2026-10-01追加)
   const staffScheduleLink = document.getElementById('staff-schedule-link');
   if (staffScheduleLink) staffScheduleLink.style.display = state.gridTab === 'sites' ? '' : 'none';
+  // 「吉村一建設スタッフ予定」へのリンクは「吉村一建設会議室」タブのときだけ表示する(2026-10-09追加)
+  const yoshimuraStaffLink = document.getElementById('yoshimura-staff-schedule-link');
+  if (yoshimuraStaffLink) yoshimuraStaffLink.style.display = state.gridTab === 'yoshimura' ? '' : 'none';
   const el = document.getElementById('grid-tabs');
   if (!el) return;
   el.innerHTML = GRID_TABS.map(t => {
@@ -539,7 +542,7 @@ function renderModal() {
         <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
-        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると実際にあなたのOutlook予定表に反映されます。' : '作成すると実際にあなたのOutlook予定表に反映されます。'}${activeMaster ? `${esc(activeMaster.itemLabel)}は実際のExchangeリソースとして招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
+        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると、あなたの予定に反映されます。' : '作成すると、あなたの予定に反映されます。'}${activeMaster ? `${esc(activeMaster.itemLabel)}は招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
           <input id="f-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
@@ -580,7 +583,7 @@ function renderModal() {
           <span style="display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">社内メンバー(任意)</span>
             ${Auth.mode === 'entra'
-              ? '<span style="font-size:10px;font-weight:700;color:#2f6f8f;background:#e5f0f7;border-radius:4px;padding:1px 7px">Microsoft 365</span>'
+              ? ''
               : '<span style="font-size:10px;font-weight:700;color:#8a6d1f;background:#f7f0dc;border-radius:4px;padding:1px 7px">サンプル表示</span>'}
           </span>
           ${f.members.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:2px 0">${memberChips}</div>` : ''}
