@@ -148,7 +148,10 @@ const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
   { label: '年間カレンダー', href: 'work-calendar.html' },
-  { label: 'スケジュール', href: 'schedule.html', also: ['yumesumika-schedule.html', 'yoshimuraichi-schedule.html'] },
+  { label: 'スケジュール', href: 'schedule.html' },
+  // スタッフ予定(2026-10-08・ユーザー指示)。既定の遷移先は吉村一建設。ゆめすみかのアカウントの人は、サインイン後に
+  // yumesumika-schedule.html へ切り替わる(showPortalAdminLink内)。2つのページはどちらでも、このメニューを強調表示する
+  { label: 'スタッフ予定', href: 'yoshimuraichi-schedule.html', also: ['yumesumika-schedule.html'], id: 'staff-nav-link' },
   { label: '社内報', href: 'igrace-login.html', external: true },
   { label: '管理', href: 'admin.html', id: 'admin-nav-link', hidden: true }
 ];
@@ -190,11 +193,17 @@ function setupPortalHeader() {
 function showPortalAdminLink(user) {
   const link = document.getElementById('admin-nav-link');
   if (link && (user.roles || []).includes('Portal.Admin')) link.style.display = '';
+  // 「スタッフ予定」メニューは、ご自身の会社のページを開く(@yumesumika.com→ゆめすみか、それ以外→吉村一建設)
+  const staffLink = document.getElementById('staff-nav-link');
+  if (staffLink) {
+    staffLink.href = String(user.email || '').toLowerCase().endsWith('@yumesumika.com')
+      ? 'yumesumika-schedule.html' : 'yoshimuraichi-schedule.html';
+  }
 }
 
 setupPortalHeader();
 
-// ---- 添付ファイル(お知らせ・全社スケジュール。2026-10-09) ----
+// ---- 添付ファイル(お知らせ・全社スケジュール。2026-10-08) ----
 // ダウンロードはAPIが認証必須(Bearerトークン)のため、通常のリンクでは取得できない。fetchで取得して保存する。
 
 /** 添付ファイルの大きさを読みやすい表記にする(例: 1.2MB / 340KB) */
@@ -228,4 +237,12 @@ async function downloadAttachment(id, name) {
   } catch (e) {
     alert(`ダウンロードできませんでした: ${e.message || e}`);
   }
+}
+
+/** 外部呼び出し(Graph等)に時間制限を付ける。ms以内に完了しなければ Error(message) で失敗させる
+    (応答が返ってこない呼び出しが、画面の初期化や自動更新を止めないようにするため。P004) */
+function withTimeout(promise, ms, message) {
+  let timer;
+  const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message || `${ms}ミリ秒以内に完了しませんでした`)), ms); });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
 }

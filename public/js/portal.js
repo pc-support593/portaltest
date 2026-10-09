@@ -218,7 +218,7 @@ function orderTiles(items, savedIds) {
 }
 
 /** クイックリンク(業務システムリンク)・社内規程で共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化)。
-    kind('links'|'policies')と savedIds で、メンバー個人の並びを適用し、ドラッグ&ドロップで並べ替えて保存できる(2026-10-09) */
+    kind('links'|'policies')と savedIds で、メンバー個人の並びを適用し、ドラッグ&ドロップで並べ替えて保存できる(2026-10-08) */
 function renderTileGrid(elId, items, kind, savedIds) {
   const el = document.getElementById(elId);
   el.innerHTML = orderTiles(items, savedIds).map(l => {
@@ -327,8 +327,9 @@ function renderSchedule(schedule, ym) {
 }
 
 /** 全社スケジュール欄の月の切り替え(◀ ▶・月選択・今月)。選択中の月の項目(日付なしは全月で表示)を日付順に描画する */
-function setupScheduleMonthNav(items, currentYm) {
+function setupScheduleMonthNav(initialItems, currentYm) {
   const input = document.getElementById('schedule-month-input');
+  let items = initialItems;
   let ym = currentYm;
   const draw = () => {
     input.value = ym;
@@ -347,6 +348,8 @@ function setupScheduleMonthNav(items, currentYm) {
   document.getElementById('schedule-this-month').addEventListener('click', () => { ym = currentYm; draw(); });
   input.addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test(input.value)) { ym = input.value; draw(); } });
   draw();
+  // 表示する項目を差し替えて描き直す(自分の定休グループが分かったあとの絞り込みに使う。表示中の月は維持する)
+  return { setItems(newItems) { items = newItems; draw(); } };
 }
 
 /** 「年間予定表」: 全期間の全社スケジュールを月ごとにまとめた一覧モーダル。行クリックで詳細を開く */
@@ -556,7 +559,8 @@ let myCalendarGroupPromise = null;
     部署はGraph /me から取得(User.Read。サインイン時に同意済み)。バッジと全社スケジュールの絞り込みで共用 */
 function getMyCalendarGroup() {
   if (!myCalendarGroupPromise) {
-    myCalendarGroupPromise = (async () => {
+    // 応答が返ってこない場合に備え、8秒で打ち切る(P004。打ち切り後は絞り込まず全件表示・バッジなしのまま。次回呼び出しで再試行する)
+    myCalendarGroupPromise = withTimeout((async () => {
       if (Auth.mode !== 'entra') return null;
       const token = await Auth.getGraphToken(['User.Read']);
       const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=department', {
@@ -565,7 +569,7 @@ function getMyCalendarGroup() {
       if (!res.ok) throw new Error(`自分のプロフィール取得に失敗しました(HTTP ${res.status})`);
       const me = await res.json();
       return calendarGroupFor(Auth.me.email, me.department || '');
-    })();
+    })(), 8000, '自分の定休グループの取得がタイムアウトしました');
     myCalendarGroupPromise.catch(() => { myCalendarGroupPromise = null; }); // 失敗は次回再試行できるようにする
   }
   return myCalendarGroupPromise;
@@ -600,12 +604,16 @@ async function renderShiftBadge() {
 }
 
 (async function init() {
+  // 外部(Graph)の取得に失敗・時間切れしたものは、2分ごとの自動更新で再試行する(P004。再読み込みを待たない)
+  let groupFailed = false;
+  let retryGroup = null;
+  let badgeFailed = false;
   try {
     const user = await Auth.init();
     renderGreeting(user);
     // 配置(保存済みの並び)の適用とドラッグ操作の有効化は、お知らせ・予定・リンク等の読み込み(Graphなど外部呼び出しを含む)を
     // **待たずに先に行う**。以前は読み込みの後ろにあり、読み込みが遅い・止まっている間は、各枠をドラッグで動かせなかった
-    // (2026-10-09修正)。配置の取得に失敗しても、既定の並びのままドラッグ操作は有効にする
+    // (2026-10-08修正)。配置の取得に失敗しても、既定の並びのままドラッグ操作は有効にする
     try {
       applyLayout(await api('/api/layout'));
     } catch (e) {
@@ -636,13 +644,14 @@ async function renderShiftBadge() {
     });
     // 全社スケジュールは今月分だけトップに表示(日付なしは表示継続)。全期間は「年間予定表」から
     const thisYm = todayIso.slice(0, 7);
-    const myGroup = await getMyCalendarGroup().catch(() => null);
-    const mySchedule = content.schedule.filter(s => scheduleVisibleFor(s, myGroup));
-    setupScheduleMonthNav(mySchedule, thisYm);
+    // 自分の定休グループはGraphへの問い合わせが必要で、応答が遅い・返らないことがありうる。表示(タイル・検索など)をそれに
+    // 待たせないため、最初は全件を表示し、グループが分かったら絞り込んで描き直す(2026-10-08。レビュー指摘2)
+    let visibleSchedule = content.schedule;
+    const scheduleNav = setupScheduleMonthNav(visibleSchedule, thisYm);
     const schAllLink = document.getElementById('schedule-all-link');
     if (schAllLink) schAllLink.addEventListener('click', e => {
       e.preventDefault();
-      openScheduleListModal(mySchedule);
+      openScheduleListModal(visibleSchedule);
     });
     // メンバー個人のリンクの並び(取得に失敗しても登録順で表示する)
     const savedOrder = async kind => (await api(`/api/tile-order?kind=${kind}`).catch(() => ({ ids: [] }))).ids || [];
@@ -650,6 +659,14 @@ async function renderShiftBadge() {
     renderTileGrid('quick-links', content.links, 'links', linkOrder);
     renderTileGrid('policy-links', content.policies, 'policies', policyOrder);
     initHeaderSearch();
+    // 後段: 定休グループが分かったら、全社スケジュールを自分のグループの項目だけに絞り込む(待たない。失敗・未確定なら全件のまま)
+    retryGroup = () => getMyCalendarGroup().then(group => {
+      groupFailed = false;
+      if (!group) return;
+      visibleSchedule = content.schedule.filter(s => scheduleVisibleFor(s, group));
+      scheduleNav.setItems(visibleSchedule);
+    }).catch(() => { groupFailed = true; /* 取得できない場合は絞り込まず全件表示のまま。次の自動更新で再試行 */ });
+    retryGroup();
   } catch (e) {
     console.error(e);
     document.getElementById('greeting').textContent = '読み込みに失敗しました';
@@ -662,7 +679,7 @@ async function renderShiftBadge() {
   // 予定表はニュース等と独立して失敗しうるため(権限未同意など)、別枠でエラー表示する
   let lastTodayEvents = [];
   try {
-    lastTodayEvents = await fetchTodayEvents();
+    lastTodayEvents = await withTimeout(fetchTodayEvents(), 15000, '今日の予定の取得がタイムアウトしました(自動更新で再試行します)');
     renderTodayEvents(lastTodayEvents);
   } catch (e) {
     console.error(e);
@@ -670,17 +687,17 @@ async function renderShiftBadge() {
       `<p style="margin:0;padding:6px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
 
-  // 出社日バッジはニュース等と独立して失敗しうるため、失敗しても他の表示を壊さない
-  try {
-    await renderShiftBadge();
-  } catch (e) {
-    console.error('出社日バッジの表示に失敗しました', e);
-  }
+  // 出社日バッジはニュース等と独立して失敗しうるため、失敗しても他の表示を壊さない。
+  // 待たずに走らせる(Graphが遅い・返らなくても、後ろの自動更新の登録を止めない。P004)
+  renderShiftBadge().catch(e => { badgeFailed = true; console.error('出社日バッジの表示に失敗しました', e); });
 
   // 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
   if (Auth.mode === 'entra') {
     setInterval(async () => {
       if (document.hidden || modalData) return;
+      // 失敗・時間切れだった定休グループ(全社スケジュールの絞り込み)と出社日バッジを、ここで再試行する(待たない)
+      if (groupFailed && retryGroup) { groupFailed = false; retryGroup(); }
+      if (badgeFailed) { badgeFailed = false; renderShiftBadge().catch(() => { badgeFailed = true; }); }
       try {
         const events = await fetchTodayEvents();
         if (JSON.stringify(events) !== JSON.stringify(lastTodayEvents)) {

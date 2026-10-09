@@ -281,7 +281,7 @@ function renderGridTabs() {
   // 「ゆめすみかスタッフ予定」へのリンクは「ゆめすみか展示場」タブのときだけ表示する(2026-10-01追加)
   const staffScheduleLink = document.getElementById('staff-schedule-link');
   if (staffScheduleLink) staffScheduleLink.style.display = state.gridTab === 'sites' ? '' : 'none';
-  // 「吉村一建設スタッフ予定」へのリンクは「吉村一建設会議室」タブのときだけ表示する(2026-10-09追加)
+  // 「吉村一建設スタッフ予定」へのリンクは「吉村一建設会議室」タブのときだけ表示する(2026-10-08追加)
   const yoshimuraStaffLink = document.getElementById('yoshimura-staff-schedule-link');
   if (yoshimuraStaffLink) yoshimuraStaffLink.style.display = state.gridTab === 'yoshimura' ? '' : 'none';
   const el = document.getElementById('grid-tabs');

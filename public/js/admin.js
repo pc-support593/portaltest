@@ -2,6 +2,10 @@
 // データはサーバー(SQLite)に保存され、ポータルトップに即時反映される。
 'use strict';
 
+// 一覧(お知らせ・全社スケジュール・業務システムリンク・社内規程)の2列目(名称・タイトル等)の幅。全角30文字が余裕を持って入る幅(13px×30=390px+余白。実測: 30文字=400px・31文字=403px)。
+// 残りの幅を3列目(リンク先URL・補足等)に使う(2026-10-09・ユーザー指示。以前は2列目が余白をすべて使い、3列目は150px固定でURLが読めなかった)
+const COL2_WIDTH = 410;
+
 // 全社スケジュールの表示対象グループ(一覧に出す注記。'both'は注記なし)
 const SCOPE_LABEL = { sunday_off: '【日曜定休のみ】', wednesday_off: '【水曜定休のみ】' };
 
@@ -9,7 +13,7 @@ const SCOPE_LABEL = { sunday_off: '【日曜定休のみ】', wednesday_off: '�
 // server.js の pickFields() 側の上限とあわせて変更すること)
 const BODY_MAX_LEN = 2000;
 
-// 添付ファイル(お知らせ・全社スケジュール。2026-10-09・ユーザー指示: 1件につき3つまで・1ファイル10MBまで)。
+// 添付ファイル(お知らせ・全社スケジュール。2026-10-08・ユーザー指示: 1件につき3つまで・1ファイル10MBまで)。
 // 上限・許可する種類は server.js の ATTACH_* と合わせること(サーバー側でも検査される)
 const ATTACH_MAX_COUNT = 3;
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
@@ -404,17 +408,17 @@ function renderTable() {
   const items = state.data[state.tab] || [];
   document.getElementById('table-head').innerHTML = `
     <span style="font-size:12px;color:#8a99a8;width:90px;flex-shrink:0">${cfg.h1}</span>
-    <span style="font-size:12px;color:#8a99a8;flex:1">${cfg.h2}</span>
-    <span style="font-size:12px;color:#8a99a8;width:150px">${cfg.h3}</span>
-    <span style="width:150px"></span>`;
+    <span style="font-size:12px;color:#8a99a8;width:${COL2_WIDTH}px;flex-shrink:0">${cfg.h2}</span>
+    <span style="font-size:12px;color:#8a99a8;flex:1;min-width:0">${cfg.h3}</span>
+    <span style="width:150px;flex-shrink:0"></span>`;
   const body = document.getElementById('table-body');
   body.innerHTML = items.length ? items.map(it => {
     const c = cfg.cells(it);
     return `
     <div style="display:flex;align-items:center;gap:24px;padding:13px 24px;border-bottom:1px solid #f2f5f9">
       <span style="font-size:13px;width:90px;flex-shrink:0;color:#1c2b3a">${esc(c[0])}</span>
-      <span style="font-size:13px;flex:1;min-width:0;color:#1c2b3a">${esc(c[1])}</span>
-      <span style="font-size:13px;width:150px;color:#6b7d8f">${esc(c[2])}</span>
+      <span title="${esc(c[1])}" style="font-size:13px;width:${COL2_WIDTH}px;flex-shrink:0;color:#1c2b3a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c[1])}</span>
+      <span title="${esc(c[2])}" style="font-size:13px;flex:1;min-width:0;color:#6b7d8f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c[2])}</span>
       <span style="width:150px;display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
         <button class="hv-btn-light" data-edit="${it.id}" style="border:1px solid #c8dcf0;background:#ffffff;border-radius:7px;padding:5px 16px;cursor:pointer;color:#1e5fa8;font-size:12px;font-weight:500;font-family:inherit">編集</button>
         <button class="hv-btn-danger" data-del="${it.id}" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:5px 16px;cursor:pointer;color:#a8b5c2;font-size:12px;font-weight:500;font-family:inherit">削除</button>

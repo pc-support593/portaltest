@@ -1,6 +1,7 @@
 // 認証アダプタ
-// - devモード(既定): サーバーのモックユーザーをそのまま使う
-// - entraモード: MSAL.js による Entra ID サインイン(アプリ登録後に有効化。docs/entra-setup.md 参照)
+// - entraモード(既定): MSAL.js による Entra ID サインイン(docs/entra-setup.md 参照)
+// - devモード: AUTH_MODE=dev を明示したときだけ。サーバーのモックユーザーをそのまま使う(ローカル確認用。認証なし)
+// どちらのモードかはサーバー(/api/config の authMode)が決める。サーバーは entra/dev 以外の値では起動しない
 //   ※ entraモードのコードパスはテナントでのアプリ登録が済むまで未検証。
 'use strict';
 

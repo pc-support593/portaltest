@@ -2,7 +2,8 @@
 // - public/ の静的配信(3画面: index.html / rooms.html / admin.html)
 // - 管理コンテンツ(お知らせ・全社スケジュール・クイックリンク)の CRUD API
 // - 会議室予約 API(Entra ID + Graph API 移行までのローカル実装)
-// 認証は現在 devモード(モックユーザー)。Entra ID 移行手順は docs/entra-setup.md を参照。
+// 認証は既定でEntra ID(AUTH_MODE=entra)。ローカル確認用に AUTH_MODE=dev(モックユーザー・認証なし)を明示できる。
+// 設定手順は docs/entra-setup.md を参照。
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -13,10 +14,23 @@ const jinjerDayOffs = require('./src/jinjerDayOffs');
 // Portal/.env があれば読み込む(環境変数の設定漏れ対策。既に設定済みの環境変数が優先される)
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* .env なしでも可 */ }
 
+// 'entra'(Entra IDのトークンを検証)| 'dev'(モックユーザーで認証なし=ローカル確認用)。
+// 認証なしで公開される事故を防ぐため(2026-10-08・レビュー指摘1。再発防止=checklists/tech-auth-integration.md「認証モード」):
+//   ① 既定は安全側の'entra'(未設定でも認証なしにならない)
+//   ② 前後の空白・大文字小文字は吸収する(' Entra '→'entra')
+//   ③ 'entra'と'dev'以外の値(綴り違いなど)は、起動時にエラー終了する(認証なしに倒さない)
+//   ④ 認証を飛ばす判定は「AUTH_MODE === 'dev'」のときだけ(それ以外は必ずEntra IDの検証に進む)
+//   ⑤ devモードは AUTH_MODE=dev を明示したときだけ有効
+//   ⑥ この検証は、DBを開く(open())より**前**に行う。設定ミスで起動を繰り返しても、DBに触れない(2026-10-08・再レビュー指摘1)
+const AUTH_MODE = String(process.env.AUTH_MODE ?? '').trim().toLowerCase() || 'entra';
+if (AUTH_MODE !== 'entra' && AUTH_MODE !== 'dev') {
+  console.error(`AUTH_MODE の値が不正です: "${process.env.AUTH_MODE}"(使える値: entra / dev)。起動を中止します`);
+  process.exit(1);
+}
+
 const app = express();
 const db = open();
 const PORT = process.env.PORT || 3100;
-const AUTH_MODE = process.env.AUTH_MODE || 'dev'; // 'dev' | 'entra'
 
 app.use(express.json({ limit: '256kb' }));
 
@@ -93,7 +107,8 @@ async function verifyEntraToken(req) {
 app.use('/api', async (req, res, next) => {
   try {
     if (req.path === '/config') return next();
-    req.user = AUTH_MODE === 'entra' ? await verifyEntraToken(req) : MOCK_ME;
+    // 認証を飛ばすのは AUTH_MODE === 'dev'(明示)のときだけ。それ以外は必ずトークンを検証する
+    req.user = AUTH_MODE === 'dev' ? MOCK_ME : await verifyEntraToken(req);
     next();
   } catch (err) {
     res.status(err.status || 401).json({ error: err.expose ? err.message : '認証に失敗しました' });
@@ -123,6 +138,10 @@ app.get('/api/me', (req, res) => {
 // 返した値で igrace-login.html がWordPressのログインフォームを自動送信する。
 app.get('/api/external-login/igrace', (req, res) => {
   me(req);
+  // 共通ID/パスワードを返すため、Entra IDで本人を確認できるモードに限る(devモードは認証なしのため返さない)
+  if (AUTH_MODE !== 'entra') {
+    return res.status(503).json({ error: '社内報の自動ログインは、Entra IDでサインインする環境でのみ使えます' });
+  }
   const user = process.env.IGRACE_USER || '';
   const password = process.env.IGRACE_PASSWORD || '';
   if (!user || !password) {
@@ -231,7 +250,7 @@ app.put('/api/layout', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- メンバー個人のリンク並び順(業務システムリンク・社内規程。2026-10-09・ユーザー指示) ----
+// ---- メンバー個人のリンク並び順(業務システムリンク・社内規程。2026-10-08・ユーザー指示) ----
 // 管理者が並びを決めるのではなく、各メンバーがトップ画面のタイルをドラッグして並べ替え、その人だけに反映する。
 // 保存するのはリンクIDの並びだけ(リンク本体は links / policies テーブル)。保存が無い人・保存後に追加された
 // リンクは、登録順(IDの順)で末尾に出る。
@@ -261,7 +280,7 @@ app.put('/api/tile-order', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- お知らせ・全社スケジュールの添付ファイル(2026-10-09・ユーザー指示: 1件につき3つまで・1ファイル10MBまで) ----
+// ---- お知らせ・全社スケジュールの添付ファイル(2026-10-08・ユーザー指示: 1件につき3つまで・1ファイル10MBまで) ----
 // ファイル本体は data/uploads/<UUID> に保存(元のファイル名は使わない)。DBには名前・大きさ・添付先だけを持つ。
 // アップロード・削除は管理者のみ、ダウンロードはサインイン済みなら誰でも(認証付きAPI経由。URL直打ちでは取得できない)。
 // 保存層はこの節(saveAttachmentFile / readAttachmentStream / removeAttachmentFile)に閉じているので、
@@ -781,6 +800,9 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
+  if (AUTH_MODE === 'dev') {
+    console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');
+  }
   if (AUTH_MODE === 'entra' && (!TENANT_ID || !CLIENT_ID)) {
     console.warn('⚠ AUTH_MODE=entra ですが TENANT_ID / CLIENT_ID が未設定です。Portal/.env に設定してください(docs/entra-setup.md §0)');
   }

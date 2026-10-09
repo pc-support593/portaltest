@@ -37,7 +37,7 @@ function visibleGroups() { return SHOWROOM_GROUPS.filter(g => !g.hidden); }
 
 const DAYS_SPAN = 14; // 2週間分
 
-/** 表示名から「(吉村一建設)」「(ゆめすみか)」などの会社名の括弧書きを取り除く(名前が長くて切れて見えるため。2026-10-09・ユーザー指示) */
+/** 表示名から「(吉村一建設)」「(ゆめすみか)」などの会社名の括弧書きを取り除く(名前が長くて切れて見えるため。2026-10-08・ユーザー指示) */
 function displayName(name) {
   return String(name || '').replace(/s*[(（][^)）]*(吉村一建設|ゆめすみか)[^)）]*[)）]s*/g, ' ').replace(/s+/g, ' ').trim() || String(name || '');
 }
