@@ -169,123 +169,6 @@ const DEPARTMENT_OVERRIDES = {
   'kotani@yoshimuraichi.com': '設計企画部'
 };
 
-/** メールアドレスの最初の「-」より後ろの部分(ローマ字の姓)を並び順のキーにする
-    (ユーザー指示 2026-09-10)。漢字の氏名はEntra IDにふりがな属性が無く、Unicode上の
-    文字コード順にしかならず正しい五十音順にできない(実際に検証済み: 「友藤/東/森本/千葉/巽/
-    森下/小谷」を日本語ロケールでソートすると本来の読み順と一致しなかった)ため、
-    このメールアドレスの命名規則(頭文字-姓のローマ字)を五十音順の代用として使う。
-    「-」が無いメールアドレス(例: naofumi_kotani@…)は@より前の全体をそのまま使う */
-function sortKeyFromEmail(email) {
-  const local = String(email || '').split('@')[0].toLowerCase();
-  const idx = local.indexOf('-');
-  return idx >= 0 ? local.slice(idx + 1) : local;
-}
-
-// ---- ローマ字を五十音(あいうえお)順に並べるための簡易コラレータ(2026-09-17追加) ----
-// ユーザー指示: 「根本的にローマ字順(アルファベット順)になっている。あいうえお順にしてほしい」
-// 例: alphabet順だと Chiba < Higashi < Kotani だが、五十音順は こ(Kotani) < ち(Chiba) < ひ(Higashi)
-// のように行(あかさたな…)→段(あいうえお)の順で決まるため、単純な文字コード比較では実現できない。
-// ローマ字を1モーラ(拍)ずつ行・段に分解し、行→段→清濁の順で比較する
-const ROW_OF = { '': 0, k: 1, g: 1, s: 2, z: 2, j: 2, t: 3, d: 3, n: 4, h: 5, f: 5, b: 5, p: 5, m: 6, y: 7, r: 8, w: 9 };
-const VOICED_OF = { g: 1, z: 1, j: 1, d: 1, b: 1, p: 2 }; // 未指定(清音)は0
-const VOWEL_IDX = { a: 0, i: 1, u: 2, e: 3, o: 4 };
-// 拗音(きゃ等)は行の「い段」と「う段」の間に来る(き<きゃ<きゅ<きょ<く)よう、い段(1)〜う段(2)の間の値にする
-const YOUON_VOWEL = { a: 1.1, u: 1.2, o: 1.3 };
-const YOUON = {
-  kya: ['k', 'a'], kyu: ['k', 'u'], kyo: ['k', 'o'],
-  sha: ['s', 'a'], shu: ['s', 'u'], sho: ['s', 'o'],
-  cha: ['t', 'a'], chu: ['t', 'u'], cho: ['t', 'o'],
-  nya: ['n', 'a'], nyu: ['n', 'u'], nyo: ['n', 'o'],
-  hya: ['h', 'a'], hyu: ['h', 'u'], hyo: ['h', 'o'],
-  mya: ['m', 'a'], myu: ['m', 'u'], myo: ['m', 'o'],
-  rya: ['r', 'a'], ryu: ['r', 'u'], ryo: ['r', 'o'],
-  gya: ['g', 'a'], gyu: ['g', 'u'], gyo: ['g', 'o'],
-  bya: ['b', 'a'], byu: ['b', 'u'], byo: ['b', 'o'],
-  pya: ['p', 'a'], pyu: ['p', 'u'], pyo: ['p', 'o']
-};
-
-/** ローマ字1モーラを { row(行), vowel(段。拗音は小数), voiced(清濁: 0=清音/1=濁音/2=半濁音) } の
-    配列に分解する(姓の読みの近似のため、完璧な仮名変換ではなく実用上妥当な範囲の近似) */
-function tokenizeMora(s) {
-  const tokens = [];
-  const isVowel = c => 'aiueo'.includes(c);
-  let i = 0;
-  while (i < s.length) {
-    // 促音(っ): 子音の連続(same文字が2つ)→ 全ての行より前に来る小さな一拍として扱う
-    if (i + 1 < s.length && s[i] === s[i + 1] && !isVowel(s[i]) && s[i] !== 'n') {
-      tokens.push({ row: -1, vowel: -1, voiced: 0 });
-      i += 1;
-      continue;
-    }
-    // 拗音(きゃ・しゃ・ちゃ 等の3文字パターン)
-    const three = s.slice(i, i + 3);
-    if (YOUON[three]) {
-      const [cons, v] = YOUON[three];
-      tokens.push({ row: ROW_OF[cons], vowel: YOUON_VOWEL[v], voiced: VOICED_OF[cons] || 0 });
-      i += 3;
-      continue;
-    }
-    // じゃ/じゅ/じょ(2文字+母音)
-    const two = s.slice(i, i + 2);
-    if (two === 'ja' || two === 'ju' || two === 'jo') {
-      tokens.push({ row: ROW_OF.j, vowel: YOUON_VOWEL[two[1]], voiced: 1 });
-      i += 2;
-      continue;
-    }
-    // し(shi)・ち(chi)・つ(tsu): 段がローマ字表記とずれる特殊拍
-    if (two === 'sh' || two === 'ch' || two === 'ts') {
-      const rowKey = two === 'sh' ? 's' : 't';
-      const vowel = two === 'ts' ? VOWEL_IDX.u : VOWEL_IDX.i;
-      tokens.push({ row: ROW_OF[rowKey], vowel, voiced: 0 });
-      i += (two === 'ts' ? 3 : 3); // shi/chi/tsu は常に3文字
-      continue;
-    }
-    const c = s[i];
-    if (isVowel(c)) { // 単独母音(あ行)
-      tokens.push({ row: 0, vowel: VOWEL_IDX[c], voiced: 0 });
-      i += 1;
-      continue;
-    }
-    if (c === 'n') {
-      const next = s[i + 1];
-      if (next && isVowel(next)) { // な行
-        tokens.push({ row: ROW_OF.n, vowel: VOWEL_IDX[next], voiced: 0 });
-        i += 2;
-      } else { // 撥音(ん)。全ての行より後ろに来る
-        tokens.push({ row: 10, vowel: 0, voiced: 0 });
-        i += 1;
-      }
-      continue;
-    }
-    const next = s[i + 1];
-    if (next && isVowel(next) && ROW_OF[c] !== undefined) {
-      tokens.push({ row: ROW_OF[c], vowel: VOWEL_IDX[next], voiced: VOICED_OF[c] || 0 });
-      i += 2;
-      continue;
-    }
-    i += 1; // 未知のパターンは読み飛ばす(安全側: ソート結果が多少ずれても処理は止めない)
-  }
-  return tokens;
-}
-
-/** モーラ列同士を先頭から順に「行→段→清濁」で比較する(短い方を先にする) */
-function compareMoraTokens(a, b) {
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    if (!a[i]) return -1;
-    if (!b[i]) return 1;
-    if (a[i].row !== b[i].row) return a[i].row - b[i].row;
-    if (a[i].vowel !== b[i].vowel) return a[i].vowel - b[i].vowel;
-    if (a[i].voiced !== b[i].voiced) return a[i].voiced - b[i].voiced;
-  }
-  return 0;
-}
-
-/** ローマ字文字列を五十音順に比較する(アルファベット順ではなく、行(あかさたな…)→段(あいうえお)の順) */
-function compareRomajiGojuon(a, b) {
-  return compareMoraTokens(tokenizeMora(String(a || '').toLowerCase()), tokenizeMora(String(b || '').toLowerCase()));
-}
-
 /** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
     → 残りを通常グループ(既定はdepartment属性。DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
     グループが決まらない社員は表示しない。
@@ -363,7 +246,7 @@ function renderColumn(elId, groups) {
       ${g.members.map(m => `
       <div style="display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid #f2f5f9">
         <div style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc(m.name.charAt(0))}</div>
-        <span style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:110px">${esc(m.name)}</span>
+        <span style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:110px">${esc(displayName(m.name))}</span>
         <span style="font-size:12px;color:#6b7d8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.email ? `<a href="mailto:${esc(m.email)}" style="color:#1e5fa8;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${esc(m.email)}</a>` : ''}</span>
         <span style="font-size:12px;color:#6b7d8f;white-space:nowrap;flex-shrink:0;text-align:right">${esc(m.phone || '未登録')}</span>
       </div>`).join('')}

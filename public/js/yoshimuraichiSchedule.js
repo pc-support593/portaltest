@@ -32,10 +32,7 @@ const STAFF_GROUPS = [
 
 const DAYS_SPAN = 14; // 2週間分
 
-/** 表示名から「(吉村一建設)」「(ゆめすみか)」などの会社名の括弧書きを取り除く(名前が長くて切れて見えるため。2026-10-08・ユーザー指示) */
-function displayName(name) {
-  return String(name || '').replace(/s*[(（][^)）]*(吉村一建設|ゆめすみか)[^)）]*[)）]s*/g, ' ').replace(/s+/g, ' ').trim() || String(name || '');
-}
+// 表示名の整形(displayName)は common.js の共通関数を使う(社員名簿と同じ。会社名の括弧書きを取り除く)
 
 /** 表示開始日から14日分の日付配列を返す(時刻は切り捨て) */
 function windowDates(startDate) {
@@ -95,8 +92,8 @@ async function fetchGroupMembers(groupMail) {
     url = data['@odata.nextLink'] || null;
   }
   const isUser = m => (m['@odata.type'] || '#microsoft.graph.user') === '#microsoft.graph.user';
-  const collator = (a, b) => (a.displayName || '').localeCompare(b.displayName || '', 'ja');
-  return members.filter(m => isUser(m) && m.mail).sort(collator).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail }));
+  // 並び順は社員名簿と同じ(メールの姓のローマ字を五十音順に。common.js)
+  return members.filter(m => isUser(m) && m.mail).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail })).sort((a, b) => compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email)));
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで
