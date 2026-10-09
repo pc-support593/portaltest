@@ -79,9 +79,10 @@ function renderGrid() {
     const key = isoDate(d);
     const rows = state.rowsByDate[key] || [];
     const isHoliday1 = rows.some(r => r.type === 'holiday_1');
-    const isHoliday = rows.some(r => r.type === 'holiday');
+    // 赤: holiday(祝日等)と shift_work(出勤番の日)。shift_workのラベルは従来どおり緑のまま(2026-10-09・ユーザー指示)
+    const isHoliday = rows.some(r => r.type === 'holiday' || r.type === 'shift_work');
     const isOffWeekday = d.getDay() === offWeekday;
-    // 優先順位: holiday_1(オレンジ) > holiday(赤) > 定休曜日(青)
+    // 優先順位: holiday_1(オレンジ) > holiday・shift_work(赤) > 定休曜日(青)
     const cellStyle = isHoliday1 ? 'background:#fff1e0;border-color:#f8dcb8'
       : isHoliday ? 'background:#fdecec;border-color:#f6d3d3'
       : isOffWeekday ? 'background:#f7fafd' : '';
