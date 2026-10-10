@@ -61,8 +61,19 @@ const state = {
   date: new Date(), // 表示する2週間の開始日(会議室セクションは、このうち開始日ぶんを表示する)
   members: {},      // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
   busy: null,       // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
-  roomsBusy: null   // roomId -> [{start,end,subject,organizer,tentative}] | null(読み込み中)
+  roomsBusy: null,  // roomId -> [{start,end,subject,organizer,tentative}] | null(読み込み中)
+  roomsSelected: null // 日付の見出しをクリックして選んだ展示場の会議室表示の日付('YYYY-MM-DD')。nullなら2週間の開始日
 };
+
+/** 会議室・展示場の予約状況を表示する日付('YYYY-MM-DD')。日付の見出しをクリックして選んだ日。
+    選んでいない間は、表示中2週間の左端(開始日)(ユーザー指示 2026-10-10) */
+function roomsDateKey() {
+  return state.roomsSelected || isoDate(windowDates(state.date)[0]);
+}
+function roomsDateLabel(key) {
+  const [, m, d] = key.split('-').map(Number);
+  return `${m}/${d}`;
+}
 
 /** 会議室予約状況セクションを出すタブ(ゆめすみか展示場の5拠点のみ。本社・設計は対象外。
     ユーザー指示 2026-10-02: 「本社」タブはメンバー表示のみでよい)。
@@ -223,7 +234,7 @@ function renderRooms() {
   const info = roomsForTab(state.groupTab);
   if (!info || Auth.mode !== 'entra') { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
-  document.getElementById('rooms-title').textContent = `${info.label}の会議室予約状況(${windowDates(state.date)[0].getMonth() + 1}/${windowDates(state.date)[0].getDate()})`;
+  document.getElementById('rooms-title').textContent = `${info.label}の会議室予約状況(${roomsDateLabel(roomsDateKey())})`;
   document.getElementById('rooms-section').innerHTML = roomsSectionHtml(info.rooms, state.roomsBusy);
 }
 
@@ -271,11 +282,12 @@ function renderTimeline() {
 
   const dates = windowDates(state.date);
   const todayKey = isoDate(new Date());
+  const selKey = roomsDateKey(); // 会議室の予約状況を表示中の日付(下線で示す)
   const header = `<div style="display:flex">
     <div style="width:140px;flex-shrink:0;position:sticky;left:0;z-index:2;background:#ffffff"></div>
     ${dates.map(d => {
       const key = isoDate(d);
-      return `<div style="flex:1;min-width:200px;text-align:center;font-size:11px;font-weight:700;color:${key === todayKey ? '#1e5fa8' : '#6b7d8f'};padding:6px 4px;border-bottom:1px solid #eef1f5;${key === todayKey ? 'background:#f2f6fb' : ''}">${d.getMonth() + 1}/${d.getDate()}(${WDAYS[d.getDay()]})</div>`;
+      return `<div data-room-date="${key}" title="クリックすると、この日の会議室の予約状況を表示します" style="cursor:pointer;flex:1;min-width:200px;text-align:center;font-size:11px;font-weight:700;color:${key === todayKey ? '#1e5fa8' : '#6b7d8f'};padding:6px 4px;border-bottom:${key === selKey ? '3px solid #1e5fa8' : '1px solid #eef1f5'};${key === todayKey ? 'background:#f2f6fb' : ''}">${d.getMonth() + 1}/${d.getDate()}(${WDAYS[d.getDay()]})</div>`;
     }).join('')}
   </div>`;
   const rows = members.map(p => {
@@ -286,6 +298,7 @@ function renderTimeline() {
     </div>`;
   }).join('');
   el.innerHTML = `<div style="overflow-x:auto"><div style="min-width:3000px">${header}${rows}</div></div>`;
+  el.querySelectorAll('[data-room-date]').forEach(h => h.addEventListener('click', () => selectRoomsDate(h.dataset.roomDate)));
 }
 
 async function loadMembers() {
@@ -312,13 +325,15 @@ async function render() {
   if (Auth.mode !== 'entra') return;
 
   const roomsInfo = roomsForTab(state.groupTab);
-  const roomsPromise = roomsInfo ? fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms) : Promise.resolve(null);
+  const roomsKey = roomsDateKey();
+  const roomsPromise = roomsInfo ? fetchRoomsBusy(roomsKey, roomsInfo.rooms) : Promise.resolve(null);
 
   try {
     await loadMembers();
   } catch {
     // メンバー一覧のエラーメッセージは loadMembers 内で表示済み。会議室セクションは独立して継続する
-    state.roomsBusy = await roomsPromise;
+    const failedRooms = await roomsPromise;
+    if (roomsDateKey() === roomsKey) state.roomsBusy = failedRooms; // 取得中に別の日付が選ばれた場合は、その日の取得に任せる
     renderRooms();
     return;
   }
@@ -326,8 +341,24 @@ async function render() {
   const members = state.members[state.groupTab];
   const [busy, roomsBusy] = await Promise.all([fetchPeopleBusy(state.date, members), roomsPromise]);
   state.busy = busy;
-  state.roomsBusy = roomsBusy;
+  if (roomsDateKey() === roomsKey) state.roomsBusy = roomsBusy; // 取得中に別の日付が選ばれた場合は、その日の取得に任せる
   renderTimeline();
+  renderRooms();
+}
+
+/** 日付の見出しがクリックされたとき、その日の会議室の予約状況に切り替える(ユーザー指示 2026-10-10) */
+async function selectRoomsDate(key) {
+  if (Auth.mode !== 'entra' || roomsDateKey() === key) return;
+  state.roomsSelected = key;
+  renderTimeline(); // 下線の位置を更新
+  const info = roomsForTab(state.groupTab);
+  if (!info) return;
+  const tab = state.groupTab;
+  state.roomsBusy = null;
+  renderRooms();
+  const busy = await fetchRoomsBusy(key, info.rooms);
+  if (roomsDateKey() !== key || state.groupTab !== tab) return; // 取得中に別の日付・タブが選ばれた場合は、古い結果で描き替えない
+  state.roomsBusy = busy;
   renderRooms();
 }
 
@@ -336,6 +367,7 @@ function shiftWindow(n) {
   const d = new Date(state.date);
   d.setDate(d.getDate() + n * DAYS_SPAN);
   state.date = d;
+  state.roomsSelected = null; // 2週間をずらしたら、会議室の日付の選択は解除(左端に戻す)
   render();
 }
 
@@ -353,8 +385,9 @@ async function autoRefresh() {
       }
     }
     if (roomsInfo) {
-      const roomsBusy = await fetchRoomsBusy(isoDate(state.date), roomsInfo.rooms);
-      if (JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
+      const rKey = roomsDateKey();
+      const roomsBusy = await fetchRoomsBusy(rKey, roomsInfo.rooms);
+      if (roomsDateKey() === rKey && JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
         state.roomsBusy = roomsBusy;
         renderRooms();
       }
@@ -369,7 +402,7 @@ async function autoRefresh() {
     document.getElementById('next-day').title = '次の2週間';
     document.getElementById('prev-day').addEventListener('click', () => shiftWindow(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftWindow(1));
-    document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });
+    document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); state.roomsSelected = null; render(); });
     await render();
     if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {

@@ -58,8 +58,19 @@ const state = {
   busy: null,          // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
   roomsBusy: null,     // roomId -> [{start,end,subject,organizer,tentative}] | null(取得失敗) / 全体がnullなら読み込み中
   roomsDateKey: null,  // roomsBusy を取得した日付(同じ日のタブ切替では再取得しない)
-  roomTab: YOSHIMURA_GROUPS[0].id // 会議室セクションで選択中の区分け(スタッフのタブとは独立)
+  roomTab: YOSHIMURA_GROUPS[0].id, // 会議室セクションで選択中の区分け(スタッフのタブとは独立)
+  roomsSelected: null  // 日付の見出しをクリックして選んだ会議室表示の日付('YYYY-MM-DD')。nullなら2週間の開始日
 };
+
+/** 会議室・展示場の予約状況を表示する日付('YYYY-MM-DD')。日付の見出しをクリックして選んだ日。
+    選んでいない間は、表示中2週間の左端(開始日)(ユーザー指示 2026-10-10) */
+function roomsDateKey() {
+  return state.roomsSelected || isoDate(windowDates(state.date)[0]);
+}
+function roomsDateLabel(key) {
+  const [, m, d] = key.split('-').map(Number);
+  return `${m}/${d}`;
+}
 
 /** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す */
 async function graphErrorMessage(res) {
@@ -188,8 +199,7 @@ function renderRooms() {
   const wrap = document.getElementById('rooms-wrap');
   if (Auth.mode !== 'entra') { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
-  const d = windowDates(state.date)[0];
-  document.getElementById('rooms-title').textContent = `吉村一建設会議室の予約状況(${d.getMonth() + 1}/${d.getDate()})`;
+  document.getElementById('rooms-title').textContent = `吉村一建設会議室の予約状況(${roomsDateLabel(roomsDateKey())})`;
 
   const tabs = document.getElementById('rooms-tabs');
   tabs.innerHTML = YOSHIMURA_GROUPS.map(g => {
@@ -251,11 +261,12 @@ function renderTimeline() {
 
   const dates = windowDates(state.date);
   const todayKey = isoDate(new Date());
+  const selKey = roomsDateKey(); // 会議室の予約状況を表示中の日付(下線で示す)
   const header = `<div style="display:flex">
     <div style="width:140px;flex-shrink:0;position:sticky;left:0;z-index:2;background:#ffffff"></div>
     ${dates.map(d => {
       const key = isoDate(d);
-      return `<div style="flex:1;min-width:200px;text-align:center;font-size:11px;font-weight:700;color:${key === todayKey ? '#1e5fa8' : '#6b7d8f'};padding:6px 4px;border-bottom:1px solid #eef1f5;${key === todayKey ? 'background:#f2f6fb' : ''}">${d.getMonth() + 1}/${d.getDate()}(${WDAYS[d.getDay()]})</div>`;
+      return `<div data-room-date="${key}" title="クリックすると、この日の会議室の予約状況を表示します" style="cursor:pointer;flex:1;min-width:200px;text-align:center;font-size:11px;font-weight:700;color:${key === todayKey ? '#1e5fa8' : '#6b7d8f'};padding:6px 4px;border-bottom:${key === selKey ? '3px solid #1e5fa8' : '1px solid #eef1f5'};${key === todayKey ? 'background:#f2f6fb' : ''}">${d.getMonth() + 1}/${d.getDate()}(${WDAYS[d.getDay()]})</div>`;
     }).join('')}
   </div>`;
   const rows = members.map(p => {
@@ -266,6 +277,7 @@ function renderTimeline() {
     </div>`;
   }).join('');
   el.innerHTML = `<div style="overflow-x:auto"><div style="min-width:3000px">${header}${rows}</div></div>`;
+  el.querySelectorAll('[data-room-date]').forEach(h => h.addEventListener('click', () => selectRoomsDate(h.dataset.roomDate)));
 }
 
 async function loadMembers() {
@@ -282,11 +294,12 @@ async function loadMembers() {
 
 /** 会議室の予約状況を読み込む。同じ日のタブ切替では取得し直さない(全タブで同じ内容のため) */
 async function loadRooms() {
-  const key = isoDate(windowDates(state.date)[0]);
+  const key = roomsDateKey();
   if (state.roomsBusy && state.roomsDateKey === key) { renderRooms(); return; }
   state.roomsBusy = null;
   renderRooms();
   const busy = await fetchRoomsBusy(key, YOSHIMURA_ROOMS);
+  if (roomsDateKey() !== key) return; // 取得中に別の日付が選ばれた場合は、古い結果で描き替えない
   state.roomsBusy = busy;
   state.roomsDateKey = key;
   renderRooms();
@@ -318,11 +331,20 @@ async function render() {
   await roomsPromise;
 }
 
+/** 日付の見出しがクリックされたとき、その日の会議室の予約状況に切り替える(ユーザー指示 2026-10-10) */
+function selectRoomsDate(key) {
+  if (Auth.mode !== 'entra' || roomsDateKey() === key) return;
+  state.roomsSelected = key;
+  renderTimeline(); // 下線の位置を更新
+  loadRooms();
+}
+
 /** 表示する2週間を前後にずらす */
 function shiftWindow(n) {
   const d = new Date(state.date);
   d.setDate(d.getDate() + n * DAYS_SPAN);
   state.date = d;
+  state.roomsSelected = null; // 2週間をずらしたら、会議室の日付の選択は解除(左端に戻す)
   render();
 }
 
@@ -339,9 +361,9 @@ async function autoRefresh() {
         renderTimeline();
       }
     }
-    const key = isoDate(windowDates(state.date)[0]);
+    const key = roomsDateKey();
     const roomsBusy = await fetchRoomsBusy(key, YOSHIMURA_ROOMS);
-    if (isoDate(windowDates(state.date)[0]) === key && JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
+    if (roomsDateKey() === key && JSON.stringify(roomsBusy) !== JSON.stringify(state.roomsBusy)) {
       state.roomsBusy = roomsBusy;
       state.roomsDateKey = key;
       renderRooms();
@@ -356,7 +378,7 @@ async function autoRefresh() {
     document.getElementById('next-day').title = '次の2週間';
     document.getElementById('prev-day').addEventListener('click', () => shiftWindow(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftWindow(1));
-    document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });
+    document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); state.roomsSelected = null; render(); });
     await render();
     if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {
