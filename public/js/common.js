@@ -143,7 +143,7 @@ function searchPortalPages(q) {
 
 // ---- 全ページ共通のヘッダー: 「吉村一建設 ポータル」=TOPへのリンク + ナビメニュー(2026-10-08・ユーザー指示) ----
 // 各ページのヘッダーのマークアップは個別に持つため、ここで一括して組み立てる(メニューの定義はこの1か所だけ)。
-// 並び・追加・削除はこの PORTAL_NAV を直す。管理(admin)は Portal.Admin ロールの人にだけ表示する(showPortalAdminLink)。
+// 並び・追加・削除はこの PORTAL_NAV を直す。管理(admin)は右上のユーザー名のメニューにあり、Portal.Admin ロールの人にだけ表示する(showPortalAdminLink)。
 const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
@@ -152,15 +152,89 @@ const PORTAL_NAV = [
   // スタッフ予定(2026-10-08・ユーザー指示)。既定の遷移先は吉村一建設。ゆめすみかのアカウントの人は、サインイン後に
   // yumesumika-schedule.html へ切り替わる(showPortalAdminLink内)。2つのページはどちらでも、このメニューを強調表示する
   { label: 'スタッフ予定', href: 'yoshimuraichi-schedule.html', also: ['yumesumika-schedule.html'], id: 'staff-nav-link' },
-  { label: '社内報', href: 'igrace-login.html', external: true },
-  { label: '管理', href: 'admin.html', id: 'admin-nav-link', hidden: true }
+  { label: '社内報', href: 'igrace-login.html', external: true }
+  // 「管理」は、右上のユーザー名のメニュー(setupUserMenu)の中に移した(2026-10-11・ユーザー指示)
 ];
+
+/** 右上のユーザー名(アイコン+名前)をクリックするとメニューを開く。中身は「管理」(管理者のみ)と「ログアウト」。
+    ログアウトは各ページのヘッダーにある #logout-link をそのままメニューへ移す(auth.jsが有効化・クリック処理をする)。
+    devモードではログアウトは非表示のまま。開ける項目が無い場合は開かない(2026-10-11・ユーザー指示。全ページ共通) */
+function setupUserMenu(header) {
+  const avatar = header.querySelector('[data-me="avatar"]');
+  const box = avatar && avatar.parentElement;
+  if (!box || box.classList.contains('portal-user')) return;
+
+  if (!document.getElementById('portal-user-menu-style')) {
+    const st = document.createElement('style');
+    st.id = 'portal-user-menu-style';
+    st.textContent = '.portal-menu-item{display:block;padding:9px 14px;border-radius:7px;font-size:13px;font-weight:500;color:#1c2b3a;text-decoration:none;white-space:nowrap;text-align:left}' +
+      '.portal-menu-item:hover{background:#f2f6fb}.portal-user:focus-visible{outline:2px solid #a8bdd6;outline-offset:3px;border-radius:8px}';
+    document.head.appendChild(st);
+  }
+
+  box.classList.add('portal-user');
+  box.setAttribute('role', 'button');
+  box.setAttribute('aria-haspopup', 'menu');
+  box.setAttribute('aria-expanded', 'false');
+  box.tabIndex = 0;
+  box.style.position = 'relative';
+  box.style.cursor = 'pointer';
+  box.style.userSelect = 'none';
+
+  const caret = document.createElement('span');
+  caret.textContent = '▾';
+  caret.style.cssText = 'font-size:11px;color:#a8bdd6;margin-left:2px';
+  box.appendChild(caret);
+
+  const menu = document.createElement('div');
+  menu.className = 'portal-user-menu';
+  menu.setAttribute('role', 'menu');
+  menu.style.cssText = 'display:none;position:absolute;top:calc(100% + 10px);right:0;min-width:160px;background:#ffffff;border-radius:10px;box-shadow:0 8px 24px rgba(15,35,60,0.25);padding:6px;z-index:60;cursor:default;flex-direction:column;gap:2px';
+
+  const admin = document.createElement('a');
+  admin.href = 'admin.html';
+  admin.id = 'admin-nav-link';
+  admin.className = 'portal-menu-item';
+  admin.setAttribute('role', 'menuitem');
+  admin.textContent = '管理';
+  admin.style.display = 'none'; // 管理者にだけ showPortalAdminLink が表示する
+  if ((location.pathname.split('/').pop() || '') === 'admin.html') admin.style.cssText += ';font-weight:700;color:#1e5fa8';
+  menu.appendChild(admin);
+
+  const logout = document.getElementById('logout-link');
+  if (logout) {
+    logout.className = 'portal-menu-item';
+    logout.setAttribute('role', 'menuitem');
+    logout.style.cssText = 'display:none'; // entraモードのときだけ auth.js が表示する
+    menu.appendChild(logout);
+  }
+  box.appendChild(menu);
+
+  const isOpen = () => menu.style.display !== 'none';
+  const close = () => { menu.style.display = 'none'; box.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    const hasItem = [...menu.children].some(c => c.style.display !== 'none');
+    if (!hasItem) return; // 開ける項目が無い(例: devモードの管理者以外)ときは何もしない
+    menu.style.display = 'flex';
+    box.setAttribute('aria-expanded', 'true');
+  };
+  box.addEventListener('click', e => {
+    if (menu.contains(e.target)) return; // メニュー内の項目は、そのままリンク・ログアウトの処理へ
+    isOpen() ? close() : open();
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isOpen() ? close() : open(); }
+  });
+  document.addEventListener('click', e => { if (!box.contains(e.target)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+}
 
 function setupPortalHeader() {
   const header = document.querySelector('header');
   // 画面を下にスクロールしてもヘッダーを上部に固定する(2026-10-11・ユーザー指示。全ページ共通)。
   // z-indexは、スタッフ予定の名前列(2)・候補リスト(10)より上、モーダル(100・110)より下
   if (header) { header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '50'; }
+  if (header) setupUserMenu(header);
   const brand = header && header.firstElementChild;
   if (!brand || brand.querySelector('a.portal-brand')) return;
 
