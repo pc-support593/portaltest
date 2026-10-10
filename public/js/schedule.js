@@ -276,12 +276,7 @@ function renderGridTabs() {
       roomsLink.textContent = 'ゆめすみか展示場を予約する →';
     }
   }
-  // 「ゆめすみかスタッフ予定」へのリンクは「ゆめすみか展示場」タブのときだけ表示する(2026-10-01追加)
-  const staffScheduleLink = document.getElementById('staff-schedule-link');
-  if (staffScheduleLink) staffScheduleLink.style.display = state.gridTab === 'sites' ? '' : 'none';
-  // 「吉村一建設スタッフ予定」へのリンクは「吉村一建設会議室」タブのときだけ表示する(2026-10-08追加)
-  const yoshimuraStaffLink = document.getElementById('yoshimura-staff-schedule-link');
-  if (yoshimuraStaffLink) yoshimuraStaffLink.style.display = state.gridTab === 'yoshimura' ? '' : 'none';
+  // 「吉村一建設スタッフ予定へ」「ゆめすみかスタッフ予定へ」は、切り替えに関わらず常に2つとも表示する(上の操作行。ユーザー指示 2026-10-10)
   const el = document.getElementById('grid-tabs');
   if (!el) return;
   el.innerHTML = GRID_TABS.map(t => {

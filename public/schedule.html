@@ -33,11 +33,19 @@
 
   <div style="max-width:1560px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:18px;flex:1">
 
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <button id="prev-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
-      <h1 id="date-label" style="margin:0;font-size:17px;font-weight:700;min-width:200px"></h1>
-      <button id="next-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
-      <button id="today-btn" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今日</button>
+    <!-- 上の操作行: 下の2つの枠と同じ2カラム。左=日付送り+「＋予定を作成」(自分の予定の枠の真上)、右=スタッフ予定へのリンク2つ(空き状況の枠の真上) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;align-items:center">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button id="prev-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
+        <h1 id="date-label" style="margin:0;font-size:17px;font-weight:700;min-width:200px"></h1>
+        <button id="next-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
+        <button id="today-btn" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今日</button>
+        <button id="create-event" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;margin-left:auto">＋ 予定を作成</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <a href="yoshimuraichi-schedule.html" id="yoshimura-staff-schedule-link" style="border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">吉村一建設スタッフ予定へ</a>
+        <a href="yumesumika-schedule.html" id="staff-schedule-link" style="border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">ゆめすみかスタッフ予定へ</a>
+      </div>
     </div>
 
     <!-- 個人と拠点別を横並び(2カラム。ポータルトップと同じくauto-fitで狭い画面では自動的に1カラム化) -->
@@ -45,9 +53,6 @@
 
       <!-- 左: 自分の予定(会議室などを伴わない予定の作成)。作成ボタンは枠の外(上)に置く -->
       <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:36px">
-        <button id="create-event" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap">＋ 予定を作成</button>
-      </div>
       <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
         <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
           <span style="color:#1e5fa8;font-size:14px">▤</span>
@@ -59,10 +64,6 @@
 
       <!-- 右: 会議室・社用車の空き状況(見て→選んで→予約する。切り替えは見出しのすぐ下、予約ボタンは枠の下) -->
       <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:36px">
-        <a href="yumesumika-schedule.html" id="staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">ゆめすみかスタッフ予定へ</a>
-        <a href="yoshimuraichi-schedule.html" id="yoshimura-staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">吉村一建設スタッフ予定へ</a>
-      </div>
       <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
         <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
           <span style="color:#1e5fa8;font-size:14px">◔</span>
