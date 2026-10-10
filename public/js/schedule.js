@@ -76,10 +76,10 @@ const state = {
 
 // 予約状況の表示切り替えタブ。社用車・吉村一建設会議室はExchange側のリソース登録後に実装する(現在は準備中表示)。
 // 見出しは「(選択中タブのlabel)の予約状況」に切り替わる
-const GRID_TABS = [
+const GRID_TABS = [ // 表示順(ユーザー指示 2026-10-10): 吉村一建設 / ゆめすみか展示場 / 社用車
+  { id: 'yoshimura', label: '吉村一建設会議室' },
   { id: 'sites', label: 'ゆめすみか展示場' },
-  { id: 'cars', label: '社用車' },
-  { id: 'yoshimura', label: '吉村一建設会議室' }
+  { id: 'cars', label: '社用車' }
 ];
 
 // ---- 個人のスケジュール(実データ) ----
