@@ -258,24 +258,22 @@ const siteGridHtml = (busyMap, adminIds) => resourceGridHtml(SITES, siteRooms, '
 /** 予約状況の表示切り替えタブ(ゆめすみか展示場/社用車/吉村一建設会議室)を描画する。
     見出し(#grid-title)も選択中のタブに合わせて「(タブ名)の予約状況」に切り替える */
 function renderGridTabs() {
-  const title = document.getElementById('grid-title');
-  const current = GRID_TABS.find(t => t.id === state.gridTab) || GRID_TABS[0];
-  if (title) title.textContent = `${current.label}の予約状況`;
+  // 見出し(#grid-title)は固定文言「会議室・社用車の空き状況」。予約ボタンの文言だけ選択中のタブに連動させる
   // 予約ページへのリンクも選択中のタブに連動させる
   const roomsLink = document.getElementById('rooms-link');
   if (roomsLink) {
     if (state.gridTab === 'cars') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=cars';
-      roomsLink.textContent = '社用車の予約へ';
+      roomsLink.textContent = '社用車を予約する →';
     } else if (state.gridTab === 'yoshimura') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=yoshimura';
-      roomsLink.textContent = '吉村一建設会議室の予約へ';
+      roomsLink.textContent = '吉村一建設会議室を予約する →';
     } else {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html';
-      roomsLink.textContent = 'ゆめすみか展示場の予約へ';
+      roomsLink.textContent = 'ゆめすみか展示場を予約する →';
     }
   }
   // 「ゆめすみかスタッフ予定」へのリンクは「ゆめすみか展示場」タブのときだけ表示する(2026-10-01追加)

@@ -43,28 +43,40 @@
     <!-- 個人と拠点別を横並び(2カラム。ポータルトップと同じくauto-fitで狭い画面では自動的に1カラム化) -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;align-items:start">
 
+      <!-- 左: 自分の予定(会議室などを伴わない予定の作成)。作成ボタンは枠の外(上)に置く -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:36px">
+        <button id="create-event" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap">＋ 予定を作成</button>
+      </div>
       <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
         <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
           <span style="color:#1e5fa8;font-size:14px">▤</span>
-          <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">個人のスケジュール</h2>
-          <button id="create-event" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit">＋ 予定を作成</button>
+          <h2 style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">自分の予定</h2>
         </div>
         <div id="personal-events" style="padding:14px 20px;display:flex;flex-direction:column;gap:10px"></div>
       </section>
+      </div>
 
+      <!-- 右: 会議室・社用車の空き状況(見て→選んで→予約する。切り替えは見出しのすぐ下、予約ボタンは枠の下) -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:36px">
+        <a href="yumesumika-schedule.html" id="staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">ゆめすみかスタッフ予定へ</a>
+        <a href="yoshimuraichi-schedule.html" id="yoshimura-staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;">吉村一建設スタッフ予定へ</a>
+      </div>
       <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
         <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
           <span style="color:#1e5fa8;font-size:14px">◔</span>
-          <h2 id="grid-title" style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">ゆめすみか展示場の予約状況</h2>
-          <a href="yumesumika-schedule.html" id="staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;margin-left:auto">ゆめすみかスタッフ予定へ</a>
-          <a href="yoshimuraichi-schedule.html" id="yoshimura-staff-schedule-link" style="display:none;border:1px solid #dfe8f0;background:#ffffff;color:#1c2b3a;font-weight:500;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;margin-left:auto">吉村一建設スタッフ予定へ</a>
-          <a href="rooms.html" id="rooms-link" class="hv-btn-primary" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none">ゆめすみか展示場の予約へ</a>
+          <h2 id="grid-title" style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">会議室・社用車の空き状況</h2>
         </div>
         <!-- 表示切り替え(拠点別 / 社用車 / 吉村一建設会議室) -->
         <div id="grid-tabs" style="display:flex;align-items:center;gap:8px;padding:14px 20px 0;flex-wrap:wrap"></div>
         <!-- 各拠点カードは縦積み -->
         <div id="site-grid" style="padding:18px 20px;display:flex;flex-direction:column;gap:16px"></div>
+        <div style="display:flex;justify-content:flex-end;padding:0 20px 18px">
+          <a href="rooms.html" id="rooms-link" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none">ゆめすみか展示場の予約へ</a>
+        </div>
       </section>
+      </div>
 
     </div>
 
