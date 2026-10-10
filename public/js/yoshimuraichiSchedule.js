@@ -17,7 +17,7 @@ const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const STAFF_GROUPS = [
   { id: 'soumu', name: '総務部', groupMail: 'soumu@yoshimuraichi.com' },
   { id: 'fudosan', name: '不動産部', groupMail: 'fudosan@yoshimuraichi.com' },
-  { id: 'sekkei_kikaku', name: '設計企画部', groupMail: 'sekkei_kikaku@yoshimuraichi.com' },
+  { id: 'sekkei_kikaku', name: '設計企画部', groupMail: 'sekkei@yoshimuraichi.com' },
   { id: 'koubai', name: '購買部', groupMail: 'koubai@yoshimuraichi.com' },
   { id: 'customer', name: 'カスタマーサポート室', groupMail: 'customer@yoshimuraichi.com' },
   { id: 'exterior', name: 'エクステリア事業係', groupMail: 'exterior@yoshimuraichi.com' },
@@ -27,7 +27,7 @@ const STAFF_GROUPS = [
   { id: 'koumu_1', name: '工務部(本社)', groupMail: 'koumu_1@yoshimuraichi.com' },
   { id: 'koumu_2', name: '工務部(平野)', groupMail: 'koumu_2@yoshimuraichi.com' },
   { id: 'koumu_3', name: '工務部(西宮)', groupMail: 'koumu_3@yoshimuraichi.com' },
-  { id: 'reform', name: 'リフォーム部', groupMail: 'reform@yoshimuraichi.com' }
+  { id: 'reform', name: 'リフォーム部', groupMail: 'renovation@yoshimuraichi.com' }
 ];
 
 const DAYS_SPAN = 14; // 2週間分
