@@ -34,22 +34,24 @@ async function graphErrorMessage(res, fallback) {
 async function fetchOrgUsers() {
   if (Auth.mode !== 'entra') return [];
   const token = await Auth.getGraphToken(['User.Read.All']);
-  const domainFilter = "endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com')";
+  // 検索条件($filter・$count・ConsistencyLevel: eventual)つきの取得(advanced query)は、変更の反映が遅れる(古い値が返る)ため使わない。
+  // 通常の一覧取得で全ユーザーを取り、メールアドレスのドメインはこちらで絞り込む(2026-10-10。従業員の種類の変更が名簿に出ない不具合の対策)
   let url = 'https://graph.microsoft.com/v1.0/users' +
     '?$select=id,displayName,mail,department,jobTitle,employeeType,businessPhones,mobilePhone' +
-    `&$filter=${encodeURIComponent(domainFilter)}` +
-    '&$count=true&$top=999';
+    '&$top=999';
 
   const rows = [];
   while (url) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } });
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(await graphErrorMessage(res, `社員名簿の取得に失敗しました(HTTP ${res.status})`));
     const data = await res.json();
     rows.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
   }
 
+  const isOrgMail = mail => /@(yoshimuraichi|yumesumika)\.com$/i.test(mail || '');
   return rows
+    .filter(u => isOrgMail(u.mail))
     .filter(u => !RESOURCE_EMAILS.has((u.mail || '').toLowerCase()))
     .map(u => ({
       name: u.displayName || '(名前未設定)',
