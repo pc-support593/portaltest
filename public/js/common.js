@@ -379,3 +379,21 @@ function compareRomajiGojuon(a, b) {
   return compareMoraTokens(tokenizeMora(String(a || '').toLowerCase()), tokenizeMora(String(b || '').toLowerCase()));
 }
 
+// ---- 吉村一建設の部署ごとのMS365グループ(スタッフ予定・社員名簿で共通。2026-10-10に社員名簿もこのグループ判定へ変更) ----
+// 部署ごとのMS365グループ(ユーザー提供・2026-10-08。タブはこの並び順)。メンバーを変えたいときは
+// グループのメンバーを変更する(コードの修正は不要)。グループを増やすときはここに1行足す
+const YOSHIMURA_STAFF_GROUPS = [
+  { id: 'soumu', name: '総務部', groupMail: 'soumu@yoshimuraichi.com' },
+  { id: 'fudosan', name: '不動産部', groupMail: 'fudosan@yoshimuraichi.com' },
+  { id: 'sekkei_kikaku', name: '設計企画部', groupMail: 'sekkei@yoshimuraichi.com' },
+  { id: 'koubai', name: '購買部', groupMail: 'koubai@yoshimuraichi.com' },
+  { id: 'customer', name: 'カスタマーサポート室', groupMail: 'customer@yoshimuraichi.com' },
+  { id: 'exterior', name: 'エクステリア事業係', groupMail: 'exterior@yoshimuraichi.com' },
+  { id: 'logistics', name: '物流事業係', groupMail: 'logistics@yoshimuraichi.com' },
+  { id: 'carpenter', name: 'フレミング大工', groupMail: 'carpenter@yoshimuraichi.com' },
+  { id: 'kenchiku', name: '建築営業部', groupMail: 'kenchiku@yoshimuraichi.com' },
+  { id: 'koumu_1', name: '工務部(本社)', groupMail: 'koumu_1@yoshimuraichi.com' },
+  { id: 'koumu_2', name: '工務部(平野)', groupMail: 'koumu_2@yoshimuraichi.com' },
+  { id: 'koumu_3', name: '工務部(西宮)', groupMail: 'koumu_3@yoshimuraichi.com' },
+  { id: 'reform', name: 'リフォーム部', groupMail: 'renovation@yoshimuraichi.com' }
+];

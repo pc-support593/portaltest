@@ -17,7 +17,7 @@ const RESOURCE_EMAILS = new Set(
   [...ROOMS, ...YOSHIMURA_ROOMS, ...CARS].map(r => r.email.toLowerCase())
 );
 
-const state = { left: [], right: [] }; // 各列: [{ dept, members: [{name,email,phone}] }]
+const state = { left: [], right: [], failedLeft: [], failedRight: [] }; // 各列: [{ dept, members: [{name,email,phone}] }]。failed*=取得に失敗したグループ名
 
 /** Graphのエラーレスポンスから可能な限り具体的なメッセージを取り出す */
 async function graphErrorMessage(res, fallback) {
@@ -36,7 +36,7 @@ async function fetchOrgUsers() {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const domainFilter = "endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com')";
   let url = 'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,department,jobTitle,businessPhones,mobilePhone' +
+    '?$select=id,displayName,mail,department,jobTitle,employeeType,businessPhones,mobilePhone' +
     `&$filter=${encodeURIComponent(domainFilter)}` +
     '&$count=true&$top=999';
 
@@ -56,6 +56,7 @@ async function fetchOrgUsers() {
       email: u.mail || '',
       dept: u.department || '',
       title: u.jobTitle || '',
+      empType: String(u.employeeType || '').trim(), // 従業員の種類。「1」なら役職を組織名として表示(buildGroups)
       // 電話番号表示(2026-10-05変更・ユーザー指示): 基本は携帯電話(mobilePhone)を表示し、
       // 事業所の電話(businessPhones。配列・複数件あり得る)が登録されていれば2件目以降として追加表示する
       // (どちらか一方のフォールバックではなく、両方登録されていれば両方とも表示する)
@@ -101,20 +102,29 @@ async function fetchGroupMemberEmails(groupMail) {
   return emails;
 }
 
-/** ゆめすみか社員のメールアドレス(小文字)→所属グループ名のマップを作る。
-    6グループを並行取得し、1グループの取得失敗で全体を壊さないようtry/catchする
-    (失敗したグループのメンバーはどのグループにも属さない扱いになり、該当者は表示されなくなる=安全側に劣化) */
-async function fetchYumesumikaGroupMap() {
+/** 指定したグループ一覧について、メールアドレス(小文字)→所属グループ名(見出し)の配列、のマップを作る。
+    1人が複数のグループに入っていれば、その全ての見出しに表示する(ユーザー指示 2026-10-10)。
+    グループは並行取得し、1グループの取得失敗で全体を壊さないようtry/catchする。
+    取得に失敗したグループ名は failed に返し、画面に表示する(黙って人が消えないように) */
+async function fetchGroupLabelMap(groups) {
   const map = {};
-  await Promise.all(YUMESUMIKA_GROUPS.map(async g => {
+  const failed = [];
+  await Promise.all(groups.map(async g => {
     try {
-      (await fetchGroupMemberEmails(g.groupMail)).forEach(email => { map[email] = g.label; });
+      (await fetchGroupMemberEmails(g.groupMail)).forEach(email => {
+        (map[email] ||= []).includes(g.label) || map[email].push(g.label);
+      });
     } catch (e) {
       console.error(`「${g.label}」のメンバー取得に失敗しました`, e);
+      failed.push(g.label);
     }
   }));
-  return map;
+  return { map, failed };
 }
+
+// 吉村一建設側(左列)の部署グループ。スタッフ予定と同じ(common.jsのYOSHIMURA_STAFF_GROUPS)。見出し名・並び順もそのまま
+const LEFT_GROUPS = YOSHIMURA_STAFF_GROUPS.map(g => ({ label: g.name, groupMail: g.groupMail }));
+const LEFT_GROUP_ORDER = LEFT_GROUPS.map(g => g.label);
 
 // MS365アカウント(メールアドレス)を持たない社員の手動追加リスト(2026-10-05・ユーザー指示)。
 // Graph APIには存在しないため、Entra ID取得結果とは別にこの配列を直接buildGroupsへ合流させる。
@@ -128,11 +138,11 @@ const MANUAL_MEMBERS = [
 
 /** MANUAL_MEMBERSの1件を、buildGroups/renderColumnが期待する形(email/title付き)に変換する */
 function manualMemberToUser(m) {
-  return { name: m.name, email: '', dept: m.dept, title: '', phone: m.phone || '' };
+  return { name: m.name, email: '', dept: m.dept, title: '', empType: '', phone: m.phone || '' };
 }
 
-// 役職(jobTitle)にこれらの語を含む場合は部門を無視し、この語自体を部門扱いにして先頭に表示する。
-// この順番がそのまま表示順になる(左列=吉村一建設側で使用)
+// 従業員の種類(employeeType)が「1」の人は、役職(jobTitle)を組織名(見出し)として先頭に表示し、MS365グループ側には載せない
+// (2026-10-10・ユーザー指示)。この配列は、そのうち会長・社長・専務の見出しの表示順を決める(これ以外の役職は後ろに出現順)
 const PRIORITY_TITLES = ['会長', '社長', '専務'];
 
 // 特定の個人を、実際のEntra ID属性(部門・メールドメイン)に関わらず固定の列・見出しに
@@ -172,11 +182,11 @@ const DEPARTMENT_OVERRIDES = {
 /** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
     → 残りを通常グループ(既定はdepartment属性。DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。
     グループが決まらない社員は表示しない。
-    options.deptOf(u)/options.deptOrder で通常グループの判定方法・表示順を差し替え可能
-    (2026-10-05追加・ゆめすみか側をMS365グループ判定にするため。省略時は従来どおりdepartment属性+五十音順) */
+    options.deptsOf(u)=その人が表示される見出し(グループ名)の配列(複数所属なら全てに表示)、options.deptOrder=見出しの表示順。
+    従業員の種類(empType)が「1」の人は、役職(title)を見出しにして先頭に表示し、deptsOfは使わない(2026-10-10・ユーザー指示) */
 function buildGroups(users, priorityTitles, options) {
   const opts = options || {};
-  const deptOf = opts.deptOf || (u => DEPARTMENT_OVERRIDES[u.email.toLowerCase()] || u.dept || null);
+  const deptsOf = opts.deptsOf || (() => []); // その人が表示される見出し(グループ名)の配列。複数所属なら全てに表示
   const deptOrder = opts.deptOrder || null;
 
   const priorityBuckets = new Map();
@@ -185,7 +195,9 @@ function buildGroups(users, priorityTitles, options) {
 
   users.forEach(u => {
     const person = PERSON_OVERRIDES[u.email.toLowerCase()];
-    const key = (person && person.group) || priorityTitles.find(t => u.title.includes(t));
+    // 従業員の種類が「1」の人は、役職を組織名として扱いグループ側には入れない(役職が空なら表示しない)
+    const key = (person && person.group) || (u.empType === '1' ? (u.title || null) : null);
+    if (!key && u.empType === '1') return;
     if (key) {
       if (!priorityBuckets.has(key)) {
         priorityBuckets.set(key, []);
@@ -194,10 +206,10 @@ function buildGroups(users, priorityTitles, options) {
       priorityBuckets.get(key).push(u);
       return;
     }
-    const dept = deptOf(u);
-    if (!dept) return;
-    if (!byDept.has(dept)) byDept.set(dept, []);
-    byDept.get(dept).push(u);
+    deptsOf(u).filter(Boolean).forEach(dept => {
+      if (!byDept.has(dept)) byDept.set(dept, []);
+      byDept.get(dept).push(u);
+    });
   });
 
   // メールアドレスを持たない社員(MANUAL_MEMBERS。sortKeyFromEmailが空文字を返す)は、
@@ -227,17 +239,20 @@ function buildGroups(users, priorityTitles, options) {
   return [...priorityGroups, ...deptGroups];
 }
 
-function renderColumn(elId, groups) {
+function renderColumn(elId, groups, failedGroups) {
   const el = document.getElementById(elId);
   if (Auth.mode !== 'entra') {
     el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">devモードでは組織情報を確認できません(Entra IDでのサインインが必要です)</p>';
     return;
   }
+  const notice = (failedGroups && failedGroups.length)
+    ? `<p style="margin:0;padding:10px 20px;font-size:12px;color:#c05a5a;background:#fdf4f4;border-bottom:1px solid #f3dede">次のグループを取得できませんでした(該当する方が表示されていない可能性があります): ${esc(failedGroups.join('、'))}</p>`
+    : '';
   if (!groups.length) {
-    el.innerHTML = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">該当するメンバーが見つかりませんでした</p>';
+    el.innerHTML = notice + '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">該当するメンバーが見つかりませんでした</p>';
     return;
   }
-  el.innerHTML = groups.map(g => `
+  el.innerHTML = notice + groups.map(g => `
     <div style="border-bottom:8px solid #f7fafd">
       <div style="padding:13px 20px;background:#f7fafd;display:flex;align-items:center;gap:9px;border-bottom:1px solid #e8edf3">
         <h3 style="margin:0;font-size:14px;font-weight:700">${esc(g.dept)}</h3>
@@ -254,8 +269,8 @@ function renderColumn(elId, groups) {
 }
 
 function renderAll() {
-  renderColumn('org-left', state.left);
-  renderColumn('org-right', state.right);
+  renderColumn('org-left', state.left, state.failedLeft);
+  renderColumn('org-right', state.right, state.failedRight);
 }
 
 /** @yumesumika.com は右列(ゆめすみか)、それ以外は左列に振り分ける(ユーザー指示 2026-09-10)。
@@ -271,25 +286,41 @@ function splitByCompany(users) {
   return { left, right };
 }
 
+/** 社員名簿の表示内容を作る(ユーザー・グループの取得→左右の振り分け→見出しごとにまとめる)。
+    見出しは全てMS365グループで決める(2026-10-10・ユーザー指示。左=吉村一建設の部署グループ13個、右=ゆめすみか6グループ)。
+    従業員の種類が「1」の人だけは、役職を組織名として表示しグループ側には載せない(buildGroups) */
+async function loadOrgData() {
+  const { left, right } = splitByCompany(await fetchOrgUsers());
+  const [leftMaps, rightMaps] = await Promise.all([fetchGroupLabelMap(LEFT_GROUPS), fetchGroupLabelMap(YUMESUMIKA_GROUPS)]);
+  const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
+  const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
+  // メールアドレスの無い手動追加メンバーは、指定した見出し(dept)に表示する。個別指定(DEPARTMENT_OVERRIDES)は追加で効かせる
+  const leftDepts = u => {
+    const labels = new Set(u.email ? (leftMaps.map[u.email.toLowerCase()] || []) : (u.dept ? [u.dept] : []));
+    const ov = DEPARTMENT_OVERRIDES[u.email.toLowerCase()];
+    if (ov) labels.add(ov);
+    return [...labels];
+  };
+  const rightDepts = u => (u.email ? (rightMaps.map[u.email.toLowerCase()] || []) : (u.dept ? [u.dept] : []));
+  return {
+    left: buildGroups([...left, ...manualLeft], PRIORITY_TITLES, { deptsOf: leftDepts, deptOrder: LEFT_GROUP_ORDER }),
+    right: buildGroups([...right, ...manualRight], [], { deptsOf: rightDepts, deptOrder: YUMESUMIKA_GROUP_ORDER }),
+    failedLeft: leftMaps.failed,
+    failedRight: rightMaps.failed
+  };
+}
+
 async function loadAndRender() {
   if (Auth.mode !== 'entra') { renderAll(); return; }
   const loading = '<p style="margin:0;padding:24px 20px;font-size:13px;color:#8a99a8">読み込み中…</p>';
   document.getElementById('org-left').innerHTML = loading;
   document.getElementById('org-right').innerHTML = loading;
   try {
-    const { left, right } = splitByCompany(await fetchOrgUsers());
-    const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
-    const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
-    const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
-    state.left = buildGroups([...left, ...manualLeft], PRIORITY_TITLES);
-    state.right = buildGroups([...right, ...manualRight], [], {
-      deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
-      deptOrder: YUMESUMIKA_GROUP_ORDER
-    });
+    Object.assign(state, await loadOrgData());
     renderAll();
   } catch (e) {
     console.error(e);
-    state.left = []; state.right = [];
+    state.left = []; state.right = []; state.failedLeft = []; state.failedRight = [];
     const msg = `<p style="margin:0;padding:24px 20px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
     document.getElementById('org-left').innerHTML = msg;
     document.getElementById('org-right').innerHTML = msg;
@@ -300,17 +331,9 @@ async function loadAndRender() {
 async function autoRefresh() {
   if (document.hidden || Auth.mode !== 'entra') return;
   try {
-    const { left, right } = splitByCompany(await fetchOrgUsers());
-    const yumesumikaGroupMap = await fetchYumesumikaGroupMap();
-    const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
-    const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
-    const newLeft = buildGroups([...left, ...manualLeft], PRIORITY_TITLES);
-    const newRight = buildGroups([...right, ...manualRight], [], {
-      deptOf: u => yumesumikaGroupMap[u.email.toLowerCase()] || null,
-      deptOrder: YUMESUMIKA_GROUP_ORDER
-    });
-    if (JSON.stringify(newLeft) !== JSON.stringify(state.left) || JSON.stringify(newRight) !== JSON.stringify(state.right)) {
-      state.left = newLeft; state.right = newRight;
+    const next = await loadOrgData();
+    if (JSON.stringify(next) !== JSON.stringify({ left: state.left, right: state.right, failedLeft: state.failedLeft, failedRight: state.failedRight })) {
+      Object.assign(state, next);
       renderAll();
     }
   } catch { /* 自動更新の失敗は静かに無視(次回に再試行) */ }
