@@ -158,6 +158,9 @@ const PORTAL_NAV = [
 
 function setupPortalHeader() {
   const header = document.querySelector('header');
+  // 画面を下にスクロールしてもヘッダーを上部に固定する(2026-10-11・ユーザー指示。全ページ共通)。
+  // z-indexは、スタッフ予定の名前列(2)・候補リスト(10)より上、モーダル(100・110)より下
+  if (header) { header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '50'; }
   const brand = header && header.firstElementChild;
   if (!brand || brand.querySelector('a.portal-brand')) return;
 
