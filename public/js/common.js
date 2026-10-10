@@ -262,6 +262,23 @@ function displayName(name) {
 
 
 // ---- 並び順(五十音順の代用): 社員名簿・スタッフ予定2ページで共通(2026-10-10。organization.jsから移動) ----
+/** 従業員の種類(Entra IDのemployeeType)の「2以降の数字」を、MS365グループ表示内での順位として返す(小さい順。2026-10-10・ユーザー指示)。
+    「1」(組織名扱い)・空・数字以外は順位なし=Infinity(順位のある人より後ろ) */
+function employeeTypeRank(empType) {
+  const s = String(empType ?? '').trim();
+  if (!/^\d+$/.test(s)) return Infinity;
+  const n = Number(s);
+  return n >= 2 ? n : Infinity;
+}
+
+/** グループ内のメンバーの並び順: ①従業員の種類の数字(2以降)が小さい順 ②同じ順位(順位なし同士を含む)は五十音順
+    (メールアドレスの姓のローマ字)。社員名簿・スタッフ予定2ページで共通。a/bは { empType, email } を持つこと */
+function compareMembersByRank(a, b) {
+  const ra = employeeTypeRank(a.empType), rb = employeeTypeRank(b.empType);
+  if (ra !== rb) return ra < rb ? -1 : 1;
+  return compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email));
+}
+
 /** メールアドレスの最初の「-」より後ろの部分(ローマ字の姓)を並び順のキーにする
     (ユーザー指示 2026-09-10)。漢字の氏名はEntra IDにふりがな属性が無く、Unicode上の
     文字コード順にしかならず正しい五十音順にできない(実際に検証済み: 「友藤/東/森本/千葉/巽/

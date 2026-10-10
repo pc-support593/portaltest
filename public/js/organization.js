@@ -219,7 +219,7 @@ function buildGroups(users, priorityTitles, options) {
   const collator = (a, b) => {
     const aHasEmail = !!a.email, bHasEmail = !!b.email;
     if (aHasEmail !== bHasEmail) return aHasEmail ? -1 : 1;
-    return compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email));
+    return compareMembersByRank(a, b); // 従業員の種類の数字(2以降)の小さい順→五十音順
   };
   // overrideOrderはusers配列の出現順(Graph APIの返却順。保証されない)に依存してしまうため、
   // OVERRIDE_GROUP_ORDERで明示した順序で並べ替える(そこに無いgroup名は出現順のまま末尾側に残す)

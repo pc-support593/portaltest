@@ -105,7 +105,7 @@ async function fetchGroupMembers(groupMail) {
   const group = (groupData.value || [])[0];
   if (!group) throw new Error(`グループが見つかりませんでした(${groupMail})`);
 
-  let url = `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=id,displayName,mail&$top=200`;
+  let url = `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=id,displayName,mail,employeeType&$top=200`;
   const members = [];
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -115,7 +115,7 @@ async function fetchGroupMembers(groupMail) {
     url = data['@odata.nextLink'] || null;
   }
   // 並び順は社員名簿と同じ(メールの姓のローマ字を五十音順に。common.js)
-  return members.filter(m => m.mail).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail })).sort((a, b) => compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email)));
+  return members.filter(m => m.mail).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail, empType: String(m.employeeType || '').trim() })).sort(compareMembersByRank);
 }
 
 /** 指定したメールアドレスのユーザー情報(表示名)を個別に取得する(MS365グループを介さない
@@ -125,18 +125,18 @@ async function fetchStaticMembers(emails) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const results = await Promise.all(emails.map(async email => {
     try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail`, {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await graphErrorMessage(res));
       const u = await res.json();
-      return { id: u.id, name: u.displayName || email, email: u.mail || email };
+      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim() };
     } catch (e) {
       console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
-      return { id: email, name: email, email };
+      return { id: email, name: email, email, empType: '' };
     }
   }));
-  return results.sort((a, b) => compareRomajiGojuon(sortKeyFromEmail(a.email), sortKeyFromEmail(b.email)));
+  return results.sort(compareMembersByRank);
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで
