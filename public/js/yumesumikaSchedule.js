@@ -29,7 +29,8 @@ const SHOWROOM_GROUPS = [
   { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
   { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true },
-  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com'] }
+  // 2026-10-13・ユーザー指示: k-ohira@yumesumika.com と、tomofuji@・t-tomofuji@・n-azuma@(いずれも@yoshimuraichi.com)を追加
+  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com', 'k-ohira@yumesumika.com', 'tomofuji@yoshimuraichi.com', 't-tomofuji@yoshimuraichi.com', 'n-azuma@yoshimuraichi.com'] }
 ];
 
 /** タブに表示する(非表示扱いでない)グループ一覧 */
