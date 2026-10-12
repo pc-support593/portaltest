@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!-- サインインの確認が済むまで画面を表示しない(ログイン前に画面が一瞬見えるのを防ぐ。2026-10-12・ユーザー指示)。js/auth.js の Auth.init が完了/失敗で解除する。保険として20秒で解除 -->
+<!-- サインインの確認が済むまで画面を表示しない(ログイン前に画面が一瞬見えるのを防ぐ。2026-10-12・ユーザー指示)。js/auth.js の Auth.init が完了/失敗で解除する。保険として10秒で解除。ブラウザの「戻る」(bfcache復帰)でも直ちに解除 -->
 <style>html.auth-pending body{visibility:hidden}</style>
-<script>document.documentElement.classList.add('auth-pending');setTimeout(function(){document.documentElement.classList.remove('auth-pending');},20000);</script>
+<script>(function(){var c=document.documentElement.classList;c.add('auth-pending');setTimeout(function(){c.remove('auth-pending');},10000);window.addEventListener('pageshow',function(e){if(e.persisted)c.remove('auth-pending');});})();</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ゆめすみかスタッフ予定 - 吉村一建設 ポータル</title>
