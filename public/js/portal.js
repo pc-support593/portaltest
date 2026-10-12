@@ -145,7 +145,7 @@ function openNewsDetail(n) {
   openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部', attachments: n.attachments || [] });
 }
 
-/** トップのお知らせ欄: 掲載日が今日以降のものだけ表示。過ぎたものは「すべて見る」から(ユーザー指示 2026-08-21) */
+/** トップのお知らせ欄: 掲載期限が切れていないものだけ表示。切れたものは「過去のお知らせ」から(ユーザー指示 2026-08-21。2026-10-12に、過去のお知らせにはトップ表示中のものを重複して出さないよう変更) */
 function renderNews(news) {
   const el = document.getElementById('news-list');
   if (!news.length) {
@@ -166,7 +166,7 @@ function renderNews(news) {
   }));
 }
 
-/** 「すべて見る」: 過去分も含む全お知らせの一覧モーダル。行クリックで詳細を開く */
+/** 「過去のお知らせ」: 期限が切れたお知らせだけの一覧モーダル(トップに表示中のものは含めない)。行クリックで詳細を開く */
 function openNewsListModal(allNews) {
   const root = document.getElementById('modal-root');
   modalData = { _list: true }; // 自動リフレッシュのスキップ判定(modalData)に乗せるためのダミー
@@ -175,8 +175,8 @@ function openNewsListModal(allNews) {
   <div id="modal-overlay" style="position:fixed;inset:0;background:rgba(20,40,65,0.45);display:flex;align-items:center;justify-content:center;padding:24px;z-index:100">
     <div id="modal-box" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid #e4ebf2">
-        <h3 style="margin:0;font-size:17px;font-weight:700">すべてのお知らせ</h3>
-        <span style="font-size:12px;color:#8a99a8">${sorted.length}件(過去の掲載分を含む)</span>
+        <h3 style="margin:0;font-size:17px;font-weight:700">過去のお知らせ</h3>
+        <span style="font-size:12px;color:#8a99a8">${sorted.length}件(掲載期限が切れたもの)</span>
         <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="overflow-y:auto;display:flex;flex-direction:column">
@@ -188,7 +188,7 @@ function openNewsListModal(allNews) {
             <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>
             <span style="margin-left:auto;font-size:12px;color:#8a99a8;white-space:nowrap">${esc(fmtMD(n.date))}</span>
           </button>`;
-        }).join('') : '<p style="margin:0;padding:24px 26px;font-size:13px;color:#8a99a8">お知らせはありません</p>'}
+        }).join('') : '<p style="margin:0;padding:24px 26px;font-size:13px;color:#8a99a8">過去のお知らせはありません</p>'}
       </div>
       <div style="padding:14px 26px;border-top:1px solid #e4ebf2;display:flex">
         <button class="hv-btn-plain" data-close style="margin-left:auto;border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:8px 20px;cursor:pointer;color:#1c2b3a;font-size:13px;font-weight:500;font-family:inherit">閉じる</button>
@@ -633,14 +633,16 @@ async function renderShiftBadge() {
     const now = new Date();
     const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     // 並びは掲載日の新しい順(同じ日は後から登録したものが上。掲載日なしは末尾)。「過去のお知らせ」の一覧と同じ並び
+    // 期限が切れる前=トップのお知らせ、切れたもの=「過去のお知らせ」。どちらか一方にだけ表示する(2026-10-12・ユーザー指示)
+    const isNewsCurrent = n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso);
     const topNews = content.news
-      .filter(n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso))
+      .filter(isNewsCurrent)
       .sort((a, b) => (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
     renderNews(topNews);
     const allLink = document.getElementById('news-all-link');
     if (allLink) allLink.addEventListener('click', e => {
       e.preventDefault();
-      openNewsListModal(content.news);
+      openNewsListModal(content.news.filter(n => !isNewsCurrent(n))); // 期限が切れたお知らせだけ
     });
     // 全社スケジュールは今月分だけトップに表示(日付なしは表示継続)。全期間は「年間予定表」から
     const thisYm = todayIso.slice(0, 7);
