@@ -511,5 +511,5 @@ async function fetchStaticMembers(emails) {
       return { id: email, name: email, email, empType: '' };
     }
   }));
-  return results.sort(compareMembersByRank);
+  return results; // 指定した配列の順に表示する(並べ替えない。ユーザー指示 2026-10-13)
 }

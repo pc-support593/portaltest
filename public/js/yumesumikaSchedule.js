@@ -30,7 +30,7 @@ const SHOWROOM_GROUPS = [
   { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
   { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true },
   // 2026-10-13・ユーザー指示: k-ohira@yumesumika.com を追加(吉村一建設側の本社メンバーは yoshimuraichiSchedule.js の STAFF_GROUPS に別に持つ)
-  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com', 'k-ohira@yumesumika.com'] }
+  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'k-ohira@yumesumika.com', 'e-sekiya@yoshimuraichi.com'] } // 表示順は配列の並びのまま(ユーザー指示 2026-10-13)
 ];
 
 /** タブに表示する(非表示扱いでない)グループ一覧 */
