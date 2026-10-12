@@ -15,16 +15,27 @@ const Auth = {
   get apiScope() { return `api://${this.config.clientId}/access_as_user`; },
 
   async init() {
-    this.config = await api('/api/config');
-    this.mode = this.config.authMode;
-    if (this.mode === 'entra') {
-      await this._initEntra();
+    try {
+      this.config = await api('/api/config');
+      this.mode = this.config.authMode;
+      if (this.mode === 'entra') {
+        await this._initEntra(); // 未サインインならMicrosoftのログインへ移動し、ここから戻らない(画面は非表示のまま)
+      }
+      this.me = await api('/api/me');
+      fillMe(this.me);
+      showPortalAdminLink(this.me);
+      this._initLogoutLink();
+      this._revealPage();
+      return this.me;
+    } catch (e) {
+      this._revealPage(); // エラー時は画面を表示して、各ページがエラー内容を出せるようにする(真っ白のままにしない)
+      throw e;
     }
-    this.me = await api('/api/me');
-    fillMe(this.me);
-    showPortalAdminLink(this.me);
-    this._initLogoutLink();
-    return this.me;
+  },
+
+  /** サインインの確認が済むまで画面を隠している(各ページ先頭の html.auth-pending)を解除する */
+  _revealPage() {
+    document.documentElement.classList.remove('auth-pending');
   },
 
   /** ヘッダーの「ログアウト」リンク(id="logout-link")を有効化する。devモードでは非表示のまま */
