@@ -12,8 +12,13 @@
 
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-// 部署ごとのMS365グループは common.js の YOSHIMURA_STAFF_GROUPS(社員名簿と共通。タブはこの並び順)
-const STAFF_GROUPS = YOSHIMURA_STAFF_GROUPS;
+// 部署ごとのMS365グループは common.js の YOSHIMURA_STAFF_GROUPS(社員名簿と共通。タブはこの並び順)。
+// 最後に「本社」(MS365グループを介さず、指定のメールアドレスを直接メンバー扱い。ユーザー指示 2026-10-13:
+// tomofuji@・t-tomofuji@・n-azuma@。tomofuji@とt-tomofuji@は別アドレスの別の人=会長と社長)。社員名簿の見出しには使わない(名簿はグループ判定)
+const STAFF_GROUPS = [
+  ...YOSHIMURA_STAFF_GROUPS,
+  { id: 'honsha', name: '本社', members: ['tomofuji@yoshimuraichi.com', 't-tomofuji@yoshimuraichi.com', 'n-azuma@yoshimuraichi.com'] }
+];
 
 const DAYS_SPAN = 14; // 2週間分
 
@@ -269,7 +274,9 @@ async function loadMembers() {
   if (state.members[state.groupTab]) return;
   const group = STAFF_GROUPS.find(g => g.id === state.groupTab);
   try {
-    state.members[state.groupTab] = await fetchGroupMembers(group.groupMail);
+    state.members[state.groupTab] = group.members
+      ? await fetchStaticMembers(group.members)
+      : await fetchGroupMembers(group.groupMail);
   } catch (e) {
     console.error(e);
     document.getElementById('timeline').innerHTML = `<p style="margin:0;padding:8px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;

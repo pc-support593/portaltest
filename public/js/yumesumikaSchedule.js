@@ -29,8 +29,8 @@ const SHOWROOM_GROUPS = [
   { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { id: 'nishinomiya', name: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
   { id: 'sekkei', name: '設計', groupMail: 'yumesumika_6@yumesumika.com', hidden: true },
-  // 2026-10-13・ユーザー指示: k-ohira@yumesumika.com と、tomofuji@・t-tomofuji@・n-azuma@(いずれも@yoshimuraichi.com)を追加
-  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com', 'k-ohira@yumesumika.com', 'tomofuji@yoshimuraichi.com', 't-tomofuji@yoshimuraichi.com', 'n-azuma@yoshimuraichi.com'] }
+  // 2026-10-13・ユーザー指示: k-ohira@yumesumika.com を追加(吉村一建設側の本社メンバーは yoshimuraichiSchedule.js の STAFF_GROUPS に別に持つ)
+  { id: 'honsha', name: '本社', members: ['n-morishita@yoshimuraichi.com', 'e-sekiya@yoshimuraichi.com', 'k-ohira@yumesumika.com'] }
 ];
 
 /** タブに表示する(非表示扱いでない)グループ一覧 */
@@ -117,27 +117,6 @@ async function fetchGroupMembers(groupMail) {
   }
   // 並び順は社員名簿と同じ(メールの姓のローマ字を五十音順に。common.js)
   return members.filter(m => m.mail).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail, empType: String(m.employeeType || '').trim() })).sort(compareMembersByRank);
-}
-
-/** 指定したメールアドレスのユーザー情報(表示名)を個別に取得する(MS365グループを介さない
-    固定メンバーリスト用。2026-10-02追加。既存のUser.Read.Allで足りるため新規権限は不要)。
-    1人ずつtry/catchし、取得に失敗した人はメールアドレスをそのまま表示名にする */
-async function fetchStaticMembers(emails) {
-  const token = await Auth.getGraphToken(['User.Read.All']);
-  const results = await Promise.all(emails.map(async email => {
-    try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error(await graphErrorMessage(res));
-      const u = await res.json();
-      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim() };
-    } catch (e) {
-      console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
-      return { id: email, name: email, email, empType: '' };
-    }
-  }));
-  return results.sort(compareMembersByRank);
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで

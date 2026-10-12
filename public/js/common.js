@@ -491,3 +491,25 @@ const YOSHIMURA_STAFF_GROUPS = [
   { id: 'koumu_3', name: '工務部(西宮)', groupMail: 'koumu_3@yoshimuraichi.com' },
   { id: 'reform', name: 'リフォーム部', groupMail: 'renovation@yoshimuraichi.com' }
 ];
+
+// ---- 固定メンバー(MS365グループを介さず、メールアドレスを直接指定)の取得: ゆめすみか・吉村一建設の両スタッフ予定ページの「本社」タブで共通 ----
+/** 指定したメールアドレスのユーザー情報(表示名)を個別に取得する(MS365グループを介さない
+    固定メンバーリスト用。2026-10-02追加。既存のUser.Read.Allで足りるため新規権限は不要)。
+    1人ずつtry/catchし、取得に失敗した人はメールアドレスをそのまま表示名にする */
+async function fetchStaticMembers(emails) {
+  const token = await Auth.getGraphToken(['User.Read.All']);
+  const results = await Promise.all(emails.map(async email => {
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(await graphErrorMessage(res));
+      const u = await res.json();
+      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim() };
+    } catch (e) {
+      console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
+      return { id: email, name: email, email, empType: '' };
+    }
+  }));
+  return results.sort(compareMembersByRank);
+}
