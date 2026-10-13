@@ -83,7 +83,7 @@ async function fetchGroupMembers(groupMail) {
   const group = (groupData.value || [])[0];
   if (!group) throw new Error(`グループが見つかりませんでした(${groupMail})`);
 
-  let url = `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=id,displayName,mail,employeeType&$top=200`;
+  let url = `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=id,displayName,mail,employeeType,employeeHireDate&$top=200`;
   const members = [];
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -94,7 +94,7 @@ async function fetchGroupMembers(groupMail) {
   }
   const isUser = m => (m['@odata.type'] || '#microsoft.graph.user') === '#microsoft.graph.user';
   // 並び順は社員名簿と同じ(メールの姓のローマ字を五十音順に。common.js)
-  return members.filter(m => isUser(m) && m.mail).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail, empType: String(m.employeeType || '').trim() })).sort(compareMembersByRank);
+  return members.filter(m => isUser(m) && m.mail && !isBeforeHireDate(m.employeeHireDate)).map(m => ({ id: m.id, name: m.displayName || '(名前未設定)', email: m.mail, empType: String(m.employeeType || '').trim() })).sort(compareMembersByRank);
 }
 
 /** 表示中の2週間ぶんの予定(終日予定は除く)を、メンバーごとに1回のcalendarView呼び出しで

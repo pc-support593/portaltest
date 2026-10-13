@@ -54,6 +54,21 @@ function phoneListOf(u) {
   return list;
 }
 
+/** 日本時間(JST)の日付 'YYYY-MM-DD'。入社日の判定を、サーバー・ブラウザのタイムゾーンに依らず日本の暦で行うため */
+function jstDateKey(date) {
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** 従業員入社日(Entra IDのemployeeHireDate)がまだ来ていない人か(入社日が日本時間の今日より後)。
+    入社日当日から表示する。入社日が空・日付として読めない場合は、これまでどおり表示する(false)。
+    社員名簿・スタッフ予定2ページ・社内検索・本日の出勤者で共通(2026-10-13・ユーザー指示。ポータル上の表示だけの話) */
+function isBeforeHireDate(hireDate) {
+  if (!hireDate) return false;
+  const t = new Date(hireDate);
+  if (Number.isNaN(t.getTime())) return false;
+  return jstDateKey(t) > jstDateKey(new Date());
+}
+
 /** ISO 8601(YYYY-MM-DD)→ 表示用 'M/D'。ISO以外はそのまま返す */
 function fmtMD(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
@@ -74,13 +89,13 @@ async function searchMembers(q) {
   const domainFilter = "(endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   const url = 'https://graph.microsoft.com/v1.0/users' +
     `?$search=${encodeURIComponent(search)}&$filter=${encodeURIComponent(domainFilter)}` +
-    '&$count=true&$select=displayName,mail,userPrincipalName,department&$top=5';
+    '&$count=true&$select=displayName,mail,userPrincipalName,department,employeeHireDate&$top=5';
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
   });
   if (!res.ok) throw new Error(`メンバー検索に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
-  return (data.value || []).map(u => ({
+  return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate)).map(u => ({ // 入社日前の人は出さない
     name: u.displayName || '(名前未設定)',
     dept: u.department || '',
     email: u.mail || u.userPrincipalName || ''
@@ -500,16 +515,16 @@ async function fetchStaticMembers(emails) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const results = await Promise.all(emails.map(async email => {
     try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType`, {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType,employeeHireDate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await graphErrorMessage(res));
       const u = await res.json();
-      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim() };
+      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim(), hireDate: u.employeeHireDate || null };
     } catch (e) {
       console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
       return { id: email, name: email, email, empType: '' };
     }
   }));
-  return results; // 指定した配列の順に表示する(並べ替えない。ユーザー指示 2026-10-13)
+  return results.filter(m => !isBeforeHireDate(m.hireDate)); // 指定した配列の順に表示する(並べ替えない。ユーザー指示 2026-10-13)。入社日前の人は除く
 }

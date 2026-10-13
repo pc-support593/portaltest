@@ -31,11 +31,12 @@ async function fetchMemberDetails(emails) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const results = await Promise.all(emails.map(async email => {
     try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,businessPhones,mobilePhone`, {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,businessPhones,mobilePhone,employeeHireDate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await graphErrorMessage(res));
       const u = await res.json();
+      if (isBeforeHireDate(u.employeeHireDate)) return null; // 従業員入社日がまだ来ていない人は表示しない
       return {
         name: u.displayName || email,
         email: u.mail || email,
@@ -48,7 +49,7 @@ async function fetchMemberDetails(emails) {
     }
   }));
   const collator = (a, b) => (a.name || '').localeCompare(b.name || '', 'ja');
-  return results.sort(collator);
+  return results.filter(Boolean).sort(collator);
 }
 
 /** organization.js の renderColumn と同じ見た目(丸アバター+氏名+メール+電話)の一覧行 */

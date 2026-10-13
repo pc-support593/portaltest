@@ -37,7 +37,7 @@ async function fetchOrgUsers() {
   // 検索条件($filter・$count・ConsistencyLevel: eventual)つきの取得(advanced query)は、変更の反映が遅れる(古い値が返る)ため使わない。
   // 通常の一覧取得で全ユーザーを取り、メールアドレスのドメインはこちらで絞り込む(2026-10-10。従業員の種類の変更が名簿に出ない不具合の対策)
   let url = 'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,department,jobTitle,employeeType,businessPhones,mobilePhone' +
+    '?$select=id,displayName,mail,department,jobTitle,employeeType,employeeHireDate,businessPhones,mobilePhone' +
     '&$top=999';
 
   const rows = [];
@@ -52,6 +52,7 @@ async function fetchOrgUsers() {
   const isOrgMail = mail => /@(yoshimuraichi|yumesumika)\.com$/i.test(mail || '');
   return rows
     .filter(u => isOrgMail(u.mail))
+    .filter(u => !isBeforeHireDate(u.employeeHireDate)) // 従業員入社日がまだ来ていない人は表示しない(入社日が空なら表示)
     .filter(u => !RESOURCE_EMAILS.has((u.mail || '').toLowerCase()))
     .map(u => ({
       name: u.displayName || '(名前未設定)',
