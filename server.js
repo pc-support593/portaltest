@@ -182,7 +182,7 @@ function pickFields(kind, body) {
   return row;
 }
 
-/** 「何か1つでも入力されているか」の判定。calendar_scopeは未指定でも'both'が入るため、pinned(固定表示のチェックだけ)も入力とは見なさないため、判定から除く */
+/** 「何か1つでも入力されているか」の判定。calendar_scope(未指定でも'both'が入る)と pinned(固定表示のチェックだけでは入力と見なさない)は判定から除く */
 function hasAnyInput(row) {
   return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && k !== 'pinned' && v !== '');
 }
