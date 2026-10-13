@@ -75,9 +75,10 @@ const CONFIG = {
       { key: 'tag', label: 'カテゴリ', ph: '例: 重要 / 総務 / 安全' },
       { key: 'title', label: 'タイトル', ph: '例: 夏季休業期間のお知らせ' },
       { key: 'date', label: '掲載日', type: 'date' },
-      { key: 'expires', label: 'トップ掲載期限(この日まで表示)', type: 'date' }
+      { key: 'expires', label: 'トップ掲載期限(この日まで表示)', type: 'date' },
+      { key: 'pinned', label: 'トップの一番上に固定表示する(カテゴリが「重要」のお知らせは、チェックしなくても自動で一番上)', type: 'checkbox' }
     ],
-    cells: it => [it.tag, it.title, `${fmtMD(it.date)}${it.expires ? ` 〜 ${fmtMD(it.expires)}` : ''}`]
+    cells: it => [it.tag, it.title, `${fmtMD(it.date)}${it.expires ? ` 〜 ${fmtMD(it.expires)}` : ''}${it.pinned === '1' ? ' [固定]' : ''}`]
   },
   schedule: {
     label: '全社スケジュール', hasBody: true,
@@ -458,7 +459,11 @@ function renderModal() {
       </div>
       <div style="padding:20px 26px;overflow-y:auto;display:flex;flex-direction:column;gap:14px">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
-          ${cfg.fields.map(f => `
+          ${cfg.fields.map(f => f.type === 'checkbox' ? `
+          <label style="grid-column:1 / -1;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" data-field="${f.key}" ${d[f.key] === '1' ? 'checked' : ''}>
+            <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.label}</span>
+          </label>` : `
           <label style="display:flex;flex-direction:column;gap:5px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.label}</span>
             ${f.type === 'select'
@@ -493,7 +498,7 @@ function renderModal() {
   root.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', close));
 
   root.querySelectorAll('[data-field]').forEach(inp => inp.addEventListener('input', () => {
-    state.draft[inp.dataset.field] = inp.value;
+    state.draft[inp.dataset.field] = inp.type === 'checkbox' ? (inp.checked ? '1' : '') : inp.value;
   }));
   // 添付ファイルの操作(選択・取消・登録済みの削除)。入力中の内容は state.draft に保持されているので、再描画しても消えない
   const setError = msg => { root.querySelector('#admin-error').textContent = msg; };
@@ -540,7 +545,7 @@ function renderModal() {
     const payload = {};
     cfg2.fields.forEach(f => payload[f.key] = (state.draft[f.key] || '').trim());
     if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, BODY_MAX_LEN);
-    if (!cfg2.fields.some(f => f.type !== 'select' && payload[f.key])) {
+    if (!cfg2.fields.some(f => f.type !== 'select' && f.type !== 'checkbox' && payload[f.key])) {
       root.querySelector('#admin-error').textContent = 'いずれかの項目を入力してください';
       return;
     }

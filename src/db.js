@@ -139,6 +139,8 @@ function migrate(db) {
   try { db.exec("ALTER TABLE bookings ADD COLUMN content TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
   // お知らせのトップ掲載期限(2026-08-21)。空文字は「期限なし=掲載日ベースの既定ルール」
   try { db.exec("ALTER TABLE news ADD COLUMN expires TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
+  // お知らせの「トップの上に固定表示」(2026-10-13)。'1'=固定、空文字=通常。既存の行は通常(空文字)のまま
+  try { db.exec("ALTER TABLE news ADD COLUMN pinned TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
 
   // 全社スケジュールと年間カレンダーの連動(2026-10-06)。列の追加のみ(既存データは'both'/手入力扱いのまま)
   // calendar_scope: どの定休グループに表示するか 'both' | 'sunday_off' | 'wednesday_off'

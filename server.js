@@ -157,7 +157,7 @@ app.get('/api/external-login/igrace', (req, res) => {
 // ---- 管理コンテンツ(お知らせ / 全社スケジュール / クイックリンク) ----
 
 const KINDS = {
-  news: ['tag', 'title', 'date', 'expires', 'body'],
+  news: ['tag', 'title', 'date', 'expires', 'pinned', 'body'],
   schedule: ['date', 'title', 'sub', 'body', 'calendar_scope'],
   links: ['char', 'label', 'url'],
   policies: ['char', 'label', 'url']
@@ -176,14 +176,15 @@ function pickFields(kind, body) {
     let v = typeof body[f] === 'string' ? body[f].trim() : '';
     if (f === 'body') v = v.slice(0, 2000);
     if (f === 'calendar_scope' && !SCHEDULE_SCOPES.includes(v)) v = 'both';
+    if (f === 'pinned') v = (body[f] === '1' || body[f] === 1 || body[f] === true) ? '1' : ''; // 固定表示は'1'か空文字のみ
     row[f] = v;
   }
   return row;
 }
 
-/** 「何か1つでも入力されているか」の判定。calendar_scopeは未指定でも'both'が入るため判定から除く */
+/** 「何か1つでも入力されているか」の判定。calendar_scopeは未指定でも'both'が入るため、pinned(固定表示のチェックだけ)も入力とは見なさないため、判定から除く */
 function hasAnyInput(row) {
-  return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && v !== '');
+  return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && k !== 'pinned' && v !== '');
 }
 
 /** リンクURLは http(s) と相対パスのみ許可(javascript: 等のスキームによる格納型XSS対策) */
@@ -465,6 +466,12 @@ app.put('/api/admin/:kind/:id', (req, res) => {
   if (kind === 'schedule' && !(req.body && 'calendar_scope' in req.body)) {
     const cur = db.prepare('SELECT calendar_scope FROM schedule WHERE id = ?').get(id);
     if (cur) row.calendar_scope = cur.calendar_scope;
+  }
+  // pinned が送られてこなかった更新(古い画面からの保存等)では、登録済みの値を維持する(固定表示が勝手に外れないように)。
+  // UPDATEで上書きされる前に読む
+  if (kind === 'news' && !(req.body && 'pinned' in req.body)) {
+    const cur = db.prepare('SELECT pinned FROM news WHERE id = ?').get(id);
+    if (cur) row.pinned = cur.pinned;
   }
   const fields = KINDS[kind];
   const info = db.prepare(

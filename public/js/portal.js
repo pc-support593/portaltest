@@ -145,8 +145,25 @@ function openNewsDetail(n) {
   openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部', attachments: n.attachments || [] });
 }
 
+// ---- お知らせの「重要」「固定」を上に・「NEW」バッジ(2026-10-13・ユーザー指示。トップのお知らせだけ。過去のお知らせは変更なし) ----
+const NEW_BADGE_DAYS = 7; // 掲載日から何日間「NEW」を付けるか(掲載日を含めて7日間)
+
+/** トップの一番上に出すお知らせか: カテゴリが「重要」、または管理画面で「固定表示」にチェックしたもの */
+function isPinnedNews(n) {
+  return n.tag === '重要' || n.pinned === '1';
+}
+
+/** 掲載日から NEW_BADGE_DAYS 日以内か(掲載日なし・掲載日が未来は対象外)。todayIso は 'YYYY-MM-DD' */
+function isNewNews(n, todayIso) {
+  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(n.date || ''));
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(todayIso || ''));
+  if (!a || !b) return false;
+  const days = (Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86400000;
+  return days >= 0 && days < NEW_BADGE_DAYS;
+}
+
 /** トップのお知らせ欄: 掲載期限が切れていないものだけ表示。切れたものは「過去のお知らせ」から(ユーザー指示 2026-08-21。2026-10-12に、過去のお知らせにはトップ表示中のものを重複して出さないよう変更) */
-function renderNews(news) {
+function renderNews(news, todayIso) {
   const el = document.getElementById('news-list');
   if (!news.length) {
     el.innerHTML = '<p style="margin:0;padding:12px 20px;font-size:13px;color:#8a99a8">現在表示中のお知らせはありません(過去のお知らせは「過去のお知らせ」から確認できます)</p>';
@@ -157,7 +174,7 @@ function renderNews(news) {
     return `
     <button class="hv-row" data-news="${i}" style="display:flex;align-items:center;gap:12px;padding:11px 20px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
       <span style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
-      <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>
+      <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>${isNewNews(n, todayIso) ? '<span style="font-size:10px;font-weight:700;color:#ffffff;background:#e8801a;border-radius:4px;padding:1px 6px;white-space:nowrap">NEW</span>' : ''}
       <span style="margin-left:auto;font-size:12px;color:#8a99a8;white-space:nowrap">${esc(fmtMD(n.date))}</span>
     </button>`;
   }).join('');
@@ -637,8 +654,9 @@ async function renderShiftBadge() {
     const isNewsCurrent = n => n.expires ? n.expires >= todayIso : (!n.date || n.date >= todayIso);
     const topNews = content.news
       .filter(isNewsCurrent)
-      .sort((a, b) => (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
-    renderNews(topNews);
+      .sort((a, b) => (isPinnedNews(b) ? 1 : 0) - (isPinnedNews(a) ? 1 : 0) || // 「重要」・固定表示を先頭に(その中・その外は従来の並び)
+        (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(b.date || '').localeCompare(String(a.date || '')) || b.id - a.id);
+    renderNews(topNews, todayIso);
     const allLink = document.getElementById('news-all-link');
     if (allLink) allLink.addEventListener('click', e => {
       e.preventDefault();
