@@ -504,7 +504,8 @@ const YOSHIMURA_STAFF_GROUPS = [
   { id: 'koumu_1', name: '工務部(本社)', groupMail: 'koumu_1@yoshimuraichi.com' },
   { id: 'koumu_2', name: '工務部(平野)', groupMail: 'koumu_2@yoshimuraichi.com' },
   { id: 'koumu_3', name: '工務部(西宮)', groupMail: 'koumu_3@yoshimuraichi.com' },
-  { id: 'reform', name: 'リフォーム部', groupMail: 'renovation@yoshimuraichi.com' }
+  { id: 'reform', name: 'リフォーム部', groupMail: 'renovation@yoshimuraichi.com' },
+  { id: 'raimu', name: '来夢エンジニア', groupMail: 'lime@yoshimuraichi.com' }
 ];
 
 // ---- 固定メンバー(MS365グループを介さず、メールアドレスを直接指定)の取得: ゆめすみか・吉村一建設の両スタッフ予定ページの「本社」タブで共通 ----
