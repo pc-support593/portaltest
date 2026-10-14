@@ -262,11 +262,11 @@ function renderColumn(elId, groups, failedGroups) {
         <span style="font-size:11px;color:#8a99a8">${g.members.length}名</span>
       </div>
       ${g.members.map(m => `
-      <div style="display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid #f2f5f9">
+      <div class="member-row" style="display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid #f2f5f9">
         <div style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc(m.name.charAt(0))}</div>
-        <span style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:110px">${esc(displayName(m.name))}</span>
-        <span style="font-size:12px;color:#6b7d8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.email ? `<a href="mailto:${esc(m.email)}" style="color:#1e5fa8;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${esc(m.email)}</a>` : ''}</span>
-        <span style="font-size:12px;color:#6b7d8f;white-space:nowrap;flex-shrink:0;text-align:right">${esc(m.phone || '未登録')}</span>
+        <span class="member-name" style="font-size:13px;font-weight:700;color:#1c2b3a;min-width:110px">${esc(displayName(m.name))}</span>
+        <span class="member-email" style="font-size:12px;color:#6b7d8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.email ? `<a href="mailto:${esc(m.email)}" style="color:#1e5fa8;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${esc(m.email)}</a>` : ''}</span>
+        <span class="member-phone" style="font-size:12px;color:#6b7d8f;white-space:nowrap;flex-shrink:0;text-align:right">${esc(m.phone || '未登録')}</span>
       </div>`).join('')}
     </div>`).join('');
 }

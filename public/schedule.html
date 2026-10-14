@@ -37,7 +37,7 @@
   <div style="max-width:1560px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:18px;flex:1">
 
     <!-- 上の操作行: 下の2つの枠と同じ2カラム。左=日付送り+「＋予定を作成」(自分の予定の枠の真上)、右=スタッフ予定へのリンク2つ(空き状況の枠の真上) -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;align-items:center">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:18px;align-items:center">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button id="prev-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
         <h1 id="date-label" style="margin:0;font-size:17px;font-weight:700;min-width:200px"></h1>
@@ -52,7 +52,7 @@
     </div>
 
     <!-- 個人と拠点別を横並び(2カラム。ポータルトップと同じくauto-fitで狭い画面では自動的に1カラム化) -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;align-items:start">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:18px;align-items:start">
 
       <!-- 左: 自分の予定(会議室などを伴わない予定の作成)。作成ボタンは枠の外(上)に置く -->
       <div style="display:flex;flex-direction:column;gap:10px">

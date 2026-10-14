@@ -51,7 +51,7 @@ function dayLabelsHtml(rows) {
     if (!isShift && !r.label) return ''; // labelなし(CSVで省略)の行はラベルを出さない
     const bg = r.type === 'shift_work' ? '#1f6b45' : r.type === 'holiday_1' ? '#fff1e0' : r.type === 'shift_off' ? '#e9f1fa' : '#f0f4f8';
     const color = r.type === 'shift_work' ? '#ffffff' : r.type === 'holiday_1' ? '#c25e00' : r.type === 'shift_off' ? '#1e5fa8' : '#4a5a6a';
-    return `<div title="${esc(r.label)}" style="font-size:10px;font-weight:700;color:${color};background:${bg};border-radius:4px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(isShift ? `${r.team}班 ${r.type === 'shift_work' ? '出勤' : '振休'}` : r.label)}</div>`;
+    return `<div class="wc-label" title="${esc(r.label)}" style="font-size:10px;font-weight:700;color:${color};background:${bg};border-radius:4px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(isShift ? `${r.team}班 ${r.type === 'shift_work' ? '出勤' : '振休'}` : r.label)}</div>`;
   }).join('');
 }
 
@@ -88,15 +88,15 @@ function renderGrid() {
       : isOffWeekday ? 'background:#f7fafd' : '';
     const dayColor = isHoliday1 ? '#e07b00' : isHoliday ? '#d64545' : isOffWeekday ? '#1e5fa8' : '#1c2b3a';
     return `
-    <div style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${cellStyle}">
+    <div class="wc-cell" style="min-height:88px;border:1px solid #eef1f5;border-radius:6px;padding:4px 6px;${cellStyle}">
       <div style="font-size:12px;font-weight:700;color:${dayColor}">${day}</div>
       ${dayLabelsHtml(rows)}
     </div>`;
   }).join('');
 
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${header}</div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px">${blanks}${days}</div>`;
+    <div class="wc-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${header}</div>
+    <div class="wc-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px">${blanks}${days}</div>`;
 }
 
 async function load() {
