@@ -244,12 +244,55 @@ function setupUserMenu(header) {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 }
 
+/** スマホ幅(760px以下)用の「≡」メニュー(2026-10-14・ユーザー指示。スマホ対応の第1段階)。
+    PC用のナビは幅760px以下で隠れるため、同じ項目(PORTAL_NAV)をメニューとして開く。あわせて、スマホでは
+    ヘッダーに収まらない「｜ページ名」「ポータルへ戻る」「ユーザー名の文字」を隠すための目印のクラスを付ける
+    (隠す・表示するはCSS=portal.cssの幅の指定で行う。PCの表示は変わらない) */
+function setupMobileMenu(header) {
+  const avatar = header.querySelector('[data-me="avatar"]');
+  const userBox = avatar && avatar.parentElement;
+  if (!userBox || header.querySelector('.portal-burger')) return;
+
+  if (avatar.nextElementSibling) avatar.nextElementSibling.classList.add('portal-user-text');
+  header.querySelectorAll('a').forEach(a => { if (a.textContent.includes('戻る')) a.classList.add('portal-back'); });
+
+  const burger = document.createElement('button');
+  burger.type = 'button';
+  burger.className = 'portal-burger';
+  burger.setAttribute('aria-label', 'メニュー');
+  burger.setAttribute('aria-expanded', 'false');
+  burger.textContent = '☰';
+  userBox.parentElement.insertBefore(burger, userBox);
+
+  const current = location.pathname.split('/').pop() || 'index.html';
+  const menu = document.createElement('div');
+  menu.className = 'portal-mobile-menu';
+  menu.innerHTML = PORTAL_NAV.map(item => {
+    const active = item.href === current || (item.also || []).includes(current);
+    return '<a href="' + item.href + '"' + (item.external ? ' target="_blank" rel="noopener"' : '') +
+      (item.id === 'staff-nav-link' ? ' data-staff-nav="1"' : '') +
+      ' class="portal-mobile-link' + (active ? ' active' : '') + '">' + item.label + '</a>';
+  }).join('');
+  header.appendChild(menu);
+
+  const close = () => { menu.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); };
+  burger.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = !menu.classList.contains('open');
+    menu.classList.toggle('open', open);
+    burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  menu.addEventListener('click', e => { if (e.target.closest('a')) close(); });
+  document.addEventListener('click', e => { if (!menu.contains(e.target) && e.target !== burger) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+}
+
 function setupPortalHeader() {
   const header = document.querySelector('header');
   // 画面を下にスクロールしてもヘッダーを上部に固定する(2026-10-11・ユーザー指示。全ページ共通)。
   // z-indexは、スタッフ予定の名前列(2)・候補リスト(10)より上、モーダル(100・110)より下
   if (header) { header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '50'; }
-  if (header) setupUserMenu(header);
+  if (header) { setupUserMenu(header); setupMobileMenu(header); }
   const brand = header && header.firstElementChild;
   if (!brand || brand.querySelector('a.portal-brand')) return;
 
@@ -266,6 +309,7 @@ function setupPortalHeader() {
     a.appendChild(icon);
     a.appendChild(title);
   }
+  [...brand.children].forEach(el => { if (!el.classList.contains('portal-brand')) el.classList.add('portal-brand-page'); }); // 「｜ページ名」(スマホでは隠す)
 
   let nav = header.querySelector('nav.portal-nav');
   if (!nav) {
@@ -286,11 +330,11 @@ function showPortalAdminLink(user) {
   const link = document.getElementById('admin-nav-link');
   if (link && (user.roles || []).includes('Portal.Admin')) link.style.display = '';
   // 「スタッフ予定」メニューは、ご自身の会社のページを開く(@yumesumika.com→ゆめすみか、それ以外→吉村一建設)
+  const staffHref = String(user.email || '').toLowerCase().endsWith('@yumesumika.com')
+    ? 'yumesumika-schedule.html' : 'yoshimuraichi-schedule.html';
   const staffLink = document.getElementById('staff-nav-link');
-  if (staffLink) {
-    staffLink.href = String(user.email || '').toLowerCase().endsWith('@yumesumika.com')
-      ? 'yumesumika-schedule.html' : 'yoshimuraichi-schedule.html';
-  }
+  if (staffLink) staffLink.href = staffHref;
+  document.querySelectorAll('[data-staff-nav]').forEach(a => { a.href = staffHref; }); // スマホのメニューの「スタッフ予定」も同じ
 }
 
 setupPortalHeader();

@@ -59,3 +59,28 @@ input::placeholder, textarea::placeholder { color: #8fa3bd; }
 /* レスポンシブ(デザイン指定値) */
 @media (max-width: 1100px) { .portal-search { display: none; } }
 @media (max-width: 760px) { .portal-nav { display: none !important; } }
+
+/* ---- スマホ対応 第1段階(2026-10-14・ユーザー指示): ヘッダーとトップ画面。幅760px以下をスマホとみなす ---- */
+.portal-burger { display: none; }
+.portal-mobile-menu { display: none; }
+@media (max-width: 760px) {
+  header { padding-left: 12px !important; padding-right: 12px !important; gap: 8px !important; }
+  header .portal-brand-page, header .portal-back, header .portal-user-text { display: none !important; } /* 「｜ページ名」「ポータルへ戻る」ユーザー名の文字は隠す(メニューから移動できる) */
+  header .portal-brand span { font-size: 14px !important; }
+  .portal-burger { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; border-radius: 8px; background: rgba(255,255,255,0.12); color: #ffffff; font-size: 18px; cursor: pointer; font-family: inherit; flex-shrink: 0; }
+  .portal-mobile-menu.open { display: flex; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: #1e3a5f; border-top: 1px solid rgba(255,255,255,0.14); box-shadow: 0 10px 24px rgba(15,35,60,0.35); padding: 6px 12px 10px; }
+  .portal-mobile-link { display: block; padding: 13px 8px; font-size: 15px; font-weight: 500; color: #ffffff; text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .portal-mobile-link:last-child { border-bottom: none; }
+  .portal-mobile-link.active { font-weight: 700; color: #9cc4f0; }
+  /* トップ画面: タッチ操作ではドラッグが動かないため、並べ替えの表示は隠す。リンクのタイルは3列 */
+  .drag-handle, .pc-only { display: none !important; }
+  #quick-links, #policy-links { grid-template-columns: repeat(3, 1fr) !important; padding-left: 14px !important; padding-right: 14px !important; }
+}
+/* さらに小さいスマホ(幅400px以下。360pxなど)では、ヘッダーに収まるよう文字・余白を少し詰める */
+@media (max-width: 400px) {
+  header { padding-left: 10px !important; padding-right: 10px !important; gap: 6px !important; }
+  header .portal-brand { gap: 7px !important; }
+  header .portal-brand span { font-size: 12.5px !important; }
+  .portal-user { gap: 4px !important; }
+}
+@media (min-width: 761px) { .portal-mobile-menu { display: none !important; } }
