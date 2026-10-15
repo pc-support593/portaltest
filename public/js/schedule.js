@@ -66,6 +66,7 @@ const state = {
   date: new Date(),
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
+  weekEvents: [], // 直近に取得した、選択中の日を含む週(日曜始まり)の自分の予定(週の予定の表示・編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
   adminYoshimuraIds: [], // 同上・吉村一建設会議室の区分け
   adminCarIds: [], // 同上・社用車の部門
@@ -114,11 +115,17 @@ async function fetchPersonalEvents(date) {
   const data = await res.json();
 
   // 主催者かつ終日でない予定のみ変更可能(参加者としての予定はOutlookと同様に編集できない)
-  return (data.value || []).map((ev, i) => ({
+  return (data.value || []).map(mapGraphEvent);
+}
+
+/** Graphの予定1件を、画面(個人の予定・週の予定)で使う形にする。i=色の巡回用の通し番号 */
+function mapGraphEvent(ev, i) {
+  return ({
     id: ev.id,
     editable: !!ev.isOrganizer && !ev.isAllDay,
     isAllDay: ev.isAllDay,
     date: ev.start.dateTime.slice(0, 10),
+    endDate: ev.end.dateTime.slice(0, 10), // 複数日にまたがる予定・終日の予定(終了日は含まない)を、週の予定の各日に割り当てるため
     start: ev.start.dateTime.slice(11, 16),
     end: ev.end.dateTime.slice(11, 16),
     time: ev.isAllDay ? '終日' : `${ev.start.dateTime.slice(11, 16)}–${ev.end.dateTime.slice(11, 16)}`,
@@ -131,7 +138,7 @@ async function fetchPersonalEvents(date) {
     })),
     bodyText: (ev.body && ev.body.contentType === 'text' && ev.body.content) || '',
     ...PERSONAL_COLOR_CYCLE[i % PERSONAL_COLOR_CYCLE.length]
-  }));
+  });
 }
 
 function renderPersonalEvents(events) {
@@ -163,6 +170,112 @@ async function loadAndRenderPersonal() {
     console.error(e);
     state.personalEvents = [];
     el.innerHTML = `<p style="margin:0;padding:6px 0;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
+  }
+}
+
+// ---- 週の予定(2026-10-15・ユーザー指示。「自分の予定」の下。日曜日始まり) ----
+// 選んだ日を含む週(日曜〜土曜)の自分の予定を、日ごとの縦リストで表示する。終日の予定も含める。
+// 日の行をクリックすると、その日が選ばれる(上の「自分の予定」・会議室の空き状況も切り替わる)。予定のクリックは「自分の予定」と同じ編集画面
+
+/** 日付を含む週の日曜日(時刻は切り捨て) */
+function weekStartOf(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+/** 日曜日から始まる7日分の日付 */
+function weekDatesFrom(sunday) {
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(sunday); d.setDate(d.getDate() + i); return d; });
+}
+
+/** その日(dayKey='YYYY-MM-DD')にかかる予定か。複数日にまたがる予定・終日の予定(終了日は含まない。Graphの仕様)に対応 */
+function eventCoversDay(ev, dayKey) {
+  if (ev.date > dayKey) return false;
+  if (ev.isAllDay) return dayKey < ev.endDate;
+  if (ev.endDate > ev.date && ev.end === '00:00') return dayKey < ev.endDate; // 翌日0時ちょうどに終わる予定
+  return dayKey <= ev.endDate;
+}
+
+/** 指定した週の自分の予定を取得する(予定が多い週に備えて、次のページも全て読む)。devモードは、選択中の日にダミーを置く */
+async function fetchWeekEvents(sunday) {
+  if (Auth.mode !== 'entra') return DUMMY_PERSONAL_EVENTS.map(e => ({ ...e, date: isoDate(state.date), endDate: isoDate(state.date), isAllDay: false, editable: false }));
+  const next = new Date(sunday);
+  next.setDate(next.getDate() + 7);
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+  let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
+    `?startDateTime=${encodeURIComponent(isoDate(sunday) + 'T00:00:00')}` +
+    `&endDateTime=${encodeURIComponent(isoDate(next) + 'T00:00:00')}` +
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body&$orderby=start/dateTime&$top=100';
+  const out = [];
+  while (url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
+    if (!res.ok) throw new Error(`週の予定の取得に失敗しました(HTTP ${res.status})`);
+    const data = await res.json();
+    out.push(...(data.value || []));
+    url = data['@odata.nextLink'] || null;
+  }
+  return out.map(mapGraphEvent);
+}
+
+function renderWeek() {
+  const el = document.getElementById('week-events');
+  const titleEl = document.getElementById('week-title');
+  if (!el) return;
+  const sunday = weekStartOf(state.date);
+  const days = weekDatesFrom(sunday);
+  const todayKey = isoDate(new Date());
+  const selectedKey = isoDate(state.date);
+  const fmt = d => `${d.getMonth() + 1}/${d.getDate()}`;
+  const range = `${fmt(days[0])}〜${fmt(days[6])}`;
+  if (titleEl) titleEl.textContent = isoDate(weekStartOf(new Date())) === isoDate(sunday) ? `今週の予定(${range})` : `${range}の予定`;
+
+  el.innerHTML = days.map(d => {
+    const key = isoDate(d);
+    const isToday = key === todayKey, isSelected = key === selectedKey;
+    const idxs = state.weekEvents.map((e, i) => i).filter(i => eventCoversDay(state.weekEvents[i], key));
+    const body = idxs.length ? idxs.map(i => {
+      const e = state.weekEvents[i];
+      const time = e.isAllDay ? '終日' : `${e.start}–${e.end}`;
+      return `<div ${e.editable ? `data-week-event="${i}" title="クリックで変更"` : ''} style="display:flex;align-items:baseline;gap:8px;padding:3px 8px;border-left:3px solid ${e.color};background:${e.bg};border-radius:5px${e.editable ? ';cursor:pointer' : ''}">
+          <span style="font-size:11px;font-weight:700;color:${e.timeColor};white-space:nowrap">${esc(time)}</span>
+          <span style="font-size:12px;font-weight:500;color:#1c2b3a;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.title)}</span>
+        </div>`;
+    }).join('') : '<span style="font-size:12px;color:#b5c3d1">予定なし</span>';
+    const dayColor = d.getDay() === 0 ? '#d64545' : d.getDay() === 6 ? '#1e5fa8' : '#1c2b3a';
+    return `
+    <div data-week-day="${key}" title="クリックでこの日の予定を表示" style="display:flex;gap:12px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid #f2f5f9;cursor:pointer;${isSelected ? 'background:#f2f6fb;' : ''}${isToday ? 'box-shadow:inset 3px 0 0 #1e5fa8;' : ''}">
+      <div style="width:64px;flex-shrink:0;font-size:12px;font-weight:700;color:${dayColor}">${fmt(d)}(${WDAYS[d.getDay()]})${isToday ? '<div style="font-size:10px;color:#1e5fa8">今日</div>' : ''}</div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">${body}</div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-week-event]').forEach(item => item.addEventListener('click', ev => {
+    ev.stopPropagation(); // 日の行のクリック(日付の切り替え)とは別に、予定の編集画面を開く
+    openEditForm(state.weekEvents[Number(item.dataset.weekEvent)]);
+  }));
+  el.querySelectorAll('[data-week-day]').forEach(row => row.addEventListener('click', () => {
+    const [y, m, dd] = row.dataset.weekDay.split('-').map(Number);
+    state.date = new Date(y, m - 1, dd);
+    render();
+  }));
+}
+
+async function loadAndRenderWeek() {
+  const el = document.getElementById('week-events');
+  if (!el) return;
+  const sunday = weekStartOf(state.date);
+  const key = isoDate(sunday);
+  if (!state.weekEvents.length) el.innerHTML = '<p style="margin:0;padding:12px;font-size:13px;color:#8a99a8">読み込み中…</p>';
+  try {
+    const events = await withTimeout(fetchWeekEvents(sunday), 15000, '週の予定の取得が時間内に完了しませんでした');
+    if (isoDate(weekStartOf(state.date)) !== key) return; // 取得中に別の週へ切り替えられた場合は、古い結果で描き替えない
+    state.weekEvents = events;
+    renderWeek();
+  } catch (e) {
+    console.error(e);
+    state.weekEvents = [];
+    el.innerHTML = `<p style="margin:0;padding:12px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
 }
 
@@ -817,7 +930,7 @@ function shiftDay(n) {
 async function render() {
   renderDateNav();
   renderGridTabs();
-  await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid()]);
+  await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid(), loadAndRenderWeek()]);
 }
 
 // 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
@@ -826,6 +939,12 @@ async function autoRefresh() {
   const dateKey = isoDate(state.date); // 取得中に日付が切り替わったら結果を破棄するためのガード
   const tabKey = state.gridTab;       // 取得中にタブが切り替わったら予約状況の描き替えは見送る
   try {
+    // 週の予定も静かに更新する(失敗しても他の更新は続ける)
+    const weekKey = isoDate(weekStartOf(state.date));
+    fetchWeekEvents(weekStartOf(state.date)).then(weekEvents => {
+      if (formState || isoDate(weekStartOf(state.date)) !== weekKey) return;
+      if (JSON.stringify(weekEvents) !== JSON.stringify(state.weekEvents)) { state.weekEvents = weekEvents; renderWeek(); }
+    }).catch(() => { /* 次回に再試行 */ });
     const [events, busy] = await Promise.all([
       fetchPersonalEvents(state.date),
       tabKey === 'yoshimura' ? fetchYoshimuraBusy(state.date)
