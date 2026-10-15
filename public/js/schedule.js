@@ -282,6 +282,7 @@ async function loadAndRenderWeek() {
     renderWeek();
   } catch (e) {
     console.error(e);
+    if (isoDate(currentWeekSunday()) !== key) return; // 取得中に別の週へ切り替えられた場合は、古い取得の失敗で新しい週の表示を消さない
     state.weekEvents = [];
     el.innerHTML = `<p style="margin:0;padding:12px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
@@ -950,7 +951,7 @@ async function autoRefresh() {
   try {
     // 週の予定も静かに更新する(失敗しても他の更新は続ける)
     const weekKey = isoDate(currentWeekSunday());
-    fetchWeekEvents(currentWeekSunday()).then(weekEvents => {
+    withTimeout(fetchWeekEvents(currentWeekSunday()), 15000, '週の予定の取得が時間内に完了しませんでした').then(weekEvents => {
       if (formState || isoDate(currentWeekSunday()) !== weekKey) return;
       if (JSON.stringify(weekEvents) !== JSON.stringify(state.weekEvents)) { state.weekEvents = weekEvents; renderWeek(); }
     }).catch(() => { /* 次回に再試行 */ });
