@@ -66,14 +66,12 @@
 
       <!-- 週の予定(2026-10-15・ユーザー指示。日曜日始まり。「自分の予定」の下の空きに、選んだ日を含む週の自分の予定を日ごとに表示) -->
       <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
-          <span style="color:#1e5fa8;font-size:14px">▦</span>
-          <h2 id="week-title" style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">今週の予定</h2>
-          <!-- 表示する週だけを前後に動かす(上の日付・「自分の予定」・会議室の空き状況は変わらない) -->
-          <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
-            <button id="week-prev" type="button" class="hv-btn-light" title="前の週" aria-label="前の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
-            <button id="week-next" type="button" class="hv-btn-light" title="次の週" aria-label="次の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
-          </span>
+        <!-- 上の日付送りと同じ並び: 「‹ 見出し › 今週」。表示する週だけを前後に動かす(上の日付・「自分の予定」・会議室の空き状況は変わらない) -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+          <button id="week-prev" type="button" class="hv-btn-light" title="前の週" aria-label="前の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
+          <h2 id="week-title" style="margin:0;font-size:15px;font-weight:700;min-width:190px">今週の予定</h2>
+          <button id="week-next" type="button" class="hv-btn-light" title="次の週" aria-label="次の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
+          <button id="week-this" type="button" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今週</button>
         </div>
         <div id="week-events" style="max-height:520px;overflow-y:auto"></div>
       </section>

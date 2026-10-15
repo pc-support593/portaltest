@@ -1013,6 +1013,7 @@ async function autoRefresh() {
     };
     document.getElementById('week-prev').addEventListener('click', () => shiftWeek(-1));
     document.getElementById('week-next').addEventListener('click', () => shiftWeek(1));
+    document.getElementById('week-this').addEventListener('click', () => { state.weekBase = new Date(); state.weekEvents = []; loadAndRenderWeek(); }); // 今日を含む週へ
     document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });
