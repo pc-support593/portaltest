@@ -66,6 +66,7 @@ const state = {
   date: new Date(),
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
+  weekBase: null, // 週の予定で「‹ ›」で動かした週の基準日(null=選択中の日を含む週)。日付を切り替える・予定を保存するとnullに戻る
   weekEvents: [], // 直近に取得した、選択中の日を含む週(日曜始まり)の自分の予定(週の予定の表示・編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
   adminYoshimuraIds: [], // 同上・吉村一建設会議室の区分け
@@ -178,6 +179,11 @@ async function loadAndRenderPersonal() {
 // 日の行をクリックすると、その日が選ばれる(上の「自分の予定」・会議室の空き状況も切り替わる)。予定のクリックは「自分の予定」と同じ編集画面
 
 /** 日付を含む週の日曜日(時刻は切り捨て) */
+/** 週の予定で今表示している週の日曜日(「‹ ›」で動かしていなければ、選択中の日を含む週) */
+function currentWeekSunday() {
+  return weekStartOf(state.weekBase || state.date);
+}
+
 function weekStartOf(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   d.setDate(d.getDate() - d.getDay());
@@ -222,13 +228,13 @@ function renderWeek() {
   const el = document.getElementById('week-events');
   const titleEl = document.getElementById('week-title');
   if (!el) return;
-  const sunday = weekStartOf(state.date);
+  const sunday = currentWeekSunday();
   const days = weekDatesFrom(sunday);
   const todayKey = isoDate(new Date());
   const selectedKey = isoDate(state.date);
   const fmt = d => `${d.getMonth() + 1}/${d.getDate()}`;
   const range = `${fmt(days[0])}〜${fmt(days[6])}`;
-  if (titleEl) titleEl.textContent = isoDate(weekStartOf(new Date())) === isoDate(sunday) ? `今週の予定(${range})` : `${range}の予定`;
+  if (titleEl) titleEl.textContent = isoDate(weekStartOf(new Date())) === isoDate(sunday) ? `今週の予定(${range})` : `${range}の予定`; // 取得中も、先にこの関数で週の見出しだけ更新する
 
   el.innerHTML = days.map(d => {
     const key = isoDate(d);
@@ -257,6 +263,7 @@ function renderWeek() {
   el.querySelectorAll('[data-week-day]').forEach(row => row.addEventListener('click', () => {
     const [y, m, dd] = row.dataset.weekDay.split('-').map(Number);
     state.date = new Date(y, m - 1, dd);
+    state.weekBase = null;
     render();
   }));
 }
@@ -264,12 +271,13 @@ function renderWeek() {
 async function loadAndRenderWeek() {
   const el = document.getElementById('week-events');
   if (!el) return;
-  const sunday = weekStartOf(state.date);
+  const sunday = currentWeekSunday();
   const key = isoDate(sunday);
+  { const t = document.getElementById('week-title'); const days = weekDatesFrom(sunday); const f = d => `${d.getMonth() + 1}/${d.getDate()}`; const r = `${f(days[0])}〜${f(days[6])}`; if (t) t.textContent = isoDate(weekStartOf(new Date())) === key ? `今週の予定(${r})` : `${r}の予定`; }
   if (!state.weekEvents.length) el.innerHTML = '<p style="margin:0;padding:12px;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
     const events = await withTimeout(fetchWeekEvents(sunday), 15000, '週の予定の取得が時間内に完了しませんでした');
-    if (isoDate(weekStartOf(state.date)) !== key) return; // 取得中に別の週へ切り替えられた場合は、古い結果で描き替えない
+    if (isoDate(currentWeekSunday()) !== key) return; // 取得中に別の週へ切り替えられた場合は、古い結果で描き替えない
     state.weekEvents = events;
     renderWeek();
   } catch (e) {
@@ -928,6 +936,7 @@ function shiftDay(n) {
 }
 
 async function render() {
+  state.weekBase = null; // 日付の切り替え・予定の保存のあとは、選択中の日を含む週に戻す
   renderDateNav();
   renderGridTabs();
   await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid(), loadAndRenderWeek()]);
@@ -940,9 +949,9 @@ async function autoRefresh() {
   const tabKey = state.gridTab;       // 取得中にタブが切り替わったら予約状況の描き替えは見送る
   try {
     // 週の予定も静かに更新する(失敗しても他の更新は続ける)
-    const weekKey = isoDate(weekStartOf(state.date));
-    fetchWeekEvents(weekStartOf(state.date)).then(weekEvents => {
-      if (formState || isoDate(weekStartOf(state.date)) !== weekKey) return;
+    const weekKey = isoDate(currentWeekSunday());
+    fetchWeekEvents(currentWeekSunday()).then(weekEvents => {
+      if (formState || isoDate(currentWeekSunday()) !== weekKey) return;
       if (JSON.stringify(weekEvents) !== JSON.stringify(state.weekEvents)) { state.weekEvents = weekEvents; renderWeek(); }
     }).catch(() => { /* 次回に再試行 */ });
     const [events, busy] = await Promise.all([
@@ -994,6 +1003,16 @@ async function autoRefresh() {
     if (myDomain === 'yoshimuraichi.com') state.gridTab = 'yoshimura';
     else if (myDomain === 'yumesumika.com') state.gridTab = 'sites';
 
+    // 週の予定の「‹ ›」: 表示する週だけを前後に動かす(選択中の日・上の「自分の予定」・会議室の空き状況は変えない)
+    const shiftWeek = n => {
+      const base = new Date(currentWeekSunday());
+      base.setDate(base.getDate() + 7 * n);
+      state.weekBase = base;
+      state.weekEvents = [];
+      loadAndRenderWeek();
+    };
+    document.getElementById('week-prev').addEventListener('click', () => shiftWeek(-1));
+    document.getElementById('week-next').addEventListener('click', () => shiftWeek(1));
     document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });

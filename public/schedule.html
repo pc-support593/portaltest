@@ -69,6 +69,11 @@
         <div style="display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
           <span style="color:#1e5fa8;font-size:14px">▦</span>
           <h2 id="week-title" style="margin:0;font-size:15px;font-weight:700;white-space:nowrap">今週の予定</h2>
+          <!-- 表示する週だけを前後に動かす(上の日付・「自分の予定」・会議室の空き状況は変わらない) -->
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+            <button id="week-prev" type="button" class="hv-btn-light" title="前の週" aria-label="前の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
+            <button id="week-next" type="button" class="hv-btn-light" title="次の週" aria-label="次の週" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
+          </span>
         </div>
         <div id="week-events" style="max-height:520px;overflow-y:auto"></div>
       </section>
