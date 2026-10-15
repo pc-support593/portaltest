@@ -20,6 +20,14 @@ const STAFF_GROUPS = [
   { id: 'honsha', name: '本社', members: ['tomofuji@yoshimuraichi.com', 't-tomofuji@yoshimuraichi.com', 'n-azuma@yoshimuraichi.com'] }
 ];
 
+// タブは2行に固定する(ユーザー指示 2026-10-15)。下の並びのとおりに、1行目・2行目として表示する。
+// フレミング大工(carpenter)は、スタッフ予定のタブから外した(社員名簿の見出しには残る)。部署を足す・並べ替えるときはこの配列を直す
+const STAFF_TAB_ROWS = [
+  ['fudosan', 'kenchiku', 'koumu_1', 'koumu_2', 'koumu_3', 'reform', 'customer'],
+  ['honsha', 'sekkei_kikaku', 'exterior', 'logistics', 'raimu', 'koubai', 'soumu']
+].map(row => row.map(id => STAFF_GROUPS.find(g => g.id === id)).filter(Boolean));
+const STAFF_TABS = STAFF_TAB_ROWS.flat(); // 1行目→2行目の順
+
 const DAYS_SPAN = 14; // 2週間分
 
 // 表示名の整形(displayName)は common.js の共通関数を使う(社員名簿と同じ。会社名の括弧書きを取り除く)
@@ -42,7 +50,7 @@ function windowLabel(startDate) {
 }
 
 const state = {
-  groupTab: STAFF_GROUPS[0].id,
+  groupTab: STAFF_TABS[0].id, // 最初に開くタブ(init で、ログインした人の所属グループに応じて切り替える)
   date: new Date(),    // 表示する2週間の開始日(会議室セクションは、このうち開始日ぶんを表示する)
   members: {},         // groupId -> [{id,name,email}] (グループ切替のたびに取得。日付切替では再取得しない)
   busy: null,          // email -> { byDate: { 'YYYY-MM-DD': [{time,subject}] } } | { error }
@@ -226,10 +234,11 @@ function renderGroupTabs() {
   const current = STAFF_GROUPS.find(g => g.id === state.groupTab) || STAFF_GROUPS[0];
   if (title) title.textContent = `${current.name}のスタッフ予定`;
   const el = document.getElementById('group-tabs');
-  el.innerHTML = STAFF_GROUPS.map(g => {
+  // 2行に固定(STAFF_TAB_ROWS)。画面が狭いときは、各行の中で折り返す
+  el.innerHTML = STAFF_TAB_ROWS.map(row => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${row.map(g => {
     const sel = g.id === state.groupTab;
     return `<button class="hv-site" data-group-tab="${g.id}" style="border:1px solid ${sel ? '#1e5fa8' : '#dfe8f0'};background:${sel ? '#1e5fa8' : '#ffffff'};color:${sel ? '#ffffff' : '#1c2b3a'};font-weight:700;border-radius:9px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">${esc(g.name)}</button>`;
-  }).join('');
+  }).join('')}</div>`).join('');
   el.querySelectorAll('[data-group-tab]').forEach(b => b.addEventListener('click', () => {
     if (state.groupTab === b.dataset.groupTab) return;
     state.groupTab = b.dataset.groupTab;
@@ -371,6 +380,9 @@ async function autoRefresh() {
     document.getElementById('prev-day').addEventListener('click', () => shiftWindow(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftWindow(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); state.roomsSelected = null; render(); });
+    // 最初に開くタブ: ログインした人が入っているグループ(ユーザー指示 2026-10-15)。取得に失敗・5秒以内に返らなければ従来の先頭のタブ
+    const defaultTab = await pickDefaultStaffTab(STAFF_TABS);
+    if (defaultTab) state.groupTab = defaultTab;
     await render();
     if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {

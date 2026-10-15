@@ -383,6 +383,9 @@ async function autoRefresh() {
     document.getElementById('prev-day').addEventListener('click', () => shiftWindow(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftWindow(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); state.roomsSelected = null; render(); });
+    // 最初に開くタブ: ログインした人が入っているグループ(ユーザー指示 2026-10-15)。取得に失敗・5秒以内に返らなければ従来の先頭のタブ
+    const defaultTab = await pickDefaultStaffTab(visibleGroups());
+    if (defaultTab) state.groupTab = defaultTab;
     await render();
     if (Auth.mode === 'entra') setInterval(autoRefresh, 2 * 60 * 1000);
   } catch (e) {

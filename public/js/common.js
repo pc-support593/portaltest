@@ -573,3 +573,39 @@ async function fetchStaticMembers(emails) {
   }));
   return results.filter(m => !isBeforeHireDate(m.hireDate)); // 指定した配列の順に表示する(並べ替えない。ユーザー指示 2026-10-13)。入社日前の人は除く
 }
+
+/** ログインしている人が直接入っているMS365グループのメールアドレス(小文字)の集合を返す(スタッフ予定の、最初に開くタブを決めるため。
+    2026-10-15・ユーザー指示)。devモード・取得に失敗・5秒以内に返らないときは空の集合(=従来どおりの表示。画面は止めない) */
+async function fetchMyGroupMails() {
+  if (Auth.mode !== 'entra') return new Set();
+  try {
+    return await withTimeout((async () => {
+      const token = await Auth.getGraphToken(['GroupMember.Read.All']);
+      const mails = new Set();
+      let url = 'https://graph.microsoft.com/v1.0/me/memberOf/microsoft.graph.group?$select=mail&$top=200';
+      while (url) {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        (data.value || []).forEach(g => { if (g.mail) mails.add(String(g.mail).toLowerCase()); });
+        url = data['@odata.nextLink'] || null;
+      }
+      return mails;
+    })(), 5000, '所属グループの取得が時間内に完了しませんでした');
+  } catch (e) {
+    console.error('所属グループの取得に失敗しました', e);
+    return new Set();
+  }
+}
+
+/** スタッフ予定の最初に開くタブのid: ログインした人が入っているグループ(固定メンバーのタブは自分のメールアドレスが含まれるもの)のうち、
+    タブの並び(tabs。1行目→2行目の順)で最も前にあるもの。どれにも当てはまらなければ null(=従来の先頭のタブ) */
+async function pickDefaultStaffTab(tabs) {
+  const mails = await fetchMyGroupMails();
+  const myEmail = String((Auth.me && Auth.me.email) || '').toLowerCase();
+  for (const g of tabs) {
+    if (g.groupMail && mails.has(g.groupMail.toLowerCase())) return g.id;
+    if (g.members && myEmail && g.members.some(e => e.toLowerCase() === myEmail)) return g.id;
+  }
+  return null;
+}
