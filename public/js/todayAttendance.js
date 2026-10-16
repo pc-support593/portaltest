@@ -31,14 +31,14 @@ async function fetchMemberDetails(emails) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const results = await Promise.all(emails.map(async email => {
     try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,businessPhones,mobilePhone,employeeHireDate`, {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,surname,givenName,mail,businessPhones,mobilePhone,employeeHireDate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await graphErrorMessage(res));
       const u = await res.json();
       if (isBeforeHireDate(u.employeeHireDate)) return null; // 従業員入社日がまだ来ていない人は表示しない
       return {
-        name: u.displayName || email,
+        name: fullNameOf(u.surname, u.givenName, u.displayName) || email,
         email: u.mail || email,
         // common.jsのphoneListOf()と同じ方式(携帯電話+事業所の電話をすべて表示)
         phone: phoneListOf(u).join(' / ')

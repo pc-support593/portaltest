@@ -97,14 +97,14 @@ async function searchMembers(q) {
   const domainFilter = "(endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   const url = 'https://graph.microsoft.com/v1.0/users' +
     `?$search=${encodeURIComponent(search)}&$filter=${encodeURIComponent(domainFilter)}` +
-    '&$count=true&$select=displayName,mail,userPrincipalName,department,employeeHireDate&$top=5';
+    '&$count=true&$select=displayName,surname,givenName,mail,userPrincipalName,department,employeeHireDate&$top=5';
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
   });
   if (!res.ok) throw new Error(`メンバー検索に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
   return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate)).map(u => ({ // 入社日前の人は出さない
-    name: u.displayName || '(名前未設定)',
+    name: fullNameOf(u.surname, u.givenName, u.displayName) || '(名前未設定)', // 「姓 名」(空なら表示名)。検索は従来どおり表示名・メールで行う
     dept: u.department || '',
     email: u.mail || u.userPrincipalName || ''
   }));

@@ -139,6 +139,9 @@ function renderGreeting(user) {
   document.getElementById('today').textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${w})`;
 }
 
+// 自分の名前が「姓 名」に差し替わったとき(auth.js の _applyFullName)、挨拶も更新する
+window.addEventListener('portal:me-updated', e => { if (e.detail) renderGreeting(e.detail); });
+
 /** お知らせ1件の詳細モーダルを開く */
 function openNewsDetail(n) {
   const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;

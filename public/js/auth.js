@@ -22,14 +22,38 @@ const Auth = {
         await this._initEntra(); // 未サインインならMicrosoftのログインへ移動し、ここから戻らない(画面は非表示のまま)
       }
       this.me = await api('/api/me');
+      this.me.name = displayName(this.me.name); // 姓・名が取れるまでの仮の名前も、会社名の括弧書きは除く
       fillMe(this.me);
       showPortalAdminLink(this.me);
       this._initLogoutLink();
+      this._applyFullName(); // 待たない(画面を止めない)。取得できたら、右上の名前と挨拶を差し替える
       this._revealPage();
       return this.me;
     } catch (e) {
       this._revealPage(); // エラー時は画面を表示して、各ページがエラー内容を出せるようにする(真っ白のままにしない)
       throw e;
+    }
+  },
+
+  /** ログインした人自身の名前も、MS365の「姓」「名」から「姓 名」(半角スペース)にする(2026-10-16・ユーザー指示。右上の表示・挨拶)。
+      サーバーが返す名前(トークンの表示名)を先に出し、取得できたら差し替える。失敗・5秒以内に返らないときは、そのまま(画面は止めない。P004) */
+  async _applyFullName() {
+    if (this.mode !== 'entra') return;
+    try {
+      const token = await withTimeout(this.getGraphToken(['User.Read']), 5000, 'トークンの取得が時間内に完了しませんでした');
+      const res = await withTimeout(fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,surname,givenName', {
+        headers: { Authorization: `Bearer ${token}` }
+      }), 5000, '自分の名前の取得が時間内に完了しませんでした');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const u = await res.json();
+      const name = fullNameOf(u.surname, u.givenName, u.displayName);
+      if (name && this.me && name !== this.me.name) {
+        this.me.name = name;
+        fillMe(this.me);
+        window.dispatchEvent(new CustomEvent('portal:me-updated', { detail: this.me })); // トップの挨拶などが、名前を差し替える
+      }
+    } catch (e) {
+      console.error('自分の名前(姓・名)の取得に失敗しました', e);
     }
   },
 

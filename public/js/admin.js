@@ -141,7 +141,7 @@ async function loadShiftTeamsData() {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const domainFilter = "endsWith(mail,'@yoshimuraichi.com')";
   let url = 'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,department' +
+    '?$select=id,displayName,surname,givenName,mail,department' +
     `&$filter=${encodeURIComponent(domainFilter)}` +
     '&$count=true&$orderby=displayName&$top=999';
   const raw = [];
@@ -155,7 +155,7 @@ async function loadShiftTeamsData() {
   const resourceEmails = new Set([...ROOMS, ...YOSHIMURA_ROOMS, ...CARS].map(r => r.email.toLowerCase()));
   const people = raw
     .filter(m => m.mail && !resourceEmails.has(m.mail.toLowerCase()))
-    .map(m => ({ name: m.displayName || '(名前未設定)', email: m.mail, department: m.department || '' }))
+    .map(m => ({ name: fullNameOf(m.surname, m.givenName, m.displayName) || '(名前未設定)', email: m.mail, department: m.department || '' }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   const assignmentRows = await api('/api/shift-teams');
   const assignments = {};
