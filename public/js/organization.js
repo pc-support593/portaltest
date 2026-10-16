@@ -127,7 +127,8 @@ async function fetchGroupLabelMap(groups) {
 
 // 吉村一建設側(左列)の部署グループ。スタッフ予定と同じ(common.jsのYOSHIMURA_STAFF_GROUPS)。見出し名・並び順もそのまま
 const LEFT_GROUPS = YOSHIMURA_STAFF_GROUPS.map(g => ({ label: g.name, groupMail: g.groupMail }));
-const LEFT_GROUP_ORDER = LEFT_GROUPS.map(g => g.label);
+// 見出しの並びは、スタッフ予定のグループの並びのまま、総務部だけを一番下にする(2026-10-16・ユーザー指示)
+const LEFT_GROUP_ORDER = [...LEFT_GROUPS.map(g => g.label).filter(label => label !== '総務部'), '総務部'];
 
 // MS365アカウント(メールアドレス)を持たない社員の手動追加リスト(2026-10-05・ユーザー指示)。
 // Graph APIには存在しないため、Entra ID取得結果とは別にこの配列を直接buildGroupsへ合流させる。
