@@ -54,6 +54,14 @@ function phoneListOf(u) {
   return list;
 }
 
+/** 画面に出す名前: MS365の「姓」「名」から、姓→名の順・間に半角スペース1つで作る(2026-10-16・ユーザー指示。社員名簿・スタッフ予定2ページ)。
+    姓か名のどちらかが空のときは、表示名(displayName)にする(括弧書きの会社名は従来どおり取り除く) */
+function fullNameOf(surname, givenName, displayNameFallback) {
+  const sn = String(surname ?? '').trim(), gn = String(givenName ?? '').trim();
+  if (sn && gn) return sn + ' ' + gn;
+  return displayName(displayNameFallback);
+}
+
 /** 日本時間(JST)の日付 'YYYY-MM-DD'。入社日の判定を、サーバー・ブラウザのタイムゾーンに依らず日本の暦で行うため */
 function jstDateKey(date) {
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -560,12 +568,12 @@ async function fetchStaticMembers(emails) {
   const token = await Auth.getGraphToken(['User.Read.All']);
   const results = await Promise.all(emails.map(async email => {
     try {
-      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,mail,employeeType,employeeHireDate`, {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}?$select=id,displayName,surname,givenName,mail,employeeType,employeeHireDate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error(await graphErrorMessage(res));
       const u = await res.json();
-      return { id: u.id, name: u.displayName || email, email: u.mail || email, empType: String(u.employeeType || '').trim(), hireDate: u.employeeHireDate || null };
+      return { id: u.id, name: fullNameOf(u.surname, u.givenName, u.displayName) || email, email: u.mail || email, empType: String(u.employeeType || '').trim(), hireDate: u.employeeHireDate || null };
     } catch (e) {
       console.error(`「${email}」のユーザー情報取得に失敗しました`, e);
       return { id: email, name: email, email, empType: '' };
