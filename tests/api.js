@@ -123,6 +123,6 @@ const files = {
   const left = (await json('GET', '/api/content')).data.news.find(n => n.id === news);
   check('お知らせ削除で添付ファイルも消える', del2.status === 200 && !left && fs.readdirSync(UPLOADS).length === before - 1 - 2, `uploads=${fs.readdirSync(UPLOADS).length}`);
 
-  } finally { sb.stop(); }
+  } finally { await sb.stop(); }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error("TEST ERROR", e); process.exit(2); });

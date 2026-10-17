@@ -13,7 +13,7 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
 
 (async () => {
   const edge = findEdge();
-  if (!edge) { console.log('SKIP  Edge が見つからないため画面の確認を省略します(EDGE_PATH で指定できます)'); process.exit(0); }
+  if (!edge) { console.log('SKIP  Edge が見つからないため画面の確認を省略します(EDGE_PATH で指定できます)'); process.exit(3); }
   const sb = await startSandbox();
   const br = await launchEdge(edge);
   const api = async (method, url, body) => {
@@ -85,8 +85,8 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('/api/me が無応答でも約10秒以内に画面が表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 14000));
     await br.setPreScript(null);
   } finally {
-    br.close();
-    sb.stop();
+    await br.close();
+    await sb.stop();
   }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error('TEST ERROR', e); process.exit(2); });

@@ -8,8 +8,8 @@ const results = [];
 for (const s of suites) {
   console.log(`\n===== ${s} =====`);
   const r = spawnSync(process.execPath, [path.join(__dirname, s)], { stdio: 'inherit' });
-  results.push([s, r.status === 0]);
+  results.push([s, r.status === 0 ? 'OK  ' : r.status === 3 ? 'SKIP' : 'NG  ']);
 }
 console.log('\n===== 結果 =====');
-for (const [s, ok] of results) console.log(`${ok ? 'OK  ' : 'NG  '}${s}`);
-process.exit(results.every(([, ok]) => ok) ? 0 : 1);
+for (const [s, st] of results) console.log(`${st}${s}`);
+process.exit(results.every(([, st]) => st !== 'NG  ') ? 0 : 1);

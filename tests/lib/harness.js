@@ -35,22 +35,33 @@ async function startSandbox() {
   fs.cpSync(path.join(ROOT, 'src'), path.join(dir, 'src'), { recursive: true });
   fs.cpSync(path.join(ROOT, 'public'), path.join(dir, 'public'), { recursive: true });
   const port = await freePort();
+  // 外部連携のキー・スイッチ(jinjer・iGrace・テナント・休暇取込)は引き継がない。誤って本番のシェルで実行しても、外部へ接続しない
   const env = { ...process.env, PORT: String(port), AUTH_MODE: 'dev', SEED_SAMPLE_DATA: 'false', NODE_PATH: path.join(ROOT, 'node_modules') };
-  const proc = spawn(process.execPath, ['server.js'], { cwd: dir, env, stdio: 'ignore' });
+  for (const k of Object.keys(env)) if (/^(JINJER_|IGRACE_|TENANT_ID$|CLIENT_ID$|ENABLE_DAYOFFS$)/.test(k)) delete env[k];
+  env.JINJER_BASE_URL = 'http://127.0.0.1:9'; // 万一キーが残っても到達しない宛先
+  const proc = spawn(process.execPath, ['server.js'], { cwd: dir, env, stdio: ['ignore', 'ignore', 'pipe'] });
+  let stderr = '';
+  proc.stderr.on('data', d => { stderr += d; });
+  let exited = false;
+  const exitP = new Promise(r => proc.once('exit', () => { exited = true; r(); }));
   const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 60; i++) {
-    try { const r = await fetch(base + '/api/config'); if (r.ok) break; } catch { /* 起動待ち */ }
-    await new Promise(r => setTimeout(r, 250));
+  let up = false;
+  for (let i = 0; i < 60 && !up && !exited; i++) {
+    try { up = (await fetch(base + '/api/config')).ok; } catch { /* 起動待ち */ }
+    if (!up) await new Promise(r => setTimeout(r, 250));
   }
+  if (!up) { try { proc.kill(); } catch { /* */ } throw new Error('テスト用サーバーが起動しませんでした: ' + stderr.slice(0, 500)); }
   /** 添付の保存先(data/ 配下のサブフォルダ) */
   const uploads = () => {
     const d = path.join(dir, 'data');
     const found = fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).find(e => e.isDirectory()) : null;
     return found ? path.join(d, found.name) : null;
   };
-  const stop = () => {
+  /** サーバーを止め、一時フォルダを消す(終了を待ってから消す。呼び出し側は await する) */
+  const stop = async () => {
     try { proc.kill(); } catch { /* 既に終了 */ }
-    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 使用中は残す */ } }, 1000);
+    await Promise.race([exitP, sleep(3000)]);
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* 使用中は残す */ }
   };
   return { base, dir, uploads, stop };
 }
@@ -106,10 +117,12 @@ async function launchEdge(edge) {
     if (preId) { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: preId }); preId = null; }
     if (src) preId = (await send('Page.addScriptToEvaluateOnNewDocument', { source: src })).result.identifier;
   };
-  const close = () => {
+  const close = async () => {
     try { ws.close(); } catch { /* */ }
+    const exited = new Promise(r => proc.once('exit', r));
     try { proc.kill(); } catch { /* */ }
-    setTimeout(() => { try { fs.rmSync(ud, { recursive: true, force: true }); } catch { /* */ } }, 1000);
+    await Promise.race([exited, sleep(3000)]);
+    try { fs.rmSync(ud, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* 使用中は残す */ }
   };
   return { open, evaluate, setPreScript, close };
 }
