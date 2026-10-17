@@ -206,3 +206,5 @@ Claude Design のハンドオフ([design/README.md](design/README.md))を移植�
 5. ✅ 会議室の実データ化(`schedule.js`。6拠点35室の実Exchangeリソース+`getSchedule`+resource出席者予約)。`rooms.js`も2026-08-24以降・entraモードで実データ化済み(2026-08-21指示。§14のExchange側前提作業は未実行)。7/1〜8/23とdevモードはデザインサンプルのまま維持
 6. ✅ 社内メンバー検索の実データ化(`User.ReadBasic.All` + Graph `/users`。**Azure側でのAPI権限追加+管理者同意が未実施の場合は動作しない**。§0参照)
 7. webinputsystem(経費精算)へのSSO遷移確認
+
+- **自動テスト(2026-10-17・整理案A。テスト環境のみ)**: `npm test` で、計算ロジック(unit.js)・API(api.js)・画面(browser.js。Edgeが必要)を一括確認する。サーバーは一時フォルダのコピーをdevモード・空DBで起動するため、実際の`data/portal.db`には触らない。**画面のコードを変えたら、`tests/`の期待値(並び順・文言など)も合わせて直し、反映前に`npm test`を通す**。実際のMS365(Graph)のデータでの表示は再現できないので、テスト環境での目視確認は別に行う。詳細は`tests/README.md`
