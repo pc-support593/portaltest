@@ -7,8 +7,7 @@
 // APIキー/シークレットはサーバーの環境変数 JINJER_API_KEY / JINJER_SECRET_KEY にだけ置く(コード・public/・GitHubに書かない)。
 'use strict';
 
-const BASE = process.env.JINJER_BASE_URL || 'https://api.jinjer.biz'; // JINJER_BASE_URL はテスト(模擬サーバー)用
-const REQUEST_TIMEOUT_MS = 30_000;
+const { jstNow, isConfigured, authedFetch } = require('./jinjerClient'); // 共通部分(トークン・API呼び出し・日本時間)
 const MAX_PAGES = 100;          // 暴走防止(20人×100=2,000人。取得上限は毎分100回)
 const DEADLINE_MS = 3 * 60 * 1000; // 1回の取り込み全体の上限時間
 const NAME_BATCH = 100;         // employee-ids の上限(仕様: 100件まで)
@@ -21,50 +20,16 @@ const manualRuns = [];
 let running = false;
 let lastStartMs = 0;
 
-/** 日本時間の日付(YYYY-MM-DD)と時刻(時)。サーバー(Render=UTC)のタイムゾーンに依存しない */
-function jstNow(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
-  }).formatToParts(date).reduce((o, p) => { o[p.type] = p.value; return o; }, {});
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
-}
-
-function isConfigured() {
-  return Boolean(process.env.JINJER_API_KEY && process.env.JINJER_SECRET_KEY);
-}
-
-async function jinjerFetch(path, { headers = {} } = {}) {
-  const res = await fetch(BASE + path, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!res.ok) {
-    // 応答本文にはキー等を含めない(ステータスのみ記録)
-    const err = new Error(`jinjer APIエラー (HTTP ${res.status}) ${path.split('?')[0]}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res;
-}
-
-async function getToken() {
-  const res = await jinjerFetch('/v2/token', {
-    headers: { 'X-API-KEY': process.env.JINJER_API_KEY, 'X-SECRET-KEY': process.env.JINJER_SECRET_KEY }
-  });
-  const body = await res.json();
-  const token = body && body.data && body.data.access_token;
-  if (!token) throw new Error('jinjerのアクセストークンを取得できませんでした');
-  return token;
-}
-
 /** 指定月の休日休暇データを全ページ取得し、対象日のものだけを返す */
-async function fetchDayOffsOfDate(token, targetDate, deadline) {
+async function fetchDayOffsOfDate(targetDate, deadline) {
   const month = targetDate.slice(0, 7);
-  const headers = { Authorization: `Bearer ${token}` };
   const found = []; // {employee_id, off}
   let total = Infinity; // X-Item-Counts が取れない場合は空ページまで進む
   let seen = 0;
   for (let page = 1; seen < total; page++) {
     if (page > MAX_PAGES) throw new Error('jinjerの取得ページ数が上限を超えました');
     if (Date.now() > deadline) throw new Error('jinjerの取り込みが制限時間を超えました');
-    const res = await jinjerFetch(`/v2/employees/requested-day-offs?month=${month}&page=${page}`, { headers });
+    const res = await authedFetch(`/v2/employees/requested-day-offs?month=${month}&page=${page}`);
     const header = res.headers.get('X-Item-Counts');
     const count = header == null || header === '' ? NaN : Number(header);
     if (Number.isFinite(count)) total = count;
@@ -84,13 +49,12 @@ async function fetchDayOffsOfDate(token, targetDate, deadline) {
 }
 
 /** 社員番号→氏名。休暇のある人だけを引く(API呼び出しを最小限にする) */
-async function fetchNames(token, ids) {
+async function fetchNames(ids) {
   const names = new Map();
-  const headers = { Authorization: `Bearer ${token}` };
   const unique = [...new Set(ids)];
   for (let i = 0; i < unique.length; i += NAME_BATCH) {
     const batch = unique.slice(i, i + NAME_BATCH);
-    const res = await jinjerFetch(`/v1/employees?employee-ids=${encodeURIComponent(batch.join(','))}`, { headers });
+    const res = await authedFetch(`/v1/employees?employee-ids=${encodeURIComponent(batch.join(','))}`);
     const body = await res.json();
     for (const e of Array.isArray(body.data) ? body.data : []) {
       const c = e.company || {};
@@ -148,12 +112,11 @@ async function sync(db, { force = false } = {}) {
   const targetDate = jstNow().date;
   let result;
   try {
-    const token = await getToken();
-    const found = await fetchDayOffsOfDate(token, targetDate, now + DEADLINE_MS);
+    const found = await fetchDayOffsOfDate(targetDate, now + DEADLINE_MS);
     const rows = found
       .map(f => ({ ...f, status: statusOf(f.off.status) }))
       .filter(f => f.status);
-    const names = rows.length ? await fetchNames(token, rows.map(r => r.employee_id)) : new Map();
+    const names = rows.length ? await fetchNames(rows.map(r => r.employee_id)) : new Map();
 
     const syncedAt = new Date().toISOString();
     const ins = db.prepare(

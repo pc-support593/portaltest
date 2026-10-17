@@ -10,6 +10,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
+const jinjerAttendance = require('./src/jinjerAttendance');
 
 // Portal/.env があれば読み込む(環境変数の設定漏れ対策。既に設定済みの環境変数が優先される)
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* .env なしでも可 */ }
@@ -793,6 +794,26 @@ app.post('/api/day-offs/sync', async (req, res, next) => {
   }
 });
 
+// ---- 出勤状況(jinjerの打刻データ。2026-10-17) ----
+// 取り込みはサーバーが5分おきに自動実行する(src/jinjerAttendance.js)。画面はDBのキャッシュだけを読む。全社員が閲覧できる(ユーザー指示)。
+// 反映を急ぐときのため、サインイン済みなら誰でも手動で再取り込みできる(1分に1回・1時間に20回まで)。
+app.get('/api/attendance', (req, res) => {
+  me(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(jinjerAttendance.getToday(db));
+});
+
+app.post('/api/attendance/sync', async (req, res, next) => {
+  try {
+    me(req);
+    const result = await jinjerAttendance.sync(db, { force: true });
+    res.set('Cache-Control', 'no-store');
+    res.status(result.ok ? 200 : 503).json({ ...result, ...jinjerAttendance.getToday(db), error: result.ok ? undefined : result.message });
+  } catch (e) {
+    next(e); // Express 4 は async の例外を拾わないため明示的にエラーハンドラへ渡す(→ E001)
+  }
+});
+
 // 1件の失敗でプロセスを落とさない(→ E001)
 app.use((err, _req, res, _next) => {
   console.error(err.message || err);
@@ -807,6 +828,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
+  jinjerAttendance.startScheduler(db);
   if (AUTH_MODE === 'dev') {
     console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');
   }

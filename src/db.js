@@ -124,6 +124,26 @@ function migrate(db) {
       synced_at     TEXT NOT NULL    -- 取得日時(ISO 8601, UTC)
     );
     CREATE INDEX IF NOT EXISTS idx_day_offs_date ON day_offs(date);
+    -- jinjerの打刻データから作る「本日の出勤状況」(2026-10-17)。当日分だけ保持し、毎日リセット(前日以前は削除。履歴は持たない)
+    CREATE TABLE IF NOT EXISTS attendance_today (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      date        TEXT NOT NULL,   -- ISO 8601 (YYYY-MM-DD)。対象日(日本時間)
+      employee_id TEXT NOT NULL,   -- jinjerの社員番号
+      email       TEXT NOT NULL,   -- 社用メールアドレス(小文字)。MS365との紐づけキー。jinjerに未登録なら空
+      name        TEXT NOT NULL,   -- jinjerの職場氏名(姓 名)。画面ではMS365の氏名を優先し、これは紐づけできない場合の表示用
+      attended    TEXT NOT NULL,   -- 出勤時刻 HH:MM
+      left_at     TEXT NOT NULL DEFAULT '', -- 退勤時刻 HH:MM。空=退勤の打刻なし(出勤中として扱う)
+      synced_at   TEXT NOT NULL    -- 取得日時(ISO 8601, UTC)
+    );
+    CREATE INDEX IF NOT EXISTS idx_attendance_today_date ON attendance_today(date);
+    CREATE TABLE IF NOT EXISTS attendance_sync (
+      id          INTEGER PRIMARY KEY CHECK (id = 1),
+      target_date TEXT NOT NULL DEFAULT '',
+      ok          INTEGER NOT NULL DEFAULT 0,
+      message     TEXT NOT NULL DEFAULT '',
+      run_at      TEXT NOT NULL DEFAULT '',
+      ok_date     TEXT NOT NULL DEFAULT ''
+    );
     -- jinjer取込の実行状況(1行のみ id=1)
     CREATE TABLE IF NOT EXISTS day_offs_sync (
       id          INTEGER PRIMARY KEY CHECK (id = 1),

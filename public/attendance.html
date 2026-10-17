@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<!-- サインインの確認が済むまで画面を表示しない(ログイン前に画面が一瞬見えるのを防ぐ。2026-10-12・ユーザー指示)。js/auth.js の Auth.init が完了/失敗で解除する。保険として10秒で解除。ブラウザの「戻る」(bfcache復帰)でも直ちに解除 -->
+<style>html.auth-pending body{visibility:hidden}</style>
+<script>(function(){var c=document.documentElement.classList;c.add('auth-pending');setTimeout(function(){c.remove('auth-pending');},10000);window.addEventListener('pageshow',function(e){if(e.persisted)c.remove('auth-pending');});})();</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出勤状況 - 吉村一建設 ポータル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/portal.css">
+</head>
+<body>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <header style="background:#1e3a5f;padding:0 24px;height:54px;display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="width:30px;height:30px;border-radius:7px;background:#2e6fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">吉</div>
+      <span style="font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap">吉村一建設/ゆめすみか ポータル</span>
+      <span style="font-size:13px;color:#7f96b3">｜</span>
+      <span style="font-size:13px;color:#a8bdd6;white-space:nowrap">出勤状況</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:18px">
+      <a href="index.html" class="nav-link">← ポータルへ戻る</a>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div data-me="avatar" style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700"></div>
+        <div style="display:flex;flex-direction:column;line-height:1.3">
+          <span data-me="name" style="font-size:12px;font-weight:700;color:#ffffff;white-space:nowrap"></span>
+          <span data-me="dept" style="font-size:10px;color:#a8bdd6;white-space:nowrap"></span>
+        </div>
+      </div>
+      <a href="#" id="logout-link" class="nav-link" style="display:none;font-size:12px">ログアウト</a>
+    </div>
+  </header>
+
+  <div style="max-width:1100px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:10px;flex:1">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <h1 id="att-title" style="margin:0;font-size:19px;font-weight:700">出勤状況</h1>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#4a5b6c;cursor:pointer">
+        <input type="checkbox" id="att-show-left" checked> 退勤済みも表示
+      </label>
+      <button id="att-sync" type="button" class="hv-btn-primary" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;font-family:inherit;cursor:pointer">最新の情報に更新</button>
+    </div>
+    <p id="att-summary" style="margin:0;font-size:13px;font-weight:700;color:#1c2b3a"></p>
+    <p id="att-status" style="margin:0;font-size:12px;color:#6b7d8f"></p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start">
+      <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <div style="padding:13px 20px;background:#f7fafd;border-bottom:1px solid #e8edf3"><h3 style="margin:0;font-size:14px;font-weight:700">吉村一建設</h3></div>
+        <div id="att-left"></div>
+      </section>
+      <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+        <div style="padding:13px 20px;background:#f7fafd;border-bottom:1px solid #e8edf3"><h3 style="margin:0;font-size:14px;font-weight:700">ゆめすみか</h3></div>
+        <div id="att-right"></div>
+      </section>
+    </div>
+    <p style="margin:0;font-size:11px;color:#8a99a8">人事システム(jinjer)の打刻データです。5分おきに自動で取り込みます。退勤の打刻をしていない方は「出勤中」のまま表示します。表示は毎日リセットされ、翌日は翌日の打刻だけが表示されます。出社・在宅などの勤務場所は区別していません。</p>
+  </div>
+</div>
+<script src="js/common.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/attendance.js"></script>
+</body>
+</html>
