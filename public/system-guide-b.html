@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<!-- サインインの確認が済むまで画面を表示しない(ログイン前に画面が一瞬見えるのを防ぐ。2026-10-12・ユーザー指示)。js/auth.js の Auth.init が完了/失敗で解除する。 -->
+<style>html.auth-pending body{visibility:hidden}</style>
+<script>(function(){var c=document.documentElement.classList;c.add('auth-pending');setTimeout(function(){c.remove('auth-pending');},10000);window.addEventListener('pageshow',function(e){if(e.persisted)c.remove('auth-pending');});})();</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>システム案内(案B) - 吉村一建設 ポータル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/portal.css">
+</head>
+<body>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <header style="background:#1e3a5f;padding:0 24px;height:54px;display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="width:30px;height:30px;border-radius:7px;background:#2e6fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">吉</div>
+      <span style="font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap">吉村一建設/ゆめすみか ポータル</span>
+      <span style="font-size:13px;color:#7f96b3">｜</span>
+      <span style="font-size:13px;color:#a8bdd6;white-space:nowrap">システム案内(案B)</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:18px">
+      <a href="index.html" class="nav-link">← ポータルへ戻る</a>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div data-me="avatar" style="width:32px;height:32px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700"></div>
+        <div style="display:flex;flex-direction:column;line-height:1.3">
+          <span data-me="name" style="font-size:12px;font-weight:700;color:#ffffff;white-space:nowrap"></span>
+          <span data-me="dept" style="font-size:10px;color:#a8bdd6;white-space:nowrap"></span>
+        </div>
+      </div>
+      <a href="#" id="logout-link" class="nav-link" style="display:none;font-size:12px">ログアウト</a>
+    </div>
+  </header>
+
+  <div style="max-width:1100px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:14px;flex:1">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:19px;font-weight:700">システム案内</h1>
+      <span style="font-size:12px;color:#8a99a8">案B: 記事型(分野ごとの記事を、管理画面から追加・編集できる形)の枠組みです。表示中の記事はすべて仮の内容です。</span>
+    </div>
+
+    <!-- 障害・メンテナンスのお知らせ(実際は管理画面で入力。無いときは非表示) -->
+    <div id="gb-notice" style="display:none;background:#fff7e6;border:1px solid #f6dfae;border-radius:10px;padding:10px 16px;font-size:13px;color:#8a5a00"></div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input id="gb-search" type="search" placeholder="記事を探す(例: Wi-Fi、パスワード、打刻)" style="flex:1;min-width:220px;border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit">
+    </div>
+
+    <div id="gb-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px"></div>
+
+    <section style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+      <div style="padding:13px 20px;background:#f7fafd;border-bottom:1px solid #e8edf3;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2 id="gb-list-title" style="margin:0;font-size:15px;font-weight:700">よくある困りごと</h2>
+        <div id="gb-kinds" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto"></div>
+      </div>
+      <div id="gb-list"></div>
+    </section>
+
+    <section id="gb-article" style="display:none;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);padding:18px 22px"></section>
+
+    <section style="background:#f7fafd;border:1px solid #e8edf3;border-radius:12px;padding:14px 20px;font-size:13px;color:#4a5b6c">
+      <b style="color:#1c2b3a">困ったときの連絡先(仮)</b><br>
+      情報システム担当: 内線 ○○○ / メール ○○○@(連絡先は管理画面で設定する想定)
+    </section>
+  </div>
+</div>
+<script src="js/common.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/systemGuideB.js"></script>
+</body>
+</html>

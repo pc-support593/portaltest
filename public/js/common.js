@@ -125,6 +125,8 @@ const PORTAL_PAGES = [
   // 「本日のお休み」(today-off.html)は一時停止中のため検索対象から外している(2026-10-07。再開時は ENABLE_DAYOFFS=true とあわせて戻す):
   // { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },
   { title: '年間カレンダー', url: 'work-calendar.html', keywords: ['年間カレンダー', '出社日', '定休日', '振替休日', '班'] },
+  { title: 'システム案内(案B)', url: 'system-guide-b.html', keywords: ['システム', 'IT', 'PC', 'ネットワーク', 'Wi-Fi', 'VPN', 'MS365', 'パスワード', 'jinjer', 'ジンジャー', '困った', 'ヘルプ'] },
+  { title: 'システム案内(案C)', url: 'system-guide-c.html', keywords: ['システム', 'IT', 'PC', 'ネットワーク', 'Wi-Fi', 'VPN', 'MS365', 'パスワード', 'jinjer', 'ジンジャー', '困った', 'ヘルプ'] },
   { title: '社内報', url: 'igrace-login.html', keywords: ['社内報', 'ニュース', 'GRACE', 'igrace'] },
   { title: '管理画面', url: 'admin.html', keywords: ['管理', 'admin', 'お知らせ編集'] }
 ];
@@ -177,6 +179,9 @@ const PORTAL_NAV = [
   // スタッフ予定(2026-10-08・ユーザー指示)。既定の遷移先は吉村一建設。ゆめすみかのアカウントの人は、サインイン後に
   // yumesumika-schedule.html へ切り替わる(showPortalAdminLink内)。2つのページはどちらでも、このメニューを強調表示する
   { label: 'スタッフ予定', href: 'yoshimuraichi-schedule.html', also: ['yumesumika-schedule.html'], id: 'staff-nav-link' },
+  // システム案内(2026-10-19・ユーザー依頼): 案B(記事型)と案C(外部リンク型)の枠組みを、テスト環境で見比べるための仮のメニュー。案が決まったら1つに統合する
+  { label: 'システム案内B', href: 'system-guide-b.html' },
+  { label: 'システム案内C', href: 'system-guide-c.html' },
   { label: '社内報', href: 'igrace-login.html', external: true }
   // 「管理」は、右上のユーザー名のメニュー(setupUserMenu)の中に移した(2026-10-11・ユーザー指示)
 ];

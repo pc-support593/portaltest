@@ -67,6 +67,21 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('お知らせ: その後は掲載日の新しい順', titles.slice(2).join() === 'N-通常新しい,N-通常古い', titles.join());
     check('お知らせ: NEWは掲載7日以内だけ', rows.filter(r => r.includes('NEW')).length === 1 && rows.find(r => r.includes('N-通常新しい')).includes('NEW'), rows.join(' | '));
 
+    // ---- システム案内(案B・案C。枠組み): トップのメニューにリンクがあり、ページが動く ----
+    await br.open(`${sb.base}/index.html`, 1280);
+    check('トップのメニューに「システム案内B」「システム案内C」がある', await br.evaluate("['system-guide-b.html', 'system-guide-c.html'].every(h => !!document.querySelector('header a[href=\"' + h + '\"]'))"));
+    await br.open(`${sb.base}/system-guide-b.html`, 1280, 900, "document.querySelectorAll('#gb-cats [data-cat]').length > 0");
+    check('案B: 分野のカードが5つ・初期表示は「よくある困りごと」', await br.evaluate("document.querySelectorAll('#gb-cats [data-cat]').length === 5 && document.getElementById('gb-list-title').textContent === 'よくある困りごと' && document.querySelectorAll('#gb-list [data-article]').length > 0"));
+    await br.evaluate("document.querySelector('#gb-cats [data-cat=jinjer]').click()");
+    check('案B: 分野を押すと、その分野の記事だけに絞られる', await br.evaluate("document.getElementById('gb-list-title').textContent.includes('jinjer') && document.querySelectorAll('#gb-list [data-article]').length === 2"));
+    await br.evaluate("document.querySelector('#gb-list [data-article]').click()");
+    check('案B: 記事を押すと本文が開く', await br.evaluate("document.getElementById('gb-article').style.display !== 'none' && document.querySelector('#gb-article h2').textContent.length > 0"));
+    await br.evaluate("(() => { const s = document.getElementById('gb-search'); s.value = 'Wi-Fi'; s.dispatchEvent(new Event('input')); })()");
+    check('案B: 検索で絞り込める', await br.evaluate("document.querySelectorAll('#gb-list [data-article]').length === 1"));
+    await br.open(`${sb.base}/system-guide-c.html`, 1280, 900, "document.querySelectorAll('#gc-cats section').length > 0");
+    check('案C: 分野のカードが5つ・リンク未設定は「準備中」', await br.evaluate("document.querySelectorAll('#gc-cats section').length === 5 && document.getElementById('gc-cats').textContent.includes('準備中')"));
+    check('案C: 外部リンクは新しいタブで開く', await br.evaluate("[...document.querySelectorAll('#gc-cats a[href^=https]')].every(a => a.target === '_blank' && a.rel.includes('noopener'))"));
+
     // ---- 週の予定(スケジュール画面) ----
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
     const week = JSON.parse(await br.evaluate("JSON.stringify({ n: document.querySelectorAll('#week-events [data-week-day]').length, first: document.querySelector('#week-events [data-week-day]')?.textContent.trim().slice(0, 12), title: document.getElementById('week-title')?.textContent })"));
