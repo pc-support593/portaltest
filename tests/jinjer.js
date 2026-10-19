@@ -67,6 +67,28 @@ const { check, done } = makeChecker('jinjer');
     const ds = dataCalls().map(l => l.at).sort((a, b) => a - b);
     const minGap = Math.min(...ds.slice(1).map((t, i) => t - ds[i]));
     check('同時に呼んでも、リクエストの間隔を最低限あける', ds.length === 4 && minGap >= 130, `minGap=${minGap}`);
+
+    // 6) 退勤時刻がまだ来ていない人は、出勤中として返す(退勤の予定をjinjerに先に登録した場合。2026-10-19・ユーザー指示)
+    const { DatabaseSync } = require('node:sqlite');
+    const att = require(path.join(ROOT, 'src', 'jinjerAttendance.js'));
+    const mem = new DatabaseSync(':memory:'); // 実際のDBには触らない
+    mem.exec("CREATE TABLE attendance_today (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, employee_id TEXT, email TEXT, name TEXT, attended TEXT, left_at TEXT DEFAULT '', synced_at TEXT);" +
+      'CREATE TABLE attendance_sync (id INTEGER PRIMARY KEY, target_date TEXT, ok INTEGER, message TEXT, run_at TEXT, ok_date TEXT);');
+    const ins = mem.prepare('INSERT INTO attendance_today (date, employee_id, email, name, attended, left_at, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const now = new Date('2026-10-19T04:45:00Z'); // 日本時間 13:45
+    ins.run('2026-10-19', '1', 'a@x.com', 'A', '09:00', '17:30', '');  // 退勤予定(まだ来ていない)
+    ins.run('2026-10-19', '2', 'b@x.com', 'B', '09:00', '12:00', '');  // 退勤済み
+    ins.run('2026-10-19', '3', 'c@x.com', 'C', '09:00', '13:45', '');  // ちょうど今=退勤済み
+    ins.run('2026-10-19', '4', 'd@x.com', 'D', '09:00', '', '');       // 退勤の打刻なし=出勤中
+    const g = att.getToday(mem, now);
+    const left = Object.fromEntries(g.items.map(i => [i.name, i.left_at]));
+    check('退勤予定(17:30)が未来なら、13:45時点では出勤中として返す', left.A === '', JSON.stringify(left));
+    check('退勤時刻が過去・現在なら、退勤済みのまま', left.B === '12:00' && left.C === '13:45', JSON.stringify(left));
+    check('退勤の打刻がない人は出勤中のまま', left.D === '');
+    const g2 = att.getToday(mem, new Date('2026-10-19T08:31:00Z')); // 日本時間 17:31
+    check('17:31になれば、取り込みを待たずに退勤済みで返す', g2.items.find(i => i.name === 'A').left_at === '17:30');
+    check('isFutureTime: 読めない値・空は未来扱いしない', att.isFutureTime('', { hour: 13, minute: 45 }) === false && att.isFutureTime('abc', { hour: 13, minute: 45 }) === false);
+    check('他の日の行は出さない(翌日の日付では空)', att.getToday(mem, new Date('2026-10-20T04:45:00Z')).items.length === 0);
   } finally {
     console.warn = warn;
     server.close();

@@ -182,12 +182,22 @@ function startScheduler(db) {
   setInterval(tick, AUTO_INTERVAL_MS).unref();
 }
 
-/** 画面用: 本日(日本時間)の出勤者一覧+取り込み状況。メールアドレスはMS365との紐づけ用(全社員向け画面。社用アドレスのみ) */
-function getToday(db) {
-  const { date } = jstNow();
+/** 退勤時刻(HH:MM)が、日本時間の現在時刻より後(まだ来ていない)か。退勤の「予定」の打刻をjinjerに先に登録した人は、その時刻になるまで出勤中として扱う
+    (2026-10-19・ユーザー指示。例: 13:45に17:30の退勤が登録済みでも、17:30までは出勤中)。HH:MM が読めない・空なら false */
+function isFutureTime(hhmmText, nowJst) {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmmText || '');
+  if (!m) return false;
+  return Number(m[1]) * 60 + Number(m[2]) > nowJst.hour * 60 + nowJst.minute;
+}
+
+/** 画面用: 本日(日本時間)の出勤者一覧+取り込み状況。メールアドレスはMS365との紐づけ用(全社員向け画面。社用アドレスのみ)。
+    退勤時刻がまだ来ていない人は、取り込み間隔(10分)を待たずに、この表示の時点で出勤中(left_atを空)にして返す */
+function getToday(db, now = new Date()) {
+  const nowJst = jstNow(now);
+  const date = nowJst.date;
   const items = db.prepare(
     'SELECT email, name, attended, left_at FROM attendance_today WHERE date = ? ORDER BY name' // 社員番号は画面で使わないため返さない
-  ).all(date);
+  ).all(date).map(r => (isFutureTime(r.left_at, nowJst) ? { ...r, left_at: '' } : r));
   const st = db.prepare('SELECT target_date, ok, message, run_at, ok_date FROM attendance_sync WHERE id = 1').get() || null;
   return {
     date,
@@ -197,4 +207,4 @@ function getToday(db) {
   };
 }
 
-module.exports = { sync, startScheduler, getToday, judge };
+module.exports = { sync, startScheduler, getToday, judge, isFutureTime };

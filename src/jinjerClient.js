@@ -14,12 +14,12 @@ const tuning = { minGapMs: 500, retryMax: 3, backoffBaseMs: 2000, retryAfterCapM
 let cachedToken = null; // { token, at }
 let inflightToken = null; // 発行中のPromise(同時に複数の取り込みが走ってもトークンを二重発行しない)
 
-/** 日本時間の日付(YYYY-MM-DD)と時刻(時)。サーバー(Render=UTC)のタイムゾーンに依存しない */
+/** 日本時間の日付(YYYY-MM-DD)と時刻(時・分)。サーバー(Render=UTC)のタイムゾーンに依存しない */
 function jstNow(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   }).formatToParts(date).reduce((o, p) => { o[p.type] = p.value; return o; }, {});
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute) };
 }
 
 function isConfigured() {
