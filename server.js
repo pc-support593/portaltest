@@ -812,7 +812,7 @@ app.post('/api/day-offs/sync', async (req, res, next) => {
 });
 
 // ---- 出勤状況(jinjerの打刻データ。2026-10-17) ----
-// 取り込みはサーバーが5分おきに自動実行する(src/jinjerAttendance.js)。画面はDBのキャッシュだけを読む。全社員が閲覧できる(ユーザー指示)。
+// 取り込みはサーバーが10分おきに自動実行する(src/jinjerAttendance.js)。画面はDBのキャッシュだけを読む。全社員が閲覧できる(ユーザー指示)。
 app.get('/api/attendance', (req, res) => {
   me(req);
   res.set('Cache-Control', 'no-store');

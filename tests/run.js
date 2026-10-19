@@ -3,7 +3,7 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const suites = ['unit.js', 'api.js', 'browser.js'];
+const suites = ['unit.js', 'jinjer.js', 'api.js', 'browser.js'];
 const results = [];
 for (const s of suites) {
   console.log(`\n===== ${s} =====`);

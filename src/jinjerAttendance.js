@@ -12,7 +12,7 @@ const { jstNow, isConfigured, authedFetch } = require('./jinjerClient');
 const MAX_PAGES = 100;               // 暴走防止(20人×100=2,000人)
 const DEADLINE_MS = 2 * 60 * 1000;   // 1回の取り込み全体の上限時間(超えたら通信ごと中断して失敗扱い。手動更新がゲートウェイのタイムアウトで切れないよう短めにする)
 const NAME_BATCH = 100;              // employee-ids の上限(仕様: 100件まで)
-const AUTO_INTERVAL_MS = 5 * 60 * 1000; // 自動取り込みの間隔
+const AUTO_INTERVAL_MS = 10 * 60 * 1000; // 自動取り込みの間隔(2026-10-19: 429対策でユーザー指示により5分→10分)
 const AUTO_START_HOUR_JST = 5;       // この時刻より前は自動取り込みしない(前日分の削除だけ行う)
 const EMP_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -77,7 +77,7 @@ async function fetchAttendingOfDate(targetDate, signal) {
   return found;
 }
 
-/** 社員番号→社用メールアドレス・氏名。キャッシュにない人だけを引く(5分おきの取り込みでAPI呼び出しを増やさないため) */
+/** 社員番号→社用メールアドレス・氏名。キャッシュにない人だけを引く(10分おきの取り込みでAPI呼び出しを増やさないため) */
 async function resolveEmployees(ids, signal) {
   const now = Date.now();
   const need = [...new Set(ids)].filter(id => {
@@ -98,7 +98,7 @@ async function resolveEmployees(ids, signal) {
         at: now
       });
     }
-    // jinjerに見つからなかった社員番号は、空の結果を6時間キャッシュする(5分ごとに同じ問い合わせを繰り返さない)
+    // jinjerに見つからなかった社員番号は、空の結果を6時間キャッシュする(10分ごとに同じ問い合わせを繰り返さない)
     for (const id of batch) if (!returned.has(id)) empCache.set(id, { email: '', name: '', at: now });
   }
   return empCache;
@@ -161,7 +161,7 @@ async function sync(db) {
   return result;
 }
 
-/** 5分ごとに確認し、5:00(日本時間)以降なら取り込む。日付が変わった直後(0:00〜)は取り込みはせず前日分だけ削除する。
+/** 10分ごとに確認し、5:00(日本時間)以降なら取り込む。日付が変わった直後(0:00〜)は取り込みはせず前日分だけ削除する。
     再起動(Renderの無料プランのスリープ復帰など)後も、起動直後に取り込まれる。失敗しても次の確認で再試行する */
 function startScheduler(db) {
   if (!isConfigured()) {

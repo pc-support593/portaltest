@@ -1,5 +1,5 @@
 // 出勤状況ページ(2026-10-17追加。ユーザー指示)。
-// jinjerの打刻データをサーバー(src/jinjerAttendance.js)が5分おきに取り込んで保存し、このページは /api/attendance のキャッシュだけを読む
+// jinjerの打刻データをサーバー(src/jinjerAttendance.js)が10分おきに取り込んで保存し、このページは /api/attendance のキャッシュだけを読む
 // (画面からjinjerを直接呼ばない)。jinjerの社用メールアドレスとMS365のメールアドレスを突き合わせ、社員名簿と同じ部門(MS365グループ)・
 // 同じ並び順・同じ氏名(姓 名)で表示する(2026-10-17・ユーザー指示。部門の組み立ては社員名簿と共用の orgData.js)。
 // どの部門にも入らない人(メールアドレス未登録・MS365に無い人など)は、各列の末尾の「その他」にjinjerの氏名(分かればMS365の氏名)で表示する。
@@ -135,7 +135,7 @@ function render(data) {
 
   // 本日分がまだ取り込まれていない(日付が変わった直後・取り込み失敗が続いたとき)は「出勤者なし」と誤解させない
   if (!data.items.length && !loaded) {
-    const msg = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#8a99a8">本日分はまだ取り込まれていません(5分おきに自動で取り込みます。「最新の情報に更新」でも取り込めます)</p>';
+    const msg = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#8a99a8">本日分はまだ取り込まれていません(10分おきに自動で取り込みます。「最新の情報に更新」でも取り込めます)</p>';
     el('att-left').innerHTML = msg;
     el('att-right').innerHTML = '';
     return;
@@ -172,7 +172,7 @@ async function load({ silent } = {}) {
   }
 }
 
-/** 「最新の情報に更新」: サーバーが保存している内容を読み直すだけ(jinjerのAPIは呼ばない。jinjerからの取り込みは、サーバーが5分おきに自動で行う。2026-10-19・ユーザー指示) */
+/** 「最新の情報に更新」: サーバーが保存している内容を読み直すだけ(jinjerのAPIは呼ばない。jinjerからの取り込みは、サーバーが10分おきに自動で行う。2026-10-19・ユーザー指示) */
 async function reloadFromServer() {
   const btn = el('att-sync');
   btn.disabled = true;
