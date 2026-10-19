@@ -33,7 +33,7 @@ const files = {
   check('/api/config: devモード', cfg.authMode === 'dev');
   check('/api/me: モックユーザー', (await json('GET', '/api/me')).status === 200);
   check('jinjerキー未設定: 出勤状況の機能は無効(features)', cfg.features && cfg.features.attendance === false && cfg.features.dayOffs === false, JSON.stringify(cfg.features));
-  check('jinjerキー未設定: /api/attendance は404', (await json('GET', '/api/attendance')).status === 404 && (await fetch(B + '/attendance.html')).status === 404 && (await fetch(B + '/js/attendance.js')).status === 404);
+  check('jinjerキー未設定: /api/attendance は404', (await json('GET', '/api/attendance')).status === 404 && (await json('GET', '/API/Attendance')).status === 404 && (await fetch(B + '/attendance.html')).status === 404 && (await fetch(B + '/js/attendance.js')).status === 404);
   check('本日のお休みは無効(404)', (await fetch(B + '/today-off.html')).status === 404 && (await json('GET', '/api/day-offs')).status === 404);
   const pin = (await json('POST', '/api/admin/news', { title: '固定テスト', pinned: '1' })).data.id;
   check('お知らせの固定(pinned)が保存される', ((await json('GET', '/api/content')).data.news.find(n => n.id === pin) || {}).pinned === '1');

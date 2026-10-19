@@ -42,7 +42,8 @@ app.use(express.json({ limit: '256kb' }));
 const DAYOFFS_ENABLED = process.env.ENABLE_DAYOFFS === 'true';
 if (!DAYOFFS_ENABLED) {
   app.use((req, res, next) => {
-    if (req.path === '/today-off.html' || req.path === '/js/todayOff.js' || req.path.startsWith('/api/day-offs')) {
+    const p = req.path.toLowerCase();
+    if (p === '/today-off.html' || p === '/js/todayoff.js' || p.startsWith('/api/day-offs')) {
       return res.status(404).send('Not Found');
     }
     next();
@@ -55,7 +56,8 @@ if (!DAYOFFS_ENABLED) {
 const ATTENDANCE_ENABLED = jinjerConfigured();
 if (!ATTENDANCE_ENABLED) {
   app.use((req, res, next) => {
-    if (req.path === '/attendance.html' || req.path === '/js/attendance.js' || req.path.startsWith('/api/attendance')) {
+    const p = req.path.toLowerCase(); // Expressのルーティングは大文字小文字を区別しないため、ゲートも区別しない
+    if (p === '/attendance.html' || p === '/js/attendance.js' || p.startsWith('/api/attendance')) {
       return res.status(404).send('Not Found');
     }
     next();
