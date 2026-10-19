@@ -80,12 +80,18 @@ function rowHtml(it, name) {
 function buildAttendanceGroups(orgGroups, items, names) {
   const byEmail = new Map();
   items.forEach(it => { const e = (it.email || '').toLowerCase(); if (e) byEmail.set(e, it); });
+  // メールアドレスを持たない社員(社員名簿の手動追加メンバー=MANUAL_MEMBERS。物流事業係の2名)は、メールではなく氏名で突き合わせる
+  // (2026-10-19・ユーザー指示。jinjer側もメールアドレス未登録の人だけが対象。空白の違い(全角・半角・有無)は無視する)
+  const normName = s => String(s || '').replace(/[\s　]+/g, '');
+  const byName = new Map();
+  items.forEach(it => { if (!(it.email || '').trim() && normName(it.name)) byName.set(normName(it.name), it); });
   const nameFor = it => (names && names[(it.email || '').toLowerCase()]) || it.name || '(氏名不明)';
   const placed = new Set();
   const groups = [];
   (orgGroups || []).forEach(g => {
-    const rows = g.members.filter(m => m.email && byEmail.has(m.email.toLowerCase())).map(m => {
-      const it = byEmail.get(m.email.toLowerCase());
+    const itemOf = m => (m.email ? byEmail.get(m.email.toLowerCase()) : byName.get(normName(m.name)));
+    const rows = g.members.filter(m => itemOf(m)).map(m => {
+      const it = itemOf(m);
       placed.add(it);
       return { it, name: m.name || nameFor(it) };
     });
