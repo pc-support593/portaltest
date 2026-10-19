@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
 const jinjerAttendance = require('./src/jinjerAttendance');
+const { isConfigured: jinjerConfigured } = require('./src/jinjerClient');
 
 // Portal/.env があれば読み込む(環境変数の設定漏れ対策。既に設定済みの環境変数が優先される)
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* .env なしでも可 */ }
@@ -42,6 +43,19 @@ const DAYOFFS_ENABLED = process.env.ENABLE_DAYOFFS === 'true';
 if (!DAYOFFS_ENABLED) {
   app.use((req, res, next) => {
     if (req.path === '/today-off.html' || req.path === '/js/todayOff.js' || req.path.startsWith('/api/day-offs')) {
+      return res.status(404).send('Not Found');
+    }
+    next();
+  });
+}
+
+// 「出勤状況」(jinjerの打刻データ)は、jinjerのAPIキー(JINJER_API_KEY / JINJER_SECRET_KEY)が設定されているサーバーでだけ有効にする
+// (2026-10-19・整理案F。ユーザー指示)。設定のない環境(本番など)では、ページ・API・自動取り込み・画面のリンクがすべて無効になる。
+// これにより、テストと本番で同じコードを使い、機能の有無は環境変数だけで切り替える(本番に載せるときの差分作業をなくす)
+const ATTENDANCE_ENABLED = jinjerConfigured();
+if (!ATTENDANCE_ENABLED) {
+  app.use((req, res, next) => {
+    if (req.path === '/attendance.html' || req.path === '/js/attendance.js' || req.path.startsWith('/api/attendance')) {
       return res.status(404).send('Not Found');
     }
     next();
@@ -125,7 +139,8 @@ app.get('/api/config', (_req, res) => {
   res.json({
     authMode: AUTH_MODE,
     tenantId: process.env.TENANT_ID || '',
-    clientId: process.env.CLIENT_ID || ''
+    clientId: process.env.CLIENT_ID || '',
+    features: { attendance: ATTENDANCE_ENABLED, dayOffs: DAYOFFS_ENABLED } // 画面側で、無効な機能のリンク・検索候補を隠すために使う
   });
 });
 
@@ -828,7 +843,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
-  jinjerAttendance.startScheduler(db);
+  if (ATTENDANCE_ENABLED) jinjerAttendance.startScheduler(db);
   if (AUTH_MODE === 'dev') {
     console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');
   }

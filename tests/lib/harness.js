@@ -29,7 +29,7 @@ function freePort() {
 
 /** アプリ(server.js・src・public)を一時フォルダへコピーし、devモード・空のDBで起動する。
     db.js は __dirname 基準で data/ を作るので、コピー先なら実際の data/portal.db は使われない */
-async function startSandbox() {
+async function startSandbox(extraEnv = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-test-'));
   for (const f of ['server.js', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'src'), path.join(dir, 'src'), { recursive: true });
@@ -38,6 +38,7 @@ async function startSandbox() {
   // 外部連携のキー・スイッチ(jinjer・iGrace・テナント・休暇取込)は引き継がない。誤って本番のシェルで実行しても、外部へ接続しない
   const env = { ...process.env, PORT: String(port), AUTH_MODE: 'dev', SEED_SAMPLE_DATA: 'false', NODE_PATH: path.join(ROOT, 'node_modules') };
   for (const k of Object.keys(env)) if (/^(JINJER_|IGRACE_|TENANT_ID$|CLIENT_ID$|ENABLE_DAYOFFS$)/.test(k)) delete env[k];
+  Object.assign(env, extraEnv); // 機能の有効化の確認用(例: ダミーのJINJERキー)
   env.JINJER_BASE_URL = 'http://127.0.0.1:9'; // 万一キーが残っても到達しない宛先
   const proc = spawn(process.execPath, ['server.js'], { cwd: dir, env, stdio: ['ignore', 'ignore', 'pipe'] });
   let stderr = '';

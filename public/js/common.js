@@ -120,7 +120,7 @@ const PORTAL_PAGES = [
   { title: '吉村一建設スタッフ予定', url: 'yoshimuraichi-schedule.html', keywords: ['吉村一建設', 'スタッフ', '予定', '部署', '会議室'] },
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
-  { title: '出勤状況', url: 'attendance.html', keywords: ['出勤', '退勤', '打刻', '出勤状況', '誰が出勤', 'jinjer', 'ジンジャー'] },
+  { title: '出勤状況', url: 'attendance.html', feature: 'attendance', keywords: ['出勤', '退勤', '打刻', '出勤状況', '誰が出勤', 'jinjer', 'ジンジャー'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
   // 「本日のお休み」(today-off.html)は一時停止中のため検索対象から外している(2026-10-07。再開時は ENABLE_DAYOFFS=true とあわせて戻す):
   // { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },
@@ -159,7 +159,8 @@ function isShiftTeamEligible(email) {
 function searchPortalPages(q) {
   const query = String(q || '').trim().toLowerCase();
   if (!query) return [];
-  return PORTAL_PAGES.filter(p =>
+  const features = (typeof Auth !== 'undefined' && Auth.config && Auth.config.features) || {};
+  return PORTAL_PAGES.filter(p => !p.feature || features[p.feature]).filter(p => // feature付きのページは、そのサーバーで有効なときだけ(整理案F)
     p.title.toLowerCase().includes(query) || p.keywords.some(k => k.toLowerCase().includes(query))
   );
 }

@@ -23,7 +23,10 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
   const noOverflow = "document.documentElement.scrollWidth <= window.innerWidth + 1";
   try {
     // ---- 全ページ: 表示される・横にはみ出さない(PC 1280 / スマホ 390) ----
-    const pages = fs.readdirSync(path.join(ROOT, 'public')).filter(f => f.endsWith('.html') && f !== 'igrace-login.html').sort();
+    // 機能が無効な環境では配信されないページ(出勤状況=jinjerキーが必要。本日のお休み=ENABLE_DAYOFFS)は、無効のときに404であることを確認する
+    const gated = ['attendance.html', 'today-off.html'];
+    for (const p of gated) check(`${p}: キー未設定では配信されない(404)`, (await fetch(`${sb.base}/${p}`)).status === 404);
+    const pages = fs.readdirSync(path.join(ROOT, 'public')).filter(f => f.endsWith('.html') && f !== 'igrace-login.html' && !gated.includes(f)).sort();
     for (const p of pages) {
       for (const w of [1280, 390]) {
         const shown = await br.open(`${sb.base}/${p}`, w);
@@ -78,12 +81,28 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('吉村一建設スタッフ予定: 大工のタブは出さない', !tabRows.flat().some(t => t.includes('大工')), JSON.stringify(tabRows));
     check('吉村一建設スタッフ予定: 見出しに並び順の注記', await br.evaluate("document.body.textContent.includes('五十音順')"));
 
+    // ---- 社員名簿の「出勤状況」ボタン: キー未設定では出さない ----
+    await br.open(`${sb.base}/organization.html`, 1280);
+    check('社員名簿: 出勤状況ボタンは、キー未設定では表示されない', await br.evaluate("(() => { const a = document.querySelector('[data-feature=attendance]'); return !!a && a.offsetParent === null; })()"));
+
     // ---- 通信の失敗・無応答でも画面が表示される(P004) ----
     await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? Promise.reject(new TypeError('Failed to fetch')) : f(u, o); })();");
     check('/api/me が失敗しても画面は表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 8000));
     await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? new Promise(() => {}) : f(u, o); })();");
     check('/api/me が無応答でも約10秒以内に画面が表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 14000));
     await br.setPreScript(null);
+
+    // ---- jinjerキーがある環境(ダミー)では、出勤状況のページとボタンが出る ----
+    const sbk = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });
+    try {
+      for (const w of [1280, 390]) {
+        const shown = await br.open(`${sbk.base}/attendance.html`, w);
+        check(`attendance.html (${w}px): キーありでは表示される`, shown);
+        if (shown) { await sleep(500); check(`attendance.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
+      }
+      await br.open(`${sbk.base}/organization.html`, 1280);
+      check('社員名簿: キーありでは出勤状況ボタンが右上に表示される', await br.evaluate("(() => { const a = document.querySelector('[data-feature=attendance]'); return !!a && a.offsetParent !== null && a.getBoundingClientRect().right > innerWidth - 100; })()"));
+    } finally { await sbk.stop(); }
   } finally {
     await br.close();
     await sb.stop();

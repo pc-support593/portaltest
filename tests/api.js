@@ -32,6 +32,9 @@ const files = {
   const cfg = (await json('GET', '/api/config')).data;
   check('/api/config: devモード', cfg.authMode === 'dev');
   check('/api/me: モックユーザー', (await json('GET', '/api/me')).status === 200);
+  check('jinjerキー未設定: 出勤状況の機能は無効(features)', cfg.features && cfg.features.attendance === false && cfg.features.dayOffs === false, JSON.stringify(cfg.features));
+  check('jinjerキー未設定: /api/attendance は404', (await json('GET', '/api/attendance')).status === 404 && (await fetch(B + '/attendance.html')).status === 404 && (await fetch(B + '/js/attendance.js')).status === 404);
+  check('本日のお休みは無効(404)', (await fetch(B + '/today-off.html')).status === 404 && (await json('GET', '/api/day-offs')).status === 404);
   const pin = (await json('POST', '/api/admin/news', { title: '固定テスト', pinned: '1' })).data.id;
   check('お知らせの固定(pinned)が保存される', ((await json('GET', '/api/content')).data.news.find(n => n.id === pin) || {}).pinned === '1');
   await json('PUT', `/api/admin/news/${pin}`, { title: '固定テスト2' });
@@ -124,5 +127,16 @@ const files = {
   check('お知らせ削除で添付ファイルも消える', del2.status === 200 && !left && fs.readdirSync(UPLOADS).length === before - 1 - 2, `uploads=${fs.readdirSync(UPLOADS).length}`);
 
   } finally { await sb.stop(); }
+
+  // jinjerキーがある環境(ダミー。宛先は到達しない)では出勤状況が有効になる
+  const sb2 = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });
+  try {
+    B = sb2.base;
+    const cfg2 = (await json('GET', '/api/config')).data;
+    check('jinjerキーあり: 出勤状況が有効(features)', cfg2.features.attendance === true && cfg2.features.dayOffs === false, JSON.stringify(cfg2.features));
+    const att = await json('GET', '/api/attendance');
+    check('jinjerキーあり: /api/attendance が使える', att.status === 200 && att.data.configured === true && Array.isArray(att.data.items), JSON.stringify(att.data).slice(0, 120));
+    check('jinjerキーあり: attendance.html が配信される', (await fetch(B + '/attendance.html')).status === 200);
+  } finally { await sb2.stop(); }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error("TEST ERROR", e); process.exit(2); });

@@ -26,6 +26,7 @@ const Auth = {
       fillMe(this.me);
       showPortalAdminLink(this.me);
       this._initLogoutLink();
+      document.querySelectorAll('[data-feature]').forEach(e => { e.hidden = !(this.config.features || {})[e.dataset.feature]; }); // 無効な機能のリンクは隠す(整理案F)
       this._applyFullName(); // 待たない(画面を止めない)。取得できたら、右上の名前と挨拶を差し替える
       this._revealPage();
       return this.me;
