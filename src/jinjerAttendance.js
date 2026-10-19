@@ -186,7 +186,7 @@ function startScheduler(db) {
     (2026-10-19・ユーザー指示。例: 13:45に17:30の退勤が登録済みでも、17:30までは出勤中)。HH:MM が読めない・空なら false */
 function isFutureTime(hhmmText, nowJst) {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmmText || '');
-  if (!m) return false;
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return false; // 時・分の範囲外(24:00など)は未来扱いにしない(出勤中のまま残らないように)
   return Number(m[1]) * 60 + Number(m[2]) > nowJst.hour * 60 + nowJst.minute;
 }
 

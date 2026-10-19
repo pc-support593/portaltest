@@ -87,7 +87,7 @@ const { check, done } = makeChecker('jinjer');
     check('退勤の打刻がない人は出勤中のまま', left.D === '');
     const g2 = att.getToday(mem, new Date('2026-10-19T08:31:00Z')); // 日本時間 17:31
     check('17:31になれば、取り込みを待たずに退勤済みで返す', g2.items.find(i => i.name === 'A').left_at === '17:30');
-    check('isFutureTime: 読めない値・空は未来扱いしない', att.isFutureTime('', { hour: 13, minute: 45 }) === false && att.isFutureTime('abc', { hour: 13, minute: 45 }) === false);
+    check('isFutureTime: 読めない値・空は未来扱いしない', att.isFutureTime('', { hour: 13, minute: 45 }) === false && att.isFutureTime('abc', { hour: 13, minute: 45 }) === false && att.isFutureTime('25:00', { hour: 13, minute: 45 }) === false && att.isFutureTime('17:75', { hour: 13, minute: 45 }) === false);
     check('他の日の行は出さない(翌日の日付では空)', att.getToday(mem, new Date('2026-10-20T04:45:00Z')).items.length === 0);
   } finally {
     console.warn = warn;
