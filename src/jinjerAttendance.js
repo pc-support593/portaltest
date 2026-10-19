@@ -14,14 +14,10 @@ const DEADLINE_MS = 2 * 60 * 1000;   // 1回の取り込み全体の上限時間
 const NAME_BATCH = 100;              // employee-ids の上限(仕様: 100件まで)
 const AUTO_INTERVAL_MS = 5 * 60 * 1000; // 自動取り込みの間隔
 const AUTO_START_HOUR_JST = 5;       // この時刻より前は自動取り込みしない(前日分の削除だけ行う)
-const MANUAL_MIN_INTERVAL_MS = 60 * 1000;
-const MANUAL_MAX_PER_HOUR = 20;      // jinjerの取得上限(毎時1,500回)を他の連携のために残す
 const EMP_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
-const manualRuns = [];
 const empCache = new Map(); // employee_id → { email, name, at }
 let running = false;
-let lastStartMs = 0;
 
 function hhmm(datetime) {
   const m = /(\d{2}):(\d{2})/.exec(datetime || '');
@@ -114,22 +110,10 @@ function purgeOld(db, today) {
 }
 
 /** 取り込み1回分。成功/失敗は attendance_sync に記録する。失敗しても例外は投げず結果を返す(→ E001) */
-async function sync(db, { force = false } = {}) {
-  const now = Date.now();
+async function sync(db) {
   if (!isConfigured()) return { ok: false, message: 'jinjerのAPIキーが未設定です(サーバーの JINJER_API_KEY / JINJER_SECRET_KEY)' };
   if (running) return { ok: false, message: '取り込み中です。しばらくしてからもう一度お試しください' };
-  if (force) {
-    if (now - lastStartMs < MANUAL_MIN_INTERVAL_MS) {
-      return { ok: false, message: '直前に取り込んだばかりです。1分ほど待ってからお試しください' };
-    }
-    while (manualRuns.length && now - manualRuns[0] > 60 * 60 * 1000) manualRuns.shift();
-    if (manualRuns.length >= MANUAL_MAX_PER_HOUR) {
-      return { ok: false, message: '手動更新の回数が1時間の上限に達しました。しばらくしてからお試しください' };
-    }
-    manualRuns.push(now);
-  }
   running = true;
-  lastStartMs = now;
   const targetDate = jstNow().date;
   let result;
   try {

@@ -136,6 +136,7 @@ const files = {
     check('jinjerキーあり: 出勤状況が有効(features)', cfg2.features.attendance === true && cfg2.features.dayOffs === false, JSON.stringify(cfg2.features));
     const att = await json('GET', '/api/attendance');
     check('jinjerキーあり: /api/attendance が使える', att.status === 200 && att.data.configured === true && Array.isArray(att.data.items), JSON.stringify(att.data).slice(0, 120));
+    check('jinjerキーあり: 手動取り込みAPI(POST /api/attendance/sync)は無い(jinjerを呼ぶのはサーバーの自動取り込みだけ)', (await json('POST', '/api/attendance/sync')).status === 404);
     check('jinjerキーあり: attendance.html が配信される', (await fetch(B + '/attendance.html')).status === 200);
   } finally { await sb2.stop(); }
   process.exit(done() ? 1 : 0);

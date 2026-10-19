@@ -100,6 +100,14 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
         check(`attendance.html (${w}px): キーありでは表示される`, shown);
         if (shown) { await sleep(500); check(`attendance.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
       }
+      // 「最新の情報に更新」を押しても、jinjerを呼ぶ取り込みAPIは使わず、保存済みデータの読み直し(GET)だけ
+      await br.setPreScript("window.__calls = []; (() => { const f = window.fetch; window.fetch = (u, o) => { window.__calls.push((o && o.method || 'GET') + ' ' + String(u)); return f(u, o); }; })();");
+      await br.open(`${sbk.base}/attendance.html`, 1280);
+      await br.evaluate("document.getElementById('att-sync').click()");
+      await sleep(800);
+      const calls = JSON.parse(await br.evaluate('JSON.stringify(window.__calls)'));
+      check('出勤状況: 更新ボタンは取り込みAPIを呼ばない', !calls.some(c => c.includes('/sync')) && calls.filter(c => c === 'GET /api/attendance').length >= 2, JSON.stringify(calls));
+      await br.setPreScript(null);
       await br.open(`${sbk.base}/organization.html`, 1280);
       check('社員名簿: キーありでは出勤状況ボタンが右上に表示される', await br.evaluate("(() => { const a = document.querySelector('[data-feature=attendance]'); return !!a && a.offsetParent !== null && a.getBoundingClientRect().right > innerWidth - 100; })()"));
     } finally { await sbk.stop(); }

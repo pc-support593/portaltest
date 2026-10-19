@@ -813,22 +813,10 @@ app.post('/api/day-offs/sync', async (req, res, next) => {
 
 // ---- 出勤状況(jinjerの打刻データ。2026-10-17) ----
 // 取り込みはサーバーが5分おきに自動実行する(src/jinjerAttendance.js)。画面はDBのキャッシュだけを読む。全社員が閲覧できる(ユーザー指示)。
-// 反映を急ぐときのため、サインイン済みなら誰でも手動で再取り込みできる(1分に1回・1時間に20回まで)。
 app.get('/api/attendance', (req, res) => {
   me(req);
   res.set('Cache-Control', 'no-store');
   res.json(jinjerAttendance.getToday(db));
-});
-
-app.post('/api/attendance/sync', async (req, res, next) => {
-  try {
-    me(req);
-    const result = await jinjerAttendance.sync(db, { force: true });
-    res.set('Cache-Control', 'no-store');
-    res.status(result.ok ? 200 : 503).json({ ...result, ...jinjerAttendance.getToday(db), error: result.ok ? undefined : result.message });
-  } catch (e) {
-    next(e); // Express 4 は async の例外を拾わないため明示的にエラーハンドラへ渡す(→ E001)
-  }
 });
 
 // 1件の失敗でプロセスを落とさない(→ E001)

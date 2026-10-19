@@ -172,17 +172,17 @@ async function load({ silent } = {}) {
   }
 }
 
-async function manualSync() {
+/** 「最新の情報に更新」: サーバーが保存している内容を読み直すだけ(jinjerのAPIは呼ばない。jinjerからの取り込みは、サーバーが5分おきに自動で行う。2026-10-19・ユーザー指示) */
+async function reloadFromServer() {
   const btn = el('att-sync');
   btn.disabled = true;
   const original = btn.textContent;
   btn.textContent = '更新中…';
   const seq = ++loadSeq;
   try {
-    const data = await api('/api/attendance/sync', { method: 'POST' });
+    const data = await api('/api/attendance');
     if (seq === loadSeq) applyData(data);
   } catch (e) {
-    // 失敗理由(未設定・連続実行・jinjer障害など)を表示し、一覧は前回の内容のまま残す
     el('att-status').textContent = `更新できませんでした: ${e.message || e}`;
     el('att-status').style.color = '#c05a5a';
     lastSignature = ''; // 次の自動更新で正しい状態表示に戻す
@@ -197,7 +197,7 @@ async function manualSync() {
     await Auth.init();
     el('att-show-left').checked = getShowLeft();
     el('att-show-left').addEventListener('change', () => { setShowLeft(el('att-show-left').checked); if (lastData) render(lastData); });
-    el('att-sync').addEventListener('click', manualSync);
+    el('att-sync').addEventListener('click', reloadFromServer);
     setInterval(() => { if (!document.hidden) load({ silent: true }); }, 2 * 60 * 1000); // 初回表示の成否に関わらず自動更新を登録する
     await load();
   } catch (e) {
