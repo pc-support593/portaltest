@@ -118,7 +118,7 @@ function render(data) {
   const st = data.sync;
   let status = '';
   if (!data.configured) status = 'jinjerのAPIキーが未設定のため、取り込みは行われていません(サーバーの設定が必要です)。';
-  else if (!st) status = 'まだ取り込みが実行されていません。「最新の情報に更新」を押してください。';
+  else if (!st) status = 'まだ取り込みが実行されていません(サーバーが10分おきに自動で取り込みます。しばらくしてから開き直してください)。';
   else if (st.ok) status = `最終取り込み: ${formatTime(st.runAt)}`;
   else status = `最終取り込みに失敗しました(${formatTime(st.runAt)}): ${st.message || '原因不明'}` +
     (st.lastSuccessDate === data.date ? '。表示は本日の前回成功分です。' : '。表示が最新でない可能性があります。');
@@ -135,7 +135,7 @@ function render(data) {
 
   // 本日分がまだ取り込まれていない(日付が変わった直後・取り込み失敗が続いたとき)は「出勤者なし」と誤解させない
   if (!data.items.length && !loaded) {
-    const msg = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#8a99a8">本日分はまだ取り込まれていません(10分おきに自動で取り込みます。「最新の情報に更新」でも取り込めます)</p>';
+    const msg = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#8a99a8">本日分はまだ取り込まれていません(サーバーが10分おきに自動で取り込みます。しばらくしてから「最新の情報に更新」を押してください)</p>';
     el('att-left').innerHTML = msg;
     el('att-right').innerHTML = '';
     return;

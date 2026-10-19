@@ -72,7 +72,7 @@ async function jinjerFetch(path, { headers = {}, signal } = {}) {
   return res;
 }
 
-/** アクセストークン。有効期間内は使い回す(5分おきの取り込みで、毎回トークンを取り直してAPI上限を消費しないため)。発行中は同じPromiseを共有する */
+/** アクセストークン。有効期間内は使い回す(10分おきの取り込みで、毎回トークンを取り直してAPI上限を消費しないため)。発行中は同じPromiseを共有する */
 async function getToken({ fresh = false, signal } = {}) {
   if (!fresh && cachedToken && Date.now() - cachedToken.at < TOKEN_TTL_MS) return cachedToken.token;
   if (inflightToken) return inflightToken;

@@ -10,7 +10,7 @@
 const { jstNow, isConfigured, authedFetch } = require('./jinjerClient');
 
 const MAX_PAGES = 100;               // 暴走防止(20人×100=2,000人)
-const DEADLINE_MS = 2 * 60 * 1000;   // 1回の取り込み全体の上限時間(超えたら通信ごと中断して失敗扱い。手動更新がゲートウェイのタイムアウトで切れないよう短めにする)
+const DEADLINE_MS = 2 * 60 * 1000;   // 1回の取り込み全体の上限時間(超えたら通信ごと中断して失敗扱い。長引いて次の取り込みと重ならないよう短め)
 const NAME_BATCH = 100;              // employee-ids の上限(仕様: 100件まで)
 const AUTO_INTERVAL_MS = 10 * 60 * 1000; // 自動取り込みの間隔(2026-10-19: 429対策でユーザー指示により5分→10分)
 const AUTO_START_HOUR_JST = 5;       // この時刻より前は自動取り込みしない(前日分の削除だけ行う)
