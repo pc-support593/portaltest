@@ -116,6 +116,15 @@ const files = {
   const survive = (await json('GET', '/api/content')).data.schedule.find(s => s.id === csvItem.id);
   check('再取込でも添付つきの行事は消えない', !!survive && survive.attachments.length === 1);
 
+  // 年間カレンダー: typeに shift_holiday を指定できる(team空・A、他の種類との重複チェックの対象外)
+  const csvOk = ['date,calendar_group,team,type,label', '2027-05-01,sunday_off,,shift_holiday,創立記念日', '2027-05-02,sunday_off,A,shift_holiday,特別休', '2027-05-02,sunday_off,A,shift_work,x'].join('\n');
+  const impOk = await json('POST', '/api/admin/work-calendar/import', { csv: csvOk });
+  check('年間カレンダー取込: shift_holiday を受け付ける(shift_workと同じ日・班でも可)', impOk.status === 200, JSON.stringify(impOk.data));
+  const wc = (await json('GET', '/api/work-calendar?group=sunday_off&from=2027-05-01&to=2027-05-31')).data;
+  check('年間カレンダー取得: shift_holiday が返る', Array.isArray(wc) ? wc.some(r => r.type === 'shift_holiday' && r.label === '創立記念日') : JSON.stringify(wc).includes('shift_holiday'), JSON.stringify(wc).slice(0, 160));
+  const impBad = await json('POST', '/api/admin/work-calendar/import', { csv: ['date,calendar_group,team,type,label', '2027-05-03,sunday_off,,shift_holidayX,x'].join('\n') });
+  check('年間カレンダー取込: 不正なtypeは断る', impBad.status === 400);
+
   // 削除
   const before = fs.readdirSync(UPLOADS).length;
   const one = item.attachments[1];

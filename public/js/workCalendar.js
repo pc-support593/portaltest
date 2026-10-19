@@ -48,6 +48,10 @@ function dayLabelsHtml(rows) {
   if (!rows || !rows.length) return '';
   return rows.map(r => {
     const isShift = r.type === 'shift_work' || r.type === 'shift_off';
+    if (r.type === 'shift_holiday') { // 文字枠(ラベル)を赤にする。日付枠(マス)の色は変えない(2026-10-19・ユーザー指示)。teamがあれば「A班 …」、labelが無ければ「休日」
+      const text = `${r.team ? `${r.team}班 ` : ''}${r.label || '休日'}`;
+      return `<div class="wc-label" title="${esc(text)}" style="font-size:10px;font-weight:700;color:#ffffff;background:#d64545;border-radius:4px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${esc(text)}</div>`;
+    }
     if (!isShift && !r.label) return ''; // labelなし(CSVで省略)の行はラベルを出さない
     const bg = r.type === 'shift_work' ? '#1f6b45' : r.type === 'holiday_1' ? '#fff1e0' : r.type === 'shift_off' ? '#e9f1fa' : '#f0f4f8';
     const color = r.type === 'shift_work' ? '#ffffff' : r.type === 'holiday_1' ? '#c25e00' : r.type === 'shift_off' ? '#1e5fa8' : '#4a5a6a';

@@ -99,7 +99,7 @@ function migrate(db) {
       date TEXT NOT NULL,              -- ISO 8601 (YYYY-MM-DD)
       calendar_group TEXT NOT NULL,    -- 'sunday_off' | 'wednesday_off'
       team TEXT NOT NULL DEFAULT '',   -- '' (全員対象: 祝日・行事) | 'A' | 'B' | 'C'
-      type TEXT NOT NULL,              -- 'holiday' | 'holiday_1'(お盆・年末年始等。オレンジ表示) | 'event' | 'shift_work' | 'shift_off'
+      type TEXT NOT NULL,              -- 'holiday' | 'holiday_1'(お盆・年末年始等。オレンジ表示) | 'event' | 'shift_work' | 'shift_off' | 'shift_holiday'(文字枠を赤で表示・日付枠は無色。2026-10-19)
       label TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_work_calendar_group_date ON work_calendar(calendar_group, date);
