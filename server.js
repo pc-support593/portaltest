@@ -446,7 +446,9 @@ const TEXT_VERSION = 1; // 抽出・正規化のルールの版(attachment_texts
 /** 添付の文字を取り出して保存する。例外は投げない(取り出せなくても添付は成功させる。→ E001) */
 async function indexAttachmentText(id, ext, buf) {
   try {
-    const r = await extractAttachmentText(ext, buf);
+    const r = await extractAttachmentText(ext, buf); // 別スレッドで実行(時間切れ・メモリ超過は failed)
+    // 取り出している間に、添付や記事が削除されていたら保存しない(孤児を作らない)
+    if (!db.prepare('SELECT 1 FROM attachments WHERE id = ?').get(id)) return;
     db.prepare('INSERT OR REPLACE INTO attachment_texts (attachment_id, text, status, version) VALUES (?, ?, ?, ?)')
       .run(id, r.text, r.status, TEXT_VERSION);
   } catch (e) {
@@ -491,7 +493,7 @@ function makeSnippet(text, lowText, terms) {
 
 app.get('/api/guide', (req, res) => {
   me(req);
-  const q = normalizeForSearch(req.query.q);
+  const q = normalizeForSearch(String(req.query.q || '').slice(0, 200)); // 検索語は200字まで
   const terms = q.split(/[ 　]+/).filter(Boolean).slice(0, 8);
 
   const files = {};

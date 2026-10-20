@@ -21,7 +21,7 @@ const PREVIEW_ARTICLES = [
 // 障害・メンテナンスの案内(将来、管理画面で入力できるようにする。空文字なら表示しない)
 const GUIDE_NOTICE = '';
 
-const gb = { cat: '', kind: '', q: '', open: 0, categories: PREVIEW_CATEGORIES, kinds: ['手順', 'FAQ', '申請', 'お知らせ'], all: [], shown: [], preview: false };
+const gb = { error: false, cat: '', kind: '', q: '', open: 0, categories: PREVIEW_CATEGORIES, kinds: ['手順', 'FAQ', '申請', 'お知らせ'], all: [], shown: [], preview: false };
 const gel = id => document.getElementById(id);
 const catOf = id => gb.categories.find(c => c.id === id) || { label: '(分野なし)', icon: '📄', desc: '' };
 
@@ -33,11 +33,12 @@ async function fetchGuide(q) {
     return await api('/api/guide' + (q ? `?q=${encodeURIComponent(q)}` : ''));
   } catch (e) {
     console.error('システム案内の取得に失敗しました', e);
-    return null;
+    return null; // 失敗(「該当なし」とは区別して、画面にエラーを出す)
   }
 }
 
 function applyData(data) {
+  gb.error = !data; // 取得に失敗した
   if (!data) { gb.shown = []; return; }
   gb.categories = data.categories || PREVIEW_CATEGORIES;
   gb.kinds = data.kinds || gb.kinds;
@@ -82,6 +83,7 @@ function renderList() {
   const list = visibleArticles();
   const c = gb.cat ? catOf(gb.cat) : null;
   gel('gb-list-title').textContent = gb.q.trim() ? `「${gb.q.trim()}」の検索結果` : c ? c.label : 'よくある困りごと';
+  if (gb.error) { gel('gb-list').innerHTML = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#c05a5a">記事を取得できませんでした。通信を確認して、画面を読み込み直してください。</p>'; return; }
   gel('gb-list').innerHTML = list.length ? list.map(a => `
     <button type="button" data-article="${a.id}" class="hv-row" style="display:flex;flex-direction:column;gap:4px;padding:11px 20px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
       <span style="display:flex;align-items:center;gap:12px;width:100%">
@@ -165,6 +167,7 @@ const normalizeQ = s => String(s || '').normalize('NFKC').toLowerCase().trim();
   const data = await fetchGuide('');
   applyData(data);
   gb.all = gb.shown.slice();
+  if (!data) gb.error = true;
   if (data && !gb.all.length) { // 記事が1件も無い: 仮の記事を表示する
     gb.preview = true;
     gb.shown = PREVIEW_ARTICLES;

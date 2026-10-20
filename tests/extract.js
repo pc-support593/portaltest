@@ -22,13 +22,25 @@ const { check, done } = makeChecker('extract');
 
     // Office(本物のzip構造のダミー)
     const docx = await extractAttachmentText('docx', officeDummy('docx', '<w:document><w:body><w:p><w:r><w:t>パスワードの変更手順</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">A &amp; B ＭＦＡ</w:t></w:r></w:p></w:body></w:document>'));
-    check('docx: 段落の文字を取り出す(&amp;・全角英数は正規化)', docx.status === 'ok' && docx.text.includes('パスワードの変更手順') && docx.text.includes('A & B mfa'.toUpperCase().replace('MFA', 'MFA')) , docx.text);
+    check('docx: 段落の文字を取り出す(&amp;・全角英数は正規化)', docx.status === 'ok' && docx.text.includes('パスワードの変更手順') && docx.text.includes('A & B MFA'), docx.text);
     const pptx = await extractAttachmentText('pptx', officeDummy('pptx', '<p:sld><a:p><a:r><a:t>Teamsの使い方</a:t></a:r></a:p></p:sld>'));
     check('pptx: スライドの文字を取り出す', pptx.status === 'ok' && pptx.text.includes('Teamsの使い方'), pptx.text);
     const xlsx = await extractAttachmentText('xlsx', officeDummy('xlsx', '<sst><si><t>機器の購入申請</t></si><si><t>返却期限</t></si></sst>'));
     check('xlsx: セルの文字とシート名を取り出す', xlsx.status === 'ok' && xlsx.text.includes('機器の購入申請') && xlsx.text.includes('申請一覧'), xlsx.text);
     const stored = await extractAttachmentText('docx', createZip({ '[Content_Types].xml': '<Types/>', 'word/document.xml': '<w:p><w:t>無圧縮</w:t></w:p>' }, { stored: true }));
     check('docx: 無圧縮のzipも読める', stored.text.includes('無圧縮'));
+
+    // 壊れた・悪意のあるファイル: 処理時間が爆発しない(閉じタグの無い大量のタグ=ReDoS、展開後が巨大なzip)
+    const t0 = Date.now();
+    const redos = await extractAttachmentText('docx', officeDummy('docx', '<w:t>'.repeat(200000)));
+    check('閉じタグの無い大量のタグでも、短時間で終わる(以前は1.7KBで約1分止まった)', Date.now() - t0 < 5000 && redos.status !== undefined, `elapsed=${Date.now() - t0}ms`);
+    const bomb = createZip({ '[Content_Types].xml': '<Types/>', 'word/document.xml': '<w:p><w:t>' + 'あ'.repeat(10 * 1024 * 1024) + '</w:t></w:p>', 'word/header1.xml': '<w:p><w:t>' + 'い'.repeat(10 * 1024 * 1024) + '</w:t></w:p>', 'word/header2.xml': '<w:p><w:t>' + 'う'.repeat(10 * 1024 * 1024) + '</w:t></w:p>' });
+    const tb = Date.now();
+    const bombR = await extractAttachmentText('docx', bomb);
+    check('展開後が合計の上限(50MB)を超えるzipは、failed(メモリを使い切らない)', bombR.status === 'failed' || bombR.text.length <= 300000, `status=${bombR.status} ${Date.now() - tb}ms`);
+    const tt = Date.now();
+    const timedOut = await extractAttachmentText('docx', officeDummy('docx', '<w:p><w:t>x</w:t></w:p>'), { timeoutMs: 1 });
+    check('時間切れ(1ミリ秒)なら、スレッドごと中断して failed を返す', timedOut.status === 'failed' && Date.now() - tt < 3000, timedOut.status);
 
     // 取り出せないもの
     check('zipでないdocxは failed(例外を投げない)', (await extractAttachmentText('docx', Buffer.from('これはzipではない'))).status === 'failed');
