@@ -83,7 +83,7 @@ async function renderOrgChartTitlesTab() {
         <button id="oc-add-btn" type="button" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:7px 16px;font-size:12px;font-family:inherit;cursor:pointer">追加</button>
         <span id="oc-add-result" style="font-size:12px"></span>
       </div>
-      <span style="font-size:11px;color:#8a99a8">役職が「次長」なら④、「部長・取締役部長・室長・マネージャー」なら③の枠に載ります(「次長(兼任)」のように括弧の注記つきも同じ)。それ以外は⑤のメンバーに載ります(ゆめすみかの列は、③=常務取締役・④=マネージャーの人だけなので、追加した人は⑤に載ります)。</span>
+      <span style="font-size:11px;color:#8a99a8">階層(①〜④)は、MS365の「従業員の種類」の数字で決まります(通常のメンバー)。ここで追加する兼任の人は、役職が「次長」なら④、「部長・取締役部長・室長・マネージャー」なら③の枠に載ります(「次長(兼任)」のように括弧の注記つきも同じ)。それ以外は⑤のメンバーに載ります(ゆめすみかの列は、③=常務取締役・④=マネージャーの人だけなので、追加した人は⑤に載ります)。</span>
       ${extraRows.length ? `<div style="display:flex;flex-direction:column;gap:4px">${extraRows.map(r => `
         <div style="display:flex;gap:12px;align-items:center;font-size:12px"><span style="width:150px">${esc(r.dept)}</span><span style="flex:1">${esc((org.names || {})[r.email] || r.email)} — ${esc(r.title)}</span>
         <button type="button" data-del-extra data-del-email="${esc(r.email)}" data-del-dept="${esc(r.dept)}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 12px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button></div>`).join('')}</div>` : ''}

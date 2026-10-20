@@ -1,8 +1,8 @@
 // 組織図(2026-10-20・ユーザー依頼。テスト環境のみ・枠組みの試作)。
 // 枠組みは manual/template/組織図.xlsx を元にしたコード内の定数(ORG_CHART_FRAME)。人は既存の社員名簿のデータ(orgData.js の loadOrgData=
 // MS365のグループ・役職・従業員の種類)から自動で入れる。MS365に無い「課長以下の役職」と「兼任」は、管理画面の「組織図の役職」で手入力する(orgchart_titles)。
-// 階層: ①会長・社長 ②専務 ③室長・マネージャー・部長(取締役部長を含む) ④次長 ⑤課長を含むメンバー。
-// ゆめすみかは例外で、③=常務取締役 ④=マネージャー。⑤の役職は手入力。
+// 階層は、MS365の「従業員の種類」の数字で決める(2026-10-20・ユーザーが整理): 1=①会長・社長 2=②専務取締役 3=③室長・マネージャー・部長(取締役部長を含む) 4=④次長 記載なし=⑤課長を含むメンバー。
+// ゆめすみかは例外で、1=③常務取締役 2=④マネージャー。⑤の役職は手入力。
 'use strict';
 
 // 枠組み(部門の並びと、社員名簿のどのグループを入れるか)。Excelの組織図の並びに合わせる。groups は社員名簿の見出し(グループ名)
@@ -63,21 +63,26 @@ function buildOrgChart(org, manual) {
   (manual || []).forEach(r => man.set(`${String(r.email).toLowerCase()}|${r.dept || ''}`, r));
   const dispName = m => displayName(m.name || '');
   const groupMembers = (groups, label) => ((groups.find(g => g.dept === label) || {}).members) || [];
+  const empOf = m => String(m.empType == null ? '' : m.empType).trim(); // 従業員の種類(MS365の employeeType)
 
-  // ①会長・社長 ②専務: 役職の文字で判定する(社員名簿で従業員の種類=1の人は、役職が見出し名になる。「取締役会長」「代表取締役」「専務取締役」など表記が違っても拾う)。
-  // 部門のグループに入っている人でも、役職に「専務」を含めば②(部門の列には出さない)
+  // 階層は「従業員の種類」の数字で決める(2026-10-20・ユーザーが整理)。
+  //   吉村一建設側: 1=①会長・社長 / 2=②専務取締役 / 3=③室長・マネージャー・部長(取締役部長を含む) / 4=④次長 / 記載なし=⑤
+  //   ゆめすみか側(例外): 1=③常務取締役 / 2=④マネージャー / それ以外=⑤
+  // ①②は、どの部門のグループに入っている人でも拾い、部門の列には重ねて出さない(同じ人が複数のグループにいる場合は1回だけ)
   const topCand = [];
   left.forEach(g => g.members.forEach(m => topCand.push({ m, title: m.title || g.dept })));
-  const isL2 = t => String(t).includes('専務');
-  const isL1 = t => !isL2(t) && !String(t).includes('常務') && (String(t).includes('会長') || String(t).includes('社長') || String(t).startsWith('代表取締役'));
-  const pickTop = test => { const seenTop = new Set(); return topCand.filter(c => test(c.title)).filter(c => { const k = orgKeyOf(c.m); if (seenTop.has(k)) return false; seenTop.add(k); return true; }); };
-  const l1c = pickTop(isL1).sort((a, b) => (String(b.title).includes('会長') ? 1 : 0) - (String(a.title).includes('会長') ? 1 : 0)); // 会長を先に
-  const l2c = pickTop(isL2);
+  const pickTop = emp => {
+    const seenTop = new Set();
+    return topCand.filter(c => empOf(c.m) === emp).filter(c => { const k = orgKeyOf(c.m); if (seenTop.has(k)) return false; seenTop.add(k); return true; });
+  };
+  const l1c = pickTop('1').sort((a, b) => (String(b.title).includes('会長') ? 1 : 0) - (String(a.title).includes('会長') ? 1 : 0)); // 会長を先に
+  const l2c = pickTop('2');
   const topKeys = new Set([...l1c, ...l2c].map(c => orgKeyOf(c.m)));
   const chart = { l1: l1c.map(c => ({ name: dispName(c.m), title: c.title })), l2: l2c.map(c => ({ name: dispName(c.m), title: c.title })), columns: [] };
 
   for (const col of ORG_CHART_FRAME.columns) {
-    const pool = col.side === 'right' ? right : left;
+    const isRight = col.side === 'right';
+    const pool = isRight ? right : left;
     const effTitle = m => {
       const k = orgKeyOf(m);
       // 優先順: ①この部門を指定した手入力(兼任など) ②MS365の役職 ③部門を問わない手入力の既定(MS365に役職が無い人)
@@ -90,9 +95,20 @@ function buildOrgChart(org, manual) {
     const item = (m, extra) => ({ name: dispName(m), title: effTitle(m), key: orgKeyOf(m), ...extra });
     const out = { name: col.name, l3: [], l4: [], sections: [] };
     const seen = new Set(topKeys); // 同じ人を、同じ部門の中で二重に出さない(①②の人は部門の列には出さない)
+    const take = (m, list, fallbackTitle) => {
+      const k = orgKeyOf(m);
+      if (seen.has(k)) return;
+      seen.add(k);
+      list.push({ ...item(m), title: effTitle(m) || fallbackTitle });
+    };
 
-    if (col.l3Group) groupMembers(pool, col.l3Group).forEach(m => { out.l3.push({ ...item(m), title: effTitle(m) || col.l3Group.replace(/^ゆめすみか/, '') }); seen.add(orgKeyOf(m)); });
-    if (col.l4Group) groupMembers(pool, col.l4Group).forEach(m => { out.l4.push({ ...item(m), title: effTitle(m) || col.l4Group }); seen.add(orgKeyOf(m)); });
+    if (isRight) {
+      // ゆめすみか: 従業員の種類 1=③常務取締役・2=④マネージャー(どのグループにいても拾う)。種類を付ける前の運用に備え、従来の見出し(PERSON_OVERRIDES)の人も同じ枠に載せる
+      right.forEach(g => g.members.forEach(m => { if (empOf(m) === '1') take(m, out.l3, '常務取締役'); }));
+      if (col.l3Group) groupMembers(pool, col.l3Group).forEach(m => take(m, out.l3, '常務取締役'));
+      right.forEach(g => g.members.forEach(m => { if (empOf(m) === '2') take(m, out.l4, 'マネージャー'); }));
+      if (col.l4Group) groupMembers(pool, col.l4Group).forEach(m => take(m, out.l4, 'マネージャー'));
+    }
 
     col.sections.forEach(sec => {
       const members = [];
@@ -101,22 +117,24 @@ function buildOrgChart(org, manual) {
         if (seen.has(k)) return;
         seen.add(k);
         const it = item(m);
-        if (!col.l3Group && orgStartsWith(it.title, ORG_L3_TITLE)) out.l3.push(it);
-        else if (!col.l3Group && orgStartsWith(it.title, ORG_L4_TITLE)) out.l4.push(it);
+        const emp = empOf(m);
+        if (!isRight && emp === '3') out.l3.push(it);
+        else if (!isRight && emp === '4') out.l4.push(it);
         else members.push(it);
       }));
       out.sections.push({ label: sec.label, members });
     });
 
-    // 兼任・追加: この部門を指定した手入力の行のうち、まだ載っていない人を足す(MS365のグループに入っていない人)
+    // 兼任・追加: この部門を指定した手入力の行のうち、まだ載っていない人を足す(MS365のグループに入っていない人)。
+    // 手入力の行には従業員の種類が無いので、役職の文字(「次長」「部長」など。括弧の注記つきも可)で③④を判定する(ゆめすみかの列は⑤)
     (manual || []).filter(r => r.dept === col.name).forEach(r => {
       const k = String(r.email).toLowerCase();
       if (seen.has(k)) return;
       seen.add(k);
       const nm = names[k] || (k.startsWith('name:') ? k.slice(5) : k);
       const it = { name: displayName(nm), title: r.title, key: k, added: true };
-      if (!col.l3Group && orgStartsWith(it.title, ORG_L3_TITLE)) out.l3.push(it);
-      else if (!col.l3Group && orgStartsWith(it.title, ORG_L4_TITLE)) out.l4.push(it);
+      if (!isRight && orgStartsWith(it.title, ORG_L3_TITLE)) out.l3.push(it);
+      else if (!isRight && orgStartsWith(it.title, ORG_L4_TITLE)) out.l4.push(it);
       else if (out.sections.length) out.sections[0].members.push(it);
     });
 

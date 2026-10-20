@@ -126,20 +126,21 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('メールなしの手動メンバーは、氏名で「物流事業係」に出る(空白の違いは無視)', mtxt === '物流事業係:松岡 謙次/荒井 正義 | その他:荒井 正義/別 人', mtxt);
   check('メールなしの名簿メンバーに、メールありの同姓同名は紐づけない', !mg[0].rows.some(r => r.it.email === 'x@x.com'));
 
-  // 組織図(orgChart.js): 社員名簿のデータ+手入力の役職から、5階層の枠組みに振り分ける
+  // 組織図(orgChart.js): 従業員の種類の数字(1〜4)と手入力の役職から、5階層の枠組みに振り分ける(2026-10-20・ユーザーが整理)
+  //   吉村一建設側: 1=①会長・社長 / 2=②専務取締役 / 3=③室長・マネージャー・部長 / 4=④次長 / なし=⑤。ゆめすみか側: 1=③常務取締役 / 2=④マネージャー / それ以外=⑤
   const oc = load(['common.js', 'orgChart.js'], ['buildOrgChart', 'ORG_CHART_FRAME', 'orgChartPeopleForAdmin']);
   const P = (name, email, title = '', empType = '') => ({ name, email, title, empType, phone: '' });
   const ocOrg = {
     left: [
-      { dept: '会長', members: [P('友藤 昭弘', 'a@x.com', '取締役会長', '1')] }, { dept: '社長', members: [P('友藤 忠昭', 'b@x.com', '代表取締役', '1')] },
-      { dept: '専務', members: [P('東 伸考', 'c@x.com', '専務取締役', '1')] },
-      { dept: '購買部', members: [P('靍谷 佳憲', 'd@x.com', '取締役部長'), P('次長 太郎', 'e@x.com', '次長'), P('主任 花子', 'f@x.com'), P('課長 一郎', 'g@x.com'), P('一般 次郎', 'h@x.com'), P('', '', '')].slice(0, 5) },
+      { dept: '取締役会長', members: [P('友藤 昭弘', 'a@x.com', '取締役会長', '1')] }, { dept: '代表取締役', members: [P('友藤 忠昭', 'b@x.com', '代表取締役', '1')] },
+      { dept: '総務部', members: [P('東 伸考', 'c@x.com', '専務取締役', '2'), P('総務 一', 'z1@x.com')] }, // 専務は、どの部門のグループにいても②(種類=2)
+      { dept: '購買部', members: [P('靍谷 佳憲', 'd@x.com', '取締役部長', '3'), P('次長 太郎', 'e@x.com', '次長', '4'), P('主任 花子', 'f@x.com'), P('課長 一郎', 'g@x.com'), P('一般 次郎', 'h@x.com')] },
       { dept: '不動産部', members: [P('広沢 成男', 'i@x.com')] },
-      { dept: '物流事業係', members: [P('荒井 正義', '')] }, { dept: '工務部(本社)', members: [P('工務 太郎', 'j@x.com', '部長')] }
+      { dept: '物流事業係', members: [P('荒井 正義', '')] }, { dept: '工務部(本社)', members: [P('工務 太郎', 'j@x.com', '部長', '3')] }
     ],
     right: [
-      { dept: 'ゆめすみか常務取締役', members: [P('森下 直美', 'k@y.com', '常務取締役')] }, { dept: 'マネージャー', members: [P('大平 国弘', 'l@y.com', 'マネージャー')] },
-      { dept: '福田展示場', members: [P('店 長', 'm@y.com'), P('平 社員', 'n@y.com')] }
+      { dept: '常務取締役', members: [P('森下 直美', 'k@y.com', '常務取締役', '1')] }, { dept: 'マネージャー', members: [P('大平 国弘', 'l@y.com', 'マネージャー', '2')] },
+      { dept: '福田展示場', members: [P('店 長', 'm@y.com'), P('平 社員', 'n@y.com'), P('三 番', 'o@y.com', '', '3')] }
     ],
     names: { 'k@y.com': '森下 直美' }
   };
@@ -150,27 +151,21 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   ];
   const ch = oc.buildOrgChart(ocOrg, ocManual);
   const colOf = n => ch.columns.find(c => c.name === n);
-  check('組織図: ①会長・社長が1つの枠、②専務', ch.l1.map(p => p.name).join() === '友藤 昭弘,友藤 忠昭' && ch.l2.map(p => p.name).join() === '東 伸考');
-  check('組織図: 購買部の③は取締役部長(MS365の役職を、手入力の既定より優先)、④は次長', colOf('購買部').l3.map(p => p.name + ':' + p.title).join() === '靍谷 佳憲:取締役部長' && colOf('購買部').l4.map(p => p.name).join() === '次長 太郎');
-  check('組織図: ⑤は手入力の役職順(課長→主任→役職なし)', colOf('購買部').sections[0].members.map(m => m.name + ':' + m.title).join() === '課長 一郎:課長,主任 花子:主任,一般 次郎:');
-  check('組織図: ゆめすみかは③=常務取締役・④=マネージャー、⑤は店長が先', colOf('㈱ゆめすみか').l3[0].title === '常務取締役' && colOf('㈱ゆめすみか').l4[0].name === '大平 国弘' && colOf('㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,');
-  check('組織図: 兼任(手入力で部門を指定)は、MS365のグループに無くても④に載る', colOf('不動産部').l4.map(p => p.name + ':' + p.title).join() === '森下 直美:次長(兼任)');
+  check('組織図: ①(従業員の種類1)=会長・社長が1つの枠(会長が先)、②(種類2)=専務取締役', ch.l1.map(p => p.name).join() === '友藤 昭弘,友藤 忠昭' && ch.l2.map(p => p.name + ':' + p.title).join() === '東 伸考:専務取締役');
+  check('組織図: ②の人は、いたグループ(総務部)の列には重ねて出さない', colOf('総務部').sections[0].members.map(m => m.name).join() === '総務 一' && colOf('総務部').l3.length === 0);
+  check('組織図: 購買部の③は種類3(MS365の役職を表示)、④は種類4', colOf('購買部').l3.map(p => p.name + ':' + p.title).join() === '靍谷 佳憲:取締役部長' && colOf('購買部').l4.map(p => p.name).join() === '次長 太郎');
+  check('組織図: ⑤(種類なし)は手入力の役職順(課長→主任→役職なし)', colOf('購買部').sections[0].members.map(m => m.name + ':' + m.title).join() === '課長 一郎:課長,主任 花子:主任,一般 次郎:');
+  check('組織図: ゆめすみかは③=種類1(常務取締役)・④=種類2(マネージャー)、⑤は店長が先。種類3以降は⑤', colOf('㈱ゆめすみか').l3[0].name === '森下 直美' && colOf('㈱ゆめすみか').l3[0].title === '常務取締役' && colOf('㈱ゆめすみか').l4[0].name === '大平 国弘' && colOf('㈱ゆめすみか').sections[0].members.map(m => m.name).join() === '店 長,平 社員,三 番');
+  check('組織図: 兼任(手入力で部門を指定)は、MS365のグループに無くても④に載る(手入力の行は役職の文字で判定)', colOf('不動産部').l4.map(p => p.name + ':' + p.title).join() === '森下 直美:次長(兼任)');
   check('組織図: メールの無い手動メンバー(荒井 正義)は氏名のキーで手入力の役職が付く', colOf('工務部').sections.find(s => s.label === '物流事業係').members[0].title === '主任');
-  check('組織図: 工務部の部長は③に載る', colOf('工務部').l3.map(p => p.name).join() === '工務 太郎');
-  // 役職の判定: 「部長代理」などは③に入らない・「店長代理」は「店長」より後ろ・「次長(兼任)」は④
-  const ocOrg2 = { left: [{ dept: '総務部', members: [P('部長 本人', 'p1@x.com', '部長'), P('代理 人', 'p2@x.com', '部長代理'), P('次長 兼', 'p3@x.com', '次長(兼任)'), P('マ 補', 'p4@x.com', 'マネージャー補佐')] }], right: [{ dept: '福田展示場', members: [P('代 理', 'q1@y.com', '店長代理'), P('店 長', 'q2@y.com', '店長'), P('係 長', 'q3@y.com', '係長')] }], names: {} };
-  const ch2 = oc.buildOrgChart(ocOrg2, []);
-  check('組織図: 「部長」「次長(兼任)」は③④・「部長代理」「マネージャー補佐」は⑤に回る', ch2.columns.find(c => c.name === '総務部').l3.map(p => p.name).join() === '部長 本人' && ch2.columns.find(c => c.name === '総務部').l4.map(p => p.name).join() === '次長 兼' && ch2.columns.find(c => c.name === '総務部').sections[0].members.map(p => p.name).join() === '代理 人,マ 補');
+  check('組織図: 工務部の部長(種類3)は③に載る', colOf('工務部').l3.map(p => p.name).join() === '工務 太郎');
+  // 従業員の種類が無ければ、役職が「部長」でも⑤(種類で決める)。「次長(兼任)」など括弧つきの手入力は、兼任の追加行だけ④に載る
+  const ch2 = oc.buildOrgChart({ left: [{ dept: '総務部', members: [P('部長 本人', 'p1@x.com', '部長'), P('代理 人', 'p2@x.com', '部長代理', '3')] }], right: [{ dept: '福田展示場', members: [P('代 理', 'q1@y.com', '店長代理'), P('店 長', 'q2@y.com', '店長'), P('係 長', 'q3@y.com', '係長')] }], names: {} }, []);
+  check('組織図: 従業員の種類の記載なしは、役職が「部長」でも⑤(階層は種類の数字で決まる)', ch2.columns.find(c => c.name === '総務部').l3.map(p => p.name).join() === '代理 人' && ch2.columns.find(c => c.name === '総務部').sections[0].members.map(p => p.name).join() === '部長 本人');
   check('組織図: ⑤の順は 店長→係長→店長代理(「店長代理」が「店長」と同じ順位にならない)', ch2.columns.find(c => c.name === '㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,係長,店長代理');
-
-  // ①②は役職の文字で判定する(見出し名が「会長」でなく「取締役会長」、「専務」でなく「専務取締役」でも拾う。部門のグループにいる専務も拾い、部門の列には出さない)
-  const ocOrg3 = { left: [
-    { dept: '取締役会長', members: [P('友藤 昭弘', 'a@x.com', '取締役会長', '1')] }, { dept: '代表取締役', members: [P('友藤 忠昭', 'b@x.com', '代表取締役', '1')] },
-    { dept: '総務部', members: [P('東 伸考', 'c@x.com', '専務取締役'), P('総務 一', 'd@x.com')] }, { dept: '購買部', members: [P('常務 一', 'e@x.com', '常務取締役')] }
-  ], right: [], names: {} };
-  const ch3 = oc.buildOrgChart(ocOrg3, []);
-  check('組織図: 「取締役会長」「代表取締役」は①(会長が先)、「専務取締役」は部門のグループにいても②', ch3.l1.map(p => p.name).join() === '友藤 昭弘,友藤 忠昭' && ch3.l2.map(p => p.name + ':' + p.title).join() === '東 伸考:専務取締役');
-  check('組織図: ②の人は部門の列に重ねて出さない・「常務取締役」は①②に入らない', !JSON.stringify(ch3.columns.find(c => c.name === '総務部')).includes('東 伸考') && ch3.columns.find(c => c.name === '総務部').sections[0].members.length === 1 && !ch3.l1.concat(ch3.l2).some(p => p.name === '常務 一'));
+  // 兼任の手入力の行(従業員の種類を持たない)は、役職の文字で③④を判定する。「部長代理」などは⑤
+  const chAdd = oc.buildOrgChart({ left: [], right: [], names: { 'a@x.com': '甲', 'b@x.com': '乙', 'c@x.com': '丙' } }, [{ email: 'a@x.com', dept: '購買部', title: '部長(兼任)', sort: 0 }, { email: 'b@x.com', dept: '購買部', title: '部長代理', sort: 0 }, { email: 'c@x.com', dept: '購買部', title: '次長', sort: 0 }]);
+  check('組織図: 兼任の追加行は、「部長(兼任)」=③・「次長」=④・「部長代理」=⑤', chAdd.columns.find(c => c.name === '購買部').l3.map(p => p.name).join() === '甲' && chAdd.columns.find(c => c.name === '購買部').l4.map(p => p.name).join() === '丙' && chAdd.columns.find(c => c.name === '購買部').sections[0].members.map(p => p.name).join() === '乙');
 
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 

@@ -105,15 +105,15 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('トップのメニューに「組織図」がある', await br.evaluate("!!document.querySelector('header a[href=\"organization-chart.html\"]')"));
     await br.open(`${sb.base}/organization-chart.html`, 1280);
     await br.evaluate(`(() => {
-      const P = (name, email, title) => ({ name, email, title: title || '', empType: '', phone: '' });
-      const org = { left: [{ dept: '会長', members: [P('友藤 昭弘', 'a@x.com')] }, { dept: '社長', members: [P('友藤 忠昭', 'b@x.com')] }, { dept: '専務', members: [P('東 伸考', 'c@x.com')] },
-        { dept: '総務部', members: [P('部長 一', 'd@x.com', '部長'), P('課長 二', 'e@x.com'), P('一般 三', 'f@x.com')] }], right: [], names: {} };
+      const P = (name, email, title, empType) => ({ name, email, title: title || '', empType: empType || '', phone: '' });
+      const org = { left: [{ dept: '会長', members: [P('友藤 昭弘', 'a@x.com', '', '1')] }, { dept: '社長', members: [P('友藤 忠昭', 'b@x.com', '', '1')] }, { dept: '専務', members: [P('東 伸考', 'c@x.com', '', '2')] },
+        { dept: '総務部', members: [P('部長 一', 'd@x.com', '部長', '3'), P('課長 二', 'e@x.com'), P('一般 三', 'f@x.com')] }], right: [], names: {} };
       renderOrgChart(buildOrgChart(org, [{ email: 'e@x.com', dept: '', title: '課長', sort: 0 }]));
     })()`);
     check('組織図: 部門の列が9つ・①会長社長/②専務の枠・③部長・⑤課長が描かれる', await br.evaluate("document.querySelectorAll('.oc-col').length === 9 && document.querySelector('.oc-l1').textContent.includes('友藤 昭弘') && document.querySelector('.oc-l1').textContent.includes('友藤 忠昭') && document.querySelector('.oc-l2').textContent.includes('東 伸考') && document.querySelector('.oc-l3').textContent.includes('部長 一') && document.querySelector('.oc-m .oc-title').textContent === '課長'"));
     await br.evaluate(`(() => {
-      const P = (name, email, title) => ({ name, email, title: title || '', empType: '', phone: '' });
-      const org = { left: [{ dept: '専務取締役', members: [P('東 伸考', 'c@x.com', '専務取締役')] }, { dept: '工務部(本社)', members: [P('本社 一', 'h1@x.com')] }, { dept: '工務部(平野)', members: [P('平野 一', 'h2@x.com')] }, { dept: '工務部(西宮)', members: [P('西宮 一', 'h3@x.com')] }], right: [], names: {} };
+      const P = (name, email, title, empType) => ({ name, email, title: title || '', empType: empType || '', phone: '' });
+      const org = { left: [{ dept: '専務取締役', members: [P('東 伸考', 'c@x.com', '専務取締役', '2')] }, { dept: '工務部(本社)', members: [P('本社 一', 'h1@x.com')] }, { dept: '工務部(平野)', members: [P('平野 一', 'h2@x.com')] }, { dept: '工務部(西宮)', members: [P('西宮 一', 'h3@x.com')] }], right: [], names: {} };
       renderOrgChart(buildOrgChart(org, []));
     })()`);
     check('組織図: 専務取締役が②の枠に出る', await br.evaluate("document.querySelector('.oc-l2') && document.querySelector('.oc-l2').textContent.includes('東 伸考')"));
