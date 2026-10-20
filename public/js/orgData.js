@@ -192,8 +192,9 @@ function buildGroups(users, priorityTitles, options) {
   users.forEach(u => {
     const person = PERSON_OVERRIDES[u.email.toLowerCase()];
     // 従業員の種類が「1」の人は、役職を組織名として扱いグループ側には入れない(役職が空なら表示しない)
-    const isHeading = headingTypes.includes(u.empType);
-    const key = (person && person.group) || (isHeading ? (u.title || (u.empType === '2' ? '専務取締役' : null)) : null);
+    // 種類2を見出しにするのは、役職に「専務」を含む人だけ(種類2を他の人に付けても、その人は部門のグループの中に残る。2026-10-20・レビュー指摘)
+    const isHeading = headingTypes.includes(u.empType) && (u.empType !== '2' || String(u.title || '').includes('専務'));
+    const key = (person && person.group) || (isHeading ? (u.title || null) : null);
     if (!key && isHeading) return;
     if (key) {
       if (!priorityBuckets.has(key)) {
