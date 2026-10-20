@@ -173,8 +173,11 @@ async function loadShiftTeamsData() {
     try {
       const r = await fetch('https://graph.microsoft.com/v1.0/users' +
         `?$select=id,displayName,surname,givenName,mail,department&$filter=${encodeURIComponent(`mail eq '${extra}'`)}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (r.ok) raw.push(...((await r.json()).value || []));
-      else console.error(`当番表の追加対象(${extra})の取得に失敗しました(HTTP ${r.status})`);
+      if (r.ok) {
+        const found = (await r.json()).value || [];
+        if (!found.length) console.warn(`当番表の追加対象(${extra})がMS365で見つかりませんでした(メールアドレスの設定を確認してください)`);
+        raw.push(...found);
+      } else console.error(`当番表の追加対象(${extra})の取得に失敗しました(HTTP ${r.status})`);
     } catch (e) {
       console.error(`当番表の追加対象(${extra})の取得に失敗しました`, e);
     }
