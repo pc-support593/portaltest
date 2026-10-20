@@ -50,6 +50,10 @@
   .oc-dropline { align-self: center; flex: 1 1 auto; min-height: 24px; width: 0; border-left: 2px dashed #9fbbdc; margin-top: 4px; }
   .oc-tiers { position: relative; align-self: stretch; margin-top: 14px; } /* 下の段(位置はJSで決める) */
   .oc-tier { position: absolute; display: flex; flex-direction: column; }
+  .oc-tier[data-kind=side] { width: 175px; }
+  .oc-tier[data-kind=side]::before { content: ''; position: absolute; left: calc(50% - 1px); top: -12px; width: 2px; height: 12px; background: #9fbbdc; }
+  .oc-sidebus { position: absolute; top: 0; height: 2px; background: #9fbbdc; }
+  .oc-tier[data-kind=side] .oc-tier-title { text-align: center; }
   .oc-tier-title { font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 5px 10px; }
   .oc-tier .oc-members { margin-top: 0; border-radius: 0 0 6px 6px; }
   .oc-section:first-child { border-left: none; padding-left: 0; }

@@ -197,8 +197,8 @@ function renderOrgChart(chart) {
   const tiers = [];
   const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length));
   if (sidesList.length) {
-    // 各部門を、展示場と同じ「区分(見出し+人の一覧)」として横に並べる。③④の人(役職つき)は、各区分の先頭に出す
-    tiers.push({ kind: 'side', anchor: 0, secs: sidesList.map(d => ({ label: d.name, members: [...d.l3, ...d.l4, ...d.sections.flatMap(s => s.members)] })) });
+    // 各部門は独立した枠(見出し+人の一覧)にし、間をあけて横に並べる(2026-10-20・ユーザー指示)。③④の人(役職つき)は、一覧の先頭に出す
+    sidesList.forEach(d => tiers.push({ kind: 'side', anchor: 0, name: d.name, secs: [{ label: '', members: [...d.l3, ...d.l4, ...d.sections.flatMap(s => s.members)] }] }));
   }
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
@@ -214,13 +214,19 @@ function renderOrgChart(chart) {
       ${idx === 0 && sidesList.length ? '<div class="oc-spine"></div>' : ''}
     </div>`;
   }).join('');
-  const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.map((t, i) => `
+  const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
     <div class="oc-tier" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}">
       ${t.name ? `<div class="oc-tier-title">${esc(t.name)}</div>` : ''}
       ${membersHtml(t.secs)}
     </div>`).join('')}</div>` : '';
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
+}
+
+/** 最初の列(カスタマーサポート室)の左端の位置(下の段の置き場所の左端からの距離) */
+function col0Left(chartEl, wrap) {
+  const col = chartEl.querySelector('.oc-col[data-col="0"]');
+  return col ? col.getBoundingClientRect().left - wrap.getBoundingClientRect().left : 0;
 }
 
 /** 下の段の位置を決める。左端は、元の部門の列の左端にそろえる(事業係などは、カスタマーサポート室の左の線の位置)。
@@ -231,19 +237,35 @@ function alignOrgChartTiers() {
   if (!wrap) return;
   const chartRect = chartEl.getBoundingClientRect();
   const placed = [];
+  let sideCursor = null; // 事業係などの独立した枠は、左から順に、間をあけて並べる
   wrap.querySelectorAll('.oc-tier').forEach(t => {
     const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.anchor}"]`);
     if (!col) return;
     const w = t.getBoundingClientRect().width, h = t.getBoundingClientRect().height;
     const offset = t.dataset.kind === 'side' ? 14 : 0; // 事業係などは、spine(列の左端から14px)の位置から
     const wantLeft = col.getBoundingClientRect().left - (wrap.getBoundingClientRect().left) + offset;
-    const left = Math.max(0, Math.min(wantLeft, Math.max(0, chartRect.width - w)));
-    let top = 0;
+    let left;
+    if (t.dataset.kind === 'side') { // 横に並べる(右にはみ出しても、図の中だけが横にスクロールする)
+      left = sideCursor == null ? Math.max(0, wantLeft) : sideCursor;
+      sideCursor = left + w + 14;
+    } else {
+      left = Math.max(0, Math.min(wantLeft, Math.max(0, chartRect.width - w)));
+    }
+    let top = t.dataset.kind === 'side' ? 12 : 0; // 事業係などは、上に12pxあけて、横線(oc-sidebus)から短い線でつなぐ
     placed.forEach(p => { if (left < p.left + p.w && p.left < left + w) top = Math.max(top, p.top + p.h + 8); });
     t.style.left = `${left}px`;
     t.style.top = `${top}px`;
-    placed.push({ left, w, top, h });
+    placed.push({ left, w, top, h, side: t.dataset.kind === 'side' });
   });
+  // 事業係などをつなぐ横線: カスタマーサポート室の左の線の位置から、最後の枠の中央まで
+  const bus = wrap.querySelector('.oc-sidebus');
+  const sides = placed.filter(p => p.side);
+  if (bus && sides.length) {
+    const first = col0Left(chartEl, wrap) + 14;
+    const lastCenter = sides[sides.length - 1].left + sides[sides.length - 1].w / 2;
+    bus.style.left = `${first}px`;
+    bus.style.width = `${Math.max(2, lastCenter - first)}px`;
+  }
   wrap.style.height = `${Math.max(0, ...placed.map(p => p.top + p.h))}px`;
 }
 
