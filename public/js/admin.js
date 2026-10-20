@@ -167,6 +167,18 @@ async function loadShiftTeamsData() {
     raw.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
   }
+  // @yoshimuraichi.com 以外から個別に対象に加える人(SHIFT_TEAM_EXTRA_EMAILS)。1人ずつ取得し、失敗しても他の一覧は出す
+  for (const extra of SHIFT_TEAM_EXTRA_EMAILS) {
+    if (raw.some(m => (m.mail || '').toLowerCase() === extra)) continue;
+    try {
+      const r = await fetch('https://graph.microsoft.com/v1.0/users' +
+        `?$select=id,displayName,surname,givenName,mail,department&$filter=${encodeURIComponent(`mail eq '${extra}'`)}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) raw.push(...((await r.json()).value || []));
+      else console.error(`当番表の追加対象(${extra})の取得に失敗しました(HTTP ${r.status})`);
+    } catch (e) {
+      console.error(`当番表の追加対象(${extra})の取得に失敗しました`, e);
+    }
+  }
   const resourceEmails = new Set([...ROOMS, ...YOSHIMURA_ROOMS, ...CARS].map(r => r.email.toLowerCase()));
   const people = raw
     .filter(m => m.mail && !resourceEmails.has(m.mail.toLowerCase()))

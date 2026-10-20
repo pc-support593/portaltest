@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages']);
+const c = load(['common.js'], ['displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -47,6 +47,11 @@ check('入社日: 入社日当日から表示する', c.isBeforeHireDate(key(now
 check('入社日: 明日入社はまだ非表示', c.isBeforeHireDate(key(new Date(now.getTime() + dayMs)) + 'T00:00:00Z') === true);
 check('入社日: 昨日入社は表示', c.isBeforeHireDate(key(new Date(now.getTime() - dayMs)) + 'T00:00:00Z') === false);
 check('jstDateKey: UTC 15:00 は日本の翌日', c.jstDateKey(new Date('2026-10-16T15:00:00Z')) === '2026-10-17');
+
+// 当番表・班の臨時交代の対象: @yoshimuraichi.com と、個別に加えた s-yamanaka@yumesumika.com だけ(他の @yumesumika.com は対象外)
+check('当番表の対象: yoshimuraichi.com は対象・s-yamanaka@yumesumika.com も対象(大文字小文字は区別しない)', c.isShiftTeamEligible('a-b@yoshimuraichi.com') && c.isShiftTeamEligible('s-yamanaka@yumesumika.com') && c.isShiftTeamEligible('S-Yamanaka@Yumesumika.com'));
+check('当番表の対象: 他の @yumesumika.com の人は対象外', !c.isShiftTeamEligible('k-ohira@yumesumika.com') && !c.isShiftTeamEligible(''));
+check('s-yamanaka@yumesumika.com の定休グループは、ドメインの既定(水曜定休)のまま', c.calendarGroupFor('s-yamanaka@yumesumika.com', '') === 'wednesday_off');
 
 // 検索: 機能が無効な環境では「出勤状況」を候補に出さない(整理案F)
 check('検索: キー未設定の環境では出勤状況が出ない', !c.searchPortalPages('出勤状況').some(p => p.url === 'attendance.html') && c.searchPortalPages('出勤').some(p => p.url === 'today-attendance.html'));

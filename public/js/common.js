@@ -154,8 +154,13 @@ function calendarGroupFor(email, department) {
     <本体・㈱来夢エンジニア・㈱ライトウエスト、すべて@yoshimuraichi.com>が対象。
     ㈱ゆめすみか<@yumesumika.com>は対象外) */
 function isShiftTeamEligible(email) {
-  return String(email || '').toLowerCase().endsWith('@yoshimuraichi.com');
+  const e = String(email || '').toLowerCase();
+  return e.endsWith('@yoshimuraichi.com') || SHIFT_TEAM_EXTRA_EMAILS.includes(e);
 }
+
+/** 当番表・班の臨時交代の対象に、@yoshimuraichi.com 以外から個別に加える人(ユーザー指示 2026-10-20: s-yamanaka@yumesumika.com のみ)。
+    メールアドレス(小文字)の完全一致。定休グループは、ドメインの既定(@yumesumika.com=水曜定休)のまま(calendarGroupFor) */
+const SHIFT_TEAM_EXTRA_EMAILS = ['s-yamanaka@yumesumika.com'];
 
 /** ポータル内ページ検索(タイトル・キーワードの部分一致) */
 function searchPortalPages(q) {
