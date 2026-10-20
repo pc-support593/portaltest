@@ -182,6 +182,8 @@ function buildGroups(users, priorityTitles, options) {
   const opts = options || {};
   const deptsOf = opts.deptsOf || (() => []); // その人が表示される見出し(グループ名)の配列。複数所属なら全てに表示
   const deptOrder = opts.deptOrder || null;
+  // 役職を見出しにして、一番上に出す人の「従業員の種類」。既定は1だけ。吉村一建設側は 1(会長・社長)と 2(専務取締役) (2026-10-20・ユーザー指示。従業員の種類を整理して専務を2にしたところ、グループに入っていない専務が名簿から消えたため)
+  const headingTypes = opts.headingTypes || ['1'];
 
   const priorityBuckets = new Map();
   const overrideOrder = []; // PERSON_OVERRIDES由来の見出しは priorityTitles の後ろ・出現順に追加
@@ -190,8 +192,9 @@ function buildGroups(users, priorityTitles, options) {
   users.forEach(u => {
     const person = PERSON_OVERRIDES[u.email.toLowerCase()];
     // 従業員の種類が「1」の人は、役職を組織名として扱いグループ側には入れない(役職が空なら表示しない)
-    const key = (person && person.group) || (u.empType === '1' ? (u.title || null) : null);
-    if (!key && u.empType === '1') return;
+    const isHeading = headingTypes.includes(u.empType);
+    const key = (person && person.group) || (isHeading ? (u.title || (u.empType === '2' ? '専務取締役' : null)) : null);
+    if (!key && isHeading) return;
     if (key) {
       if (!priorityBuckets.has(key)) {
         priorityBuckets.set(key, []);
@@ -224,7 +227,12 @@ function buildGroups(users, priorityTitles, options) {
     if (ib === -1) return -1;
     return ia - ib;
   });
-  const priorityKeys = [...priorityTitles.filter(t => priorityBuckets.has(t)), ...overrideOrder];
+  let priorityKeys = [...priorityTitles.filter(t => priorityBuckets.has(t)), ...overrideOrder];
+  if (opts.headingRank) { // 見出しの並び: 会長→社長(代表取締役)→専務…(役職の文字の順。同じなら従業員の種類の小さい順。それ以外は出現順)
+    const rank = key => { const i = opts.headingRank.findIndex(w => key.includes(w)); return i < 0 ? opts.headingRank.length : i; };
+    const minType = key => Math.min(...priorityBuckets.get(key).map(m => Number(m.empType) || 99));
+    priorityKeys = priorityKeys.map((k, i) => ({ k, i })).sort((a, b) => rank(a.k) - rank(b.k) || minType(a.k) - minType(b.k) || a.i - b.i).map(x => x.k);
+  }
   const priorityGroups = priorityKeys.map(key => ({ dept: key, members: priorityBuckets.get(key).sort(collator) }));
   const deptKeys = deptOrder
     ? deptOrder.filter(d => byDept.has(d))
@@ -264,7 +272,7 @@ async function loadOrgData() {
   };
   const rightDepts = u => (u.email ? (rightMaps.map[u.email.toLowerCase()] || []) : (u.dept ? [u.dept] : []));
   return {
-    left: buildGroups([...left, ...manualLeft], PRIORITY_TITLES, { deptsOf: leftDepts, deptOrder: LEFT_GROUP_ORDER }),
+    left: buildGroups([...left, ...manualLeft], PRIORITY_TITLES, { deptsOf: leftDepts, deptOrder: LEFT_GROUP_ORDER, headingTypes: ['1', '2'], headingRank: ['会長', '社長', '代表取締役', '専務'] }),
     right: buildGroups([...right, ...manualRight], [], { deptsOf: rightDepts, deptOrder: YUMESUMIKA_GROUP_ORDER }),
     failedLeft: leftMaps.failed,
     failedRight: rightMaps.failed,

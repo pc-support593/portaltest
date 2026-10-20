@@ -101,6 +101,13 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('buildGroups: 従業員の種類1は役職が見出しで先頭', gs[0].dept === '会長' && gs[0].members.length === 1, JSON.stringify(gs.map(g => g.dept)));
   check('buildGroups: 部門内は種類の数字の小さい順→五十音順', gs[1].members.map(m => m.name).join() === 'ヤマ,ゼータ,アオキ', gs[1].members.map(m => m.name).join());
   check('buildGroups: 複数部門の人は両方に出る', gs[2].dept === '総務部' && gs[2].members[0].name === 'ゼータ');
+  // 社員名簿: 吉村一建設側は従業員の種類 1(会長・社長)と 2(専務取締役)を、役職の見出しとして一番上に出す(グループに入っていない専務も消えない)
+  const hp = [u('t-zeta@yoshimuraichi.com', '専務 東', '2', '専務取締役'), u('a-aoki@yoshimuraichi.com', '社長 友', '1', '代表取締役'), u('k-kato@yoshimuraichi.com', '会長 友', '1', '取締役会長'), u('s-sato@yoshimuraichi.com', '営業 一')];
+  const hpDepts = { 's-sato@yoshimuraichi.com': ['営業部'] };
+  const hg = o.buildGroups(hp, ['会長', '社長', '専務'], { deptsOf: x => hpDepts[x.email] || [], deptOrder: ['営業部'], headingTypes: ['1', '2'], headingRank: ['会長', '社長', '代表取締役', '専務'] });
+  check('社員名簿: 従業員の種類1・2は役職の見出しで一番上(取締役会長→代表取締役→専務取締役の順)。グループに入っていない専務も出る', hg.map(g => g.dept).join() === '取締役会長,代表取締役,専務取締役,営業部', hg.map(g => g.dept).join());
+  const hgDefault = o.buildGroups(hp, ['会長', '社長', '専務'], { deptsOf: x => hpDepts[x.email] || [], deptOrder: ['営業部'] });
+  check('社員名簿: 見出しの種類を指定しない既定(ゆめすみか側など)は、従来どおり種類1だけ(種類2はグループに入っていなければ出ない)', hgDefault.map(g => g.dept).sort().join() === ['代表取締役', '取締役会長', '営業部'].sort().join() && !hgDefault.some(g => g.dept === '専務取締役'));
   check('LEFT_GROUP_ORDER: 総務部が一番下', o.LEFT_GROUP_ORDER[o.LEFT_GROUP_ORDER.length - 1] === '総務部');
   const sp = o.splitByCompany([u('x@yumesumika.com', 'ゆめ'), u('y@yoshimuraichi.com', '吉村'), u('n-morishita@yoshimuraichi.com', '森下'), u('s-tada@yumesumika.com', '多田')]);
   check('splitByCompany: ドメインで左右(個別指定が優先)', sp.right.map(x => x.name).join() === 'ゆめ,森下' && sp.left.map(x => x.name).join() === '吉村,多田', JSON.stringify(sp));
