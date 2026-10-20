@@ -70,7 +70,7 @@ async function renderOrgChartTitlesTab() {
   // 兼任・追加の入力欄(MS365のグループに入っていない部門に、別の部門の人を載せる)と、名簿にいない行の一覧
   const peopleOptions = Object.entries(org.names || {}).sort((a, b) => a[1].localeCompare(b[1], 'ja'))
     .map(([email, name]) => `<option value="${esc(email)}">${esc(name)}(${esc(email)})</option>`).join('');
-  const deptOptions = ORG_CHART_FRAME.columns.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  const deptOptions = [...ORG_CHART_FRAME.columns, ...(ORG_CHART_FRAME.sideDepts || [])].map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   const extraRows = manual.filter(r => r.dept !== '');
   const orphans = partial ? [] : manual.filter(r => !known.has(r.email)); // グループの取得に失敗したときは、名簿にいないかの判定をしない(有効な行を消してしまわないため)
   const extraHtml = `

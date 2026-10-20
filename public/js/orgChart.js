@@ -13,9 +13,7 @@ const ORG_CHART_FRAME = {
     { name: 'リフォーム部', side: 'left', sections: [{ label: '', groups: ['リフォーム部'] }] },
     {
       name: '工務部', side: 'left', sections: [
-        { label: '本社', groups: ['工務部(本社)'] }, { label: '平野', groups: ['工務部(平野)'] }, { label: '西宮', groups: ['工務部(西宮)'] },
-        { label: 'エクステリア事業係', groups: ['エクステリア事業係'] }, { label: '物流事業係', groups: ['物流事業係'] },
-        { label: 'フレミング大工', groups: ['フレミング大工'] }, { label: '㈱来夢エンジニア', groups: ['来夢エンジニア'] }
+        { label: '本社', groups: ['工務部(本社)'] }, { label: '平野', groups: ['工務部(平野)'] }, { label: '西宮', groups: ['工務部(西宮)'] }
       ]
     },
     { name: '購買部', side: 'left', sections: [{ label: '', groups: ['購買部'] }] },
@@ -29,6 +27,13 @@ const ORG_CHART_FRAME = {
     { name: '建築営業部', side: 'left', sections: [{ label: '', groups: ['建築営業部'] }] },
     { name: '設計企画部', side: 'left', sections: [{ label: '', groups: ['設計企画部'] }] },
     { name: '総務部', side: 'left', sections: [{ label: '', groups: ['総務部'] }] }
+  ],
+  // 工務部の配下ではなく、他の部門と同じ立ち位置(専務の配下)の部門。横に長くなるため、カスタマーサポート室の左に線を出して下へ伸ばし、そこに縦に並べる(2026-10-20・ユーザー指示)
+  sideDepts: [
+    { name: 'エクステリア事業係', side: 'left', sections: [{ label: '', groups: ['エクステリア事業係'] }] },
+    { name: '外壁・2×4事業課(㈱来夢エンジニア)', side: 'left', sections: [{ label: '', groups: ['来夢エンジニア'] }] },
+    { name: '物流事業係', side: 'left', sections: [{ label: '', groups: ['物流事業係'] }] },
+    { name: 'フレミング大工', side: 'left', sections: [{ label: '', groups: ['フレミング大工'] }] }
   ]
 };
 
@@ -83,7 +88,7 @@ function buildOrgChart(org, manual) {
   const topKeys = new Set([...l1c, ...l2c].map(c => orgKeyOf(c.m)));
   const chart = { l1: l1c.map(c => ({ name: dispName(c.m), title: c.title })), l2: l2c.map(c => ({ name: dispName(c.m), title: c.title })), columns: [] };
 
-  for (const col of ORG_CHART_FRAME.columns) {
+  const buildCol = col => {
     const isRight = col.side === 'right';
     const pool = isRight ? right : left;
     const effTitle = m => {
@@ -148,8 +153,10 @@ function buildOrgChart(org, manual) {
         .sort((a, b) => orgRank(a.m.title) - orgRank(b.m.title) || sortOf(a.m) - sortOf(b.m) || a.i - b.i).map(x => x.m);
     });
     function sortOf(m) { const r = man.get(`${m.key}|${col.name}`) || man.get(`${m.key}|`); return r ? Number(r.sort) || 0 : 0; }
-    chart.columns.push(out);
-  }
+    return out;
+  };
+  chart.columns = ORG_CHART_FRAME.columns.map(buildCol);
+  chart.sides = (ORG_CHART_FRAME.sideDepts || []).map(buildCol); // カスタマーサポート室の左の線にぶら下げる部門
   return chart;
 }
 
@@ -157,7 +164,7 @@ function buildOrgChart(org, manual) {
 function orgChartPeopleForAdmin(org, manual) {
   const chart = buildOrgChart(org, manual);
   const rows = [];
-  chart.columns.forEach(col => {
+  [...chart.columns, ...chart.sides].forEach(col => {
     col.sections.forEach(sec => sec.members.forEach(m => rows.push({ dept: col.name, section: sec.label, key: m.key, name: m.name, title: m.title, added: !!m.added })));
   });
   return rows;
@@ -186,18 +193,27 @@ function renderOrgChart(chart) {
           ${s.members.map(m => ocPersonHtml(m, 'oc-m' + (m.added ? ' oc-added' : ''))).join('')}
         </div>`).join('')}
       </div>`;
+  // カスタマーサポート室の左に線(spine)を出して下へ伸ばし、そこへ事業係などの部門を縦に並べる(横幅を広げないため)
+  const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length));
+  const sidesHtml = sidesList.length ? `<div class="oc-spine"></div><div class="oc-side">${sidesList.map(d => `
+      <div class="oc-side-dept">
+        <div class="oc-dept oc-dept-sm">${esc(d.name)}</div>
+        ${box(d.l3, 'oc-l3')}${box(d.l4, 'oc-l4')}
+        ${d.sections.some(s => s.members.length) ? membersHtml(d.sections.filter(s => s.members.length)) : ''}
+      </div>`).join('')}</div>` : '';
   const tiers = []; // 下の段に置く部門(枠組みの lowerTier=true。ゆめすみかの展示場など)
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
     if (lower && secs.length) tiers.push({ idx, name: col.name, secs });
     return `
-    <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}" data-col="${idx}">
+    <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}${idx === 0 && sidesHtml ? ' oc-has-side' : ''}" data-col="${idx}">
       <div class="oc-dept">${esc(col.name)}</div>
       ${box(col.l3, 'oc-l3')}
       ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
       ${box(col.l4, 'oc-l4')}
       ${lower && secs.length ? '<div class="oc-dropline"></div>' : (secs.length ? membersHtml(secs) : '')}
+      ${idx === 0 ? sidesHtml : ''}
     </div>`;
   }).join('');
   // 下の段: 他の部門の人の一覧にかぶらないよう、すべての列の下に、横に並べて置く(横幅を広げないため)
@@ -228,8 +244,9 @@ function alignOrgChartTiers() {
 function setupOrgChartPrint() {
   const chartEl = ocEl('oc-chart');
   window.addEventListener('beforeprint', () => {
-    const avail = 1500; // A3横(420mm≒1587px)から余白を引いた幅
-    chartEl.style.zoom = String(Math.min(1, avail / Math.max(1, chartEl.scrollWidth)));
+    // A3横(420×297mm≒1587×1123px)から余白と見出しを引いた大きさに、幅と高さの両方で収める
+    const availW = 1500, availH = 980;
+    chartEl.style.zoom = String(Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight)));
     alignOrgChartTiers();
   });
   window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; });
