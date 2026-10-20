@@ -1,0 +1,127 @@
+// 管理画面「組織図の役職」タブ(2026-10-20)。MS365に無い課長以下の役職と、兼任(MS365のグループに入っていない部門への追加)を手入力する。
+// 表示の元になる人・部門は、組織図のページと同じ(orgData.js の loadOrgData + orgChart.js の buildOrgChart)。保存先は orgchart_titles。
+// admin.js の renderTable から renderOrgChartTitlesTab() が呼ばれる(ベスポーク管理タブ)。
+'use strict';
+
+let orgTitlesCache = null; // { org, manual:[{email,dept,title,sort}] }
+
+async function loadOrgTitlesData(force) {
+  if (orgTitlesCache && !force) return orgTitlesCache;
+  const [org, manual] = await Promise.all([loadOrgData(), api('/api/orgchart-titles')]);
+  orgTitlesCache = { org, manual };
+  return orgTitlesCache;
+}
+
+function orgManualFind(manual, key, dept) {
+  return manual.find(r => r.email === key && r.dept === dept) || null;
+}
+
+async function saveOrgTitle(email, dept, title, sort) {
+  await api('/api/admin/orgchart-titles', { method: 'PUT', body: { email, dept, title, sort } });
+  const m = orgTitlesCache.manual;
+  const i = m.findIndex(r => r.email === email && r.dept === dept);
+  if (!title) { if (i >= 0) m.splice(i, 1); return; }
+  if (i >= 0) { m[i].title = title; m[i].sort = sort; } else m.push({ email, dept, title, sort });
+}
+
+async function renderOrgChartTitlesTab() {
+  document.getElementById('table-head').innerHTML = `
+    <span style="font-size:12px;color:#8a99a8;width:150px;flex-shrink:0">部門</span>
+    <span style="font-size:12px;color:#8a99a8;flex:1;min-width:0">氏名</span>
+    <span style="font-size:12px;color:#8a99a8;width:200px;flex-shrink:0">役職(手入力。課長・係長・主任など)</span>
+    <span style="font-size:12px;color:#8a99a8;width:70px;flex-shrink:0">表示順</span>`;
+  const body = document.getElementById('table-body');
+  body.innerHTML = '<div style="padding:32px 24px;text-align:center;font-size:13px;color:#8a99a8">読み込み中…</div>';
+  let data;
+  try {
+    data = await loadOrgTitlesData(false);
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</div>`;
+    return;
+  }
+  if (state.tab !== 'orgchart-titles') return; // 取得中にタブが切り替わっていたら描き替えない
+
+  const { org, manual } = data;
+  const people = orgChartPeopleForAdmin(org, manual);
+  const known = new Set(Object.keys(org.names || {}));
+  [...(org.left || []), ...(org.right || [])].forEach(g => g.members.forEach(m => known.add(orgKeyOf(m))));
+
+  const inputStyle = 'padding:6px 8px;font-size:12px';
+  const rowHtml = p => {
+    const def = orgManualFind(manual, p.key, '');
+    const own = orgManualFind(manual, p.key, p.dept);
+    const cur = own || def;
+    const ms365 = !cur && p.title ? p.title : ''; // MS365にある役職(手入力が無いとき、参考に表示)
+    return `
+    <div data-row="${esc(p.key)}" data-dept="${esc(own ? p.dept : '')}" style="display:flex;align-items:center;gap:24px;padding:10px 24px;border-bottom:1px solid #f2f5f9">
+      <span style="font-size:12px;width:150px;flex-shrink:0;color:#6b7d8f">${esc(p.dept)}${p.section ? ` / ${esc(p.section)}` : ''}</span>
+      <span style="font-size:13px;flex:1;min-width:0;color:#1c2b3a">${esc(p.name)}${p.added ? ' <span style="font-size:11px;color:#8a99a8">(兼任・追加)</span>' : ''}${ms365 ? ` <span style="font-size:11px;color:#8a99a8">MS365の役職: ${esc(ms365)}</span>` : ''}</span>
+      <span style="width:200px;flex-shrink:0;display:flex;align-items:center;gap:6px">
+        <input class="in-input" data-title maxlength="30" value="${esc(cur ? cur.title : '')}" placeholder="例: 課長" style="${inputStyle};width:130px">
+        <span data-result style="font-size:12px;white-space:nowrap"></span>
+      </span>
+      <input class="in-input" data-sort type="number" min="0" max="9999" value="${esc(cur ? cur.sort : 0)}" style="${inputStyle};width:70px;flex-shrink:0">
+    </div>`;
+  };
+
+  // 兼任・追加の入力欄(MS365のグループに入っていない部門に、別の部門の人を載せる)と、名簿にいない行の一覧
+  const peopleOptions = Object.entries(org.names || {}).sort((a, b) => a[1].localeCompare(b[1], 'ja'))
+    .map(([email, name]) => `<option value="${esc(email)}">${esc(name)}(${esc(email)})</option>`).join('');
+  const deptOptions = ORG_CHART_FRAME.columns.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  const extraRows = manual.filter(r => r.dept !== '');
+  const orphans = manual.filter(r => !known.has(r.email));
+  const extraHtml = `
+    <div style="padding:16px 24px;border-bottom:1px solid #e8edf3;background:#f7fafd;display:flex;flex-direction:column;gap:10px">
+      <span style="font-size:13px;font-weight:700;color:#1c2b3a">兼任・追加(MS365のグループに入っていない部門に、人を追加で載せる)</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select class="in-input" id="oc-add-person" style="${inputStyle};max-width:260px">${peopleOptions}</select>
+        <select class="in-input" id="oc-add-dept" style="${inputStyle}">${deptOptions}</select>
+        <input class="in-input" id="oc-add-title" maxlength="30" placeholder="役職(例: 次長(兼任))" style="${inputStyle};width:160px">
+        <button id="oc-add-btn" type="button" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:7px 16px;font-size:12px;font-family:inherit;cursor:pointer">追加</button>
+        <span id="oc-add-result" style="font-size:12px"></span>
+      </div>
+      <span style="font-size:11px;color:#8a99a8">役職が「次長」で始まれば④、「部長・室長・マネージャー」で始まれば③の枠に載ります。それ以外は⑤のメンバーに載ります。</span>
+      ${extraRows.length ? `<div style="display:flex;flex-direction:column;gap:4px">${extraRows.map(r => `
+        <div style="display:flex;gap:12px;align-items:center;font-size:12px"><span style="width:150px">${esc(r.dept)}</span><span style="flex:1">${esc((org.names || {})[r.email] || r.email)} — ${esc(r.title)}</span>
+        <button type="button" data-del-extra="${esc(r.email)}|${esc(r.dept)}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 12px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button></div>`).join('')}</div>` : ''}
+      ${orphans.length ? `<div style="font-size:12px;color:#c05a5a">名簿に見つからない行があります(退職・名前の変更など): ${orphans.map(r => `${esc(r.email)}(${esc(r.dept || '既定')}・${esc(r.title)}) <button type="button" data-del-extra="${esc(r.email)}|${esc(r.dept)}" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:2px 10px;cursor:pointer;font-size:11px;font-family:inherit">削除</button>`).join(' ・ ')}</div>` : ''}
+    </div>`;
+
+  body.innerHTML = extraHtml + (people.length ? people.map(rowHtml).join('') : '<div style="padding:24px;font-size:13px;color:#8a99a8">表示できる人がいません</div>');
+
+  body.querySelectorAll('[data-row]').forEach(row => {
+    const key = row.dataset.row;
+    const dept = row.dataset.dept; // '' = 部門を問わない既定の役職として保存
+    const titleEl = row.querySelector('[data-title]');
+    const sortEl = row.querySelector('[data-sort]');
+    const resultEl = row.querySelector('[data-result]');
+    const save = async () => {
+      resultEl.textContent = '保存中…'; resultEl.style.color = '#8a99a8';
+      try {
+        await saveOrgTitle(key, dept, titleEl.value.trim(), Number(sortEl.value) || 0);
+        resultEl.textContent = '✓'; resultEl.style.color = '#2e7d52';
+      } catch (e) {
+        resultEl.textContent = `✗ ${e.message}`; resultEl.style.color = '#c05a5a';
+      }
+    };
+    titleEl.addEventListener('change', save);
+    sortEl.addEventListener('change', save);
+  });
+  body.querySelectorAll('[data-del-extra]').forEach(b => b.addEventListener('click', async () => {
+    const [email, dept] = b.dataset.delExtra.split('|');
+    if (!confirm('この行を削除しますか?')) return;
+    try { await saveOrgTitle(email, dept, '', 0); renderOrgChartTitlesTab(); } catch (e) { alert(e.message); }
+  }));
+  const addBtn = document.getElementById('oc-add-btn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const resultEl = document.getElementById('oc-add-result');
+    const email = document.getElementById('oc-add-person').value;
+    const dept = document.getElementById('oc-add-dept').value;
+    const title = document.getElementById('oc-add-title').value.trim();
+    if (!email || !title) { resultEl.textContent = '人と役職を入力してください'; resultEl.style.color = '#c05a5a'; return; }
+    try {
+      await saveOrgTitle(email, dept, title, 0);
+      renderOrgChartTitlesTab();
+    } catch (e) { resultEl.textContent = `✗ ${e.message}`; resultEl.style.color = '#c05a5a'; }
+  });
+}

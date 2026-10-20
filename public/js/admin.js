@@ -143,7 +143,8 @@ const state = {
 const BESPOKE_TABS = [
   { id: 'shift-teams', label: '当番表(A/B/C班)' },
   { id: 'shift-swaps', label: '班の臨時交代' },
-  { id: 'work-calendar-import', label: '年間カレンダー取込' }
+  { id: 'work-calendar-import', label: '年間カレンダー取込' },
+  { id: 'orgchart-titles', label: '組織図の役職' } // 課長以下の役職・兼任の手入力(adminOrgChart.js。2026-10-20)
 ];
 function isBespokeTab(tab) { return BESPOKE_TABS.some(t => t.id === tab); }
 
@@ -434,6 +435,7 @@ function renderTabs() {
 function renderTable() {
   if (state.tab === 'shift-teams') { renderShiftTeamsTab(); return; }
   if (state.tab === 'shift-swaps') { renderShiftSwapsTab(); return; }
+  if (state.tab === 'orgchart-titles') { renderOrgChartTitlesTab(); return; }
   if (state.tab === 'work-calendar-import') { renderCalendarImportTab(); return; }
   const cfg = CONFIG[state.tab];
   const items = state.data[state.tab] || [];

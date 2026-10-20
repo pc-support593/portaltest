@@ -126,6 +126,39 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('メールなしの手動メンバーは、氏名で「物流事業係」に出る(空白の違いは無視)', mtxt === '物流事業係:松岡 謙次/荒井 正義 | その他:荒井 正義/別 人', mtxt);
   check('メールなしの名簿メンバーに、メールありの同姓同名は紐づけない', !mg[0].rows.some(r => r.it.email === 'x@x.com'));
 
+  // 組織図(orgChart.js): 社員名簿のデータ+手入力の役職から、5階層の枠組みに振り分ける
+  const oc = load(['common.js', 'orgChart.js'], ['buildOrgChart', 'ORG_CHART_FRAME', 'orgChartPeopleForAdmin']);
+  const P = (name, email, title = '', empType = '') => ({ name, email, title, empType, phone: '' });
+  const ocOrg = {
+    left: [
+      { dept: '会長', members: [P('友藤 昭弘', 'a@x.com', '取締役会長', '1')] }, { dept: '社長', members: [P('友藤 忠昭', 'b@x.com', '代表取締役', '1')] },
+      { dept: '専務', members: [P('東 伸考', 'c@x.com', '専務取締役', '1')] },
+      { dept: '購買部', members: [P('靍谷 佳憲', 'd@x.com', '取締役部長'), P('次長 太郎', 'e@x.com', '次長'), P('主任 花子', 'f@x.com'), P('課長 一郎', 'g@x.com'), P('一般 次郎', 'h@x.com'), P('', '', '')].slice(0, 5) },
+      { dept: '不動産部', members: [P('広沢 成男', 'i@x.com')] },
+      { dept: '物流事業係', members: [P('荒井 正義', '')] }, { dept: '工務部(本社)', members: [P('工務 太郎', 'j@x.com', '部長')] }
+    ],
+    right: [
+      { dept: 'ゆめすみか常務取締役', members: [P('森下 直美', 'k@y.com', '常務取締役')] }, { dept: 'マネージャー', members: [P('大平 国弘', 'l@y.com', 'マネージャー')] },
+      { dept: '福田展示場', members: [P('店 長', 'm@y.com'), P('平 社員', 'n@y.com')] }
+    ],
+    names: { 'k@y.com': '森下 直美' }
+  };
+  const ocManual = [
+    { email: 'g@x.com', dept: '', title: '課長', sort: 0 }, { email: 'f@x.com', dept: '', title: '主任', sort: 0 },
+    { email: 'k@y.com', dept: '不動産部', title: '次長(兼任)', sort: 0 }, { email: 'name:荒井正義', dept: '', title: '主任', sort: 0 },
+    { email: 'm@y.com', dept: '', title: '店長', sort: 0 }, { email: 'd@x.com', dept: '', title: '無視される', sort: 0 }
+  ];
+  const ch = oc.buildOrgChart(ocOrg, ocManual);
+  const colOf = n => ch.columns.find(c => c.name === n);
+  check('組織図: ①会長・社長が1つの枠、②専務', ch.l1.map(p => p.name).join() === '友藤 昭弘,友藤 忠昭' && ch.l2.map(p => p.name).join() === '東 伸考');
+  check('組織図: 購買部の③は取締役部長(MS365の役職を、手入力の既定より優先)、④は次長', colOf('購買部').l3.map(p => p.name + ':' + p.title).join() === '靍谷 佳憲:取締役部長' && colOf('購買部').l4.map(p => p.name).join() === '次長 太郎');
+  check('組織図: ⑤は手入力の役職順(課長→主任→役職なし)', colOf('購買部').sections[0].members.map(m => m.name + ':' + m.title).join() === '課長 一郎:課長,主任 花子:主任,一般 次郎:');
+  check('組織図: ゆめすみかは③=常務取締役・④=マネージャー、⑤は店長が先', colOf('㈱ゆめすみか').l3[0].title === '常務取締役' && colOf('㈱ゆめすみか').l4[0].name === '大平 国弘' && colOf('㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,');
+  check('組織図: 兼任(手入力で部門を指定)は、MS365のグループに無くても④に載る', colOf('不動産部').l4.map(p => p.name + ':' + p.title).join() === '森下 直美:次長(兼任)');
+  check('組織図: メールの無い手動メンバー(荒井 正義)は氏名のキーで手入力の役職が付く', colOf('工務部').sections.find(s => s.label === '物流事業係').members[0].title === '主任');
+  check('組織図: 工務部の部長は③に載る', colOf('工務部').l3.map(p => p.name).join() === '工務 太郎');
+  check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
+
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない
   const w = load(['common.js', 'workCalendar.js'], ['dayLabelsHtml']);
   const sh = w.dayLabelsHtml([{ type: 'shift_holiday', team: '', label: '創立記念日' }]);

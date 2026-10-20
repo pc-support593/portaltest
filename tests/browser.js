@@ -100,6 +100,20 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('案C: 分野のカードが5つ・リンク未設定は「準備中」', await br.evaluate("document.querySelectorAll('#gc-cats section').length === 5 && document.getElementById('gc-cats').textContent.includes('準備中')"));
     check('案C: 外部リンクは新しいタブで開く', await br.evaluate("[...document.querySelectorAll('#gc-cats a[href^=https]')].every(a => a.target === '_blank' && a.rel.includes('noopener'))"));
 
+    // ---- 組織図(枠組み): メニューにあり、部門の列・階層の枠が描ける(devモードは社員名簿の取得ができないため、疑似データを渡して描く) ----
+    await br.open(`${sb.base}/index.html`, 1280);
+    check('トップのメニューに「組織図」がある', await br.evaluate("!!document.querySelector('header a[href=\"organization-chart.html\"]')"));
+    await br.open(`${sb.base}/organization-chart.html`, 1280);
+    await br.evaluate(`(() => {
+      const P = (name, email, title) => ({ name, email, title: title || '', empType: '', phone: '' });
+      const org = { left: [{ dept: '会長', members: [P('友藤 昭弘', 'a@x.com')] }, { dept: '社長', members: [P('友藤 忠昭', 'b@x.com')] }, { dept: '専務', members: [P('東 伸考', 'c@x.com')] },
+        { dept: '総務部', members: [P('部長 一', 'd@x.com', '部長'), P('課長 二', 'e@x.com'), P('一般 三', 'f@x.com')] }], right: [], names: {} };
+      renderOrgChart(buildOrgChart(org, [{ email: 'e@x.com', dept: '', title: '課長', sort: 0 }]));
+    })()`);
+    check('組織図: 部門の列が9つ・①会長社長/②専務の枠・③部長・⑤課長が描かれる', await br.evaluate("document.querySelectorAll('.oc-col').length === 9 && document.querySelector('.oc-l1').textContent.includes('友藤 昭弘') && document.querySelector('.oc-l1').textContent.includes('友藤 忠昭') && document.querySelector('.oc-l2').textContent.includes('東 伸考') && document.querySelector('.oc-l3').textContent.includes('部長 一') && document.querySelector('.oc-m .oc-title').textContent === '課長'"));
+    check('組織図: 画面の幅(1280px)でもページが横にはみ出さない(図の中だけスクロール)', await br.evaluate(noOverflow));
+    check('組織図: 印刷用の設定(A3横)がある', await br.evaluate("[...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => r.cssText.includes('A3') || r.cssText.includes('a3')); } catch { return false; } })"));
+
     // ---- 週の予定(スケジュール画面) ----
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
     const week = JSON.parse(await br.evaluate("JSON.stringify({ n: document.querySelectorAll('#week-events [data-week-day]').length, first: document.querySelector('#week-events [data-week-day]')?.textContent.trim().slice(0, 12), title: document.getElementById('week-title')?.textContent })"));

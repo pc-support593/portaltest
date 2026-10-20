@@ -527,6 +527,44 @@ app.get('/api/guide', (req, res) => {
   res.json({ categories: GUIDE_CATS, kinds: GUIDE_KINDS, articles: out });
 });
 
+// ---- 組織図の役職(2026-10-20・ユーザー依頼): MS365に無い課長以下の役職と兼任の手入力 ----
+// 表示(組織図ページ)はサインイン済みなら誰でも。書き込みは管理者のみ。title が空なら行を削除する。
+/** 組織図の行のキー: メールは小文字・前後空白除去。メールを持たない人は 'name:'+氏名(NFKC・空白をすべて除去)(画面の orgKeyOf と同じ規則) */
+function normalizeOrgKey(raw) {
+  const s = String(raw || '').normalize('NFKC').trim();
+  if (s.toLowerCase().startsWith('name:')) return 'name:' + s.slice(5).replace(/\s+/g, '');
+  return s.toLowerCase();
+}
+function hasControlChar(s) { return [...s].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127); }
+
+app.get('/api/orgchart-titles', (req, res) => {
+  me(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(db.prepare('SELECT email, dept, title, sort FROM orgchart_titles ORDER BY dept, sort, email').all());
+});
+
+app.put('/api/admin/orgchart-titles', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const b = req.body || {};
+  const email = normalizeOrgKey(b.email);
+  const dept = String(b.dept || '').normalize('NFKC').trim();
+  const title = String(b.title || '').normalize('NFKC').trim();
+  let sort = Math.round(Number(b.sort) || 0);
+  if (!email || email.length > 200 || hasControlChar(email)) return res.status(400).json({ error: 'メールアドレス(または氏名)が不正です' });
+  if (dept.length > 60 || hasControlChar(dept)) return res.status(400).json({ error: '部門名が不正です' });
+  if (title.length > 30 || hasControlChar(title)) return res.status(400).json({ error: '役職は30文字までです' });
+  sort = Math.max(0, Math.min(9999, sort));
+  if (!title) {
+    db.prepare('DELETE FROM orgchart_titles WHERE email = ? AND dept = ?').run(email, dept);
+    return res.json({ ok: true, deleted: true });
+  }
+  db.prepare(
+    `INSERT INTO orgchart_titles (email, dept, title, sort, updated_at) VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(email, dept) DO UPDATE SET title = excluded.title, sort = excluded.sort, updated_at = excluded.updated_at`
+  ).run(email, dept, title, sort);
+  res.json({ ok: true });
+});
+
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
 // パスの形が重なってしまうため(例: GET/POST /api/admin/shift-swaps, DELETE /api/admin/shift-swaps/:id)、
 // 汎用ルートより前に登録して先にマッチさせる(でなければ kind='shift-swaps' が KINDS になく 404 になる)

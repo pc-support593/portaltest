@@ -94,6 +94,17 @@ function migrate(db) {
     );
     -- 添付ファイルから取り出した検索用の文字(2026-10-20)。正は元ファイル(data/uploads/<UUID>)で、このテーブルは再生成できる派生データ。
     -- 添付を消すとき(DELETE /api/attachments/:id・記事の削除)にアプリ側で一緒に消す(FKは使わない既存方針)。閲覧範囲は元の添付と同じ(サインイン済み全社員)
+    -- 組織図の役職(2026-10-20)。MS365に無い「課長以下の役職」と「兼任」の手入力(組織図ページの補完データ。正のマスターは人・部門・上位役職=Entra ID)。
+    -- email: 小文字のメールアドレス。メールを持たない手動メンバー(社員名簿の MANUAL_MEMBERS)は 'name:'+氏名(NFKC・空白除去)。dept: 組織図の部門名('' は部門を問わない既定)
+    -- 表示の優先順: ①dept指定の行(兼任など) ②MS365の役職 ③dept=''の行(MS365に役職が無い人)
+    CREATE TABLE IF NOT EXISTS orgchart_titles (
+      email TEXT NOT NULL,
+      dept TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,                   -- 30字まで。例: 課長・係長・主任・次長(兼任)
+      sort INTEGER NOT NULL DEFAULT 0,       -- 同じ部門・役職内の表示順(0=名簿の順)
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (email, dept)
+    );
     CREATE TABLE IF NOT EXISTS attachment_texts (
       attachment_id TEXT PRIMARY KEY,        -- attachments.id と同じUUID
       text TEXT NOT NULL DEFAULT '',         -- NFKC正規化済み・最大30万字。status が ok 以外は空

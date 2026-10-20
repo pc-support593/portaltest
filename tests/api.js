@@ -165,6 +165,21 @@ const files = {
   const delG2 = await json('DELETE', '/api/admin/guide/' + g2);
   check('記事を削除すると、添付ファイルも消える(検索にも出ない)', delG2.status === 200 && fs.readdirSync(UPLOADS).length === before2 - 2 && (await searchG('申請番号')).length === 0);
 
+  // 組織図の役職(orgchart_titles)
+  const putT = o => json('PUT', '/api/admin/orgchart-titles', o);
+  const getT = async () => (await json('GET', '/api/orgchart-titles')).data;
+  check('組織図の役職: 登録でき、メールは小文字・前後空白除去で保存される', (await putT({ email: '  K-Test@Yoshimuraichi.com ', dept: '', title: '課長', sort: 2 })).status === 200 && (await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.title === '課長' && r.sort === 2));
+  await putT({ email: 'K-TEST@yoshimuraichi.com', dept: '', title: '係長' });
+  check('組織図の役職: 大文字小文字違いのメールでも行が増えない(上書き)', (await getT()).filter(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '').length === 1 && (await getT()).find(r => r.email === 'k-test@yoshimuraichi.com').title === '係長');
+  await putT({ email: 'k-test@yoshimuraichi.com', dept: '不動産部', title: '次長(兼任)' });
+  check('組織図の役職: 部門を指定した行(兼任)は、既定の行とは別に持てる', (await getT()).filter(r => r.email === 'k-test@yoshimuraichi.com').length === 2);
+  await putT({ email: 'name:荒井　正義', dept: '', title: '主任' });
+  check('組織図の役職: メールの無い人は「name:氏名」のキー(空白は全角・半角とも除去)', (await getT()).some(r => r.email === 'name:荒井正義' && r.title === '主任'));
+  check('組織図の役職: 役職が31字以上・制御文字・メールなしは拒否', (await putT({ email: 'a@x.com', dept: '', title: 'あ'.repeat(31) })).status === 400 && (await putT({ email: 'a@x.com', dept: '', title: 'a' + String.fromCharCode(10) + 'b' })).status === 400 && (await putT({ email: '', dept: '', title: '課長' })).status === 400);
+  await putT({ email: 'k-test@yoshimuraichi.com', dept: '', title: '' });
+  check('組織図の役職: 役職を空にすると行が削除される', !(await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '') && (await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '不動産部'));
+  check('組織図の役職: 返す項目は email・dept・title・sort だけ', Object.keys((await getT())[0]).sort().join() === 'dept,email,sort,title');
+
   // 年間カレンダー: typeに shift_holiday を指定できる(team空・A、他の種類との重複チェックの対象外)
   const csvOk = ['date,calendar_group,team,type,label', '2027-05-01,sunday_off,,shift_holiday,創立記念日', '2027-05-02,sunday_off,A,shift_holiday,特別休', '2027-05-02,sunday_off,A,shift_work,x'].join('\n');
   const impOk = await json('POST', '/api/admin/work-calendar/import', { csv: csvOk });
