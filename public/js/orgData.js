@@ -268,6 +268,8 @@ async function loadOrgData() {
     right: buildGroups([...right, ...manualRight], [], { deptsOf: rightDepts, deptOrder: YUMESUMIKA_GROUP_ORDER }),
     failedLeft: leftMaps.failed,
     failedRight: rightMaps.failed,
+    // 会社別(左=吉村一建設・右=ゆめすみか)の全員の一覧(グループに入っていない人も含む)。組織図の①②(従業員の種類1・2。専務取締役など、部門のグループに入っていない人)を拾うために使う
+    users: { left: left.map(u => ({ name: u.name, email: u.email, title: u.title, empType: u.empType })), right: right.map(u => ({ name: u.name, email: u.email, title: u.title, empType: u.empType })) },
     names: Object.fromEntries(users.filter(u => u.email).map(u => [u.email.toLowerCase(), u.name])) // メールアドレス(小文字)→「姓 名」。出勤状況で、どの部門にも属さない人の氏名にも使う
   };
 }

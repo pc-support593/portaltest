@@ -69,8 +69,11 @@ function buildOrgChart(org, manual) {
   //   吉村一建設側: 1=①会長・社長 / 2=②専務取締役 / 3=③室長・マネージャー・部長(取締役部長を含む) / 4=④次長 / 記載なし=⑤
   //   ゆめすみか側(例外): 1=③常務取締役 / 2=④マネージャー / それ以外=⑤
   // ①②は、どの部門のグループに入っている人でも拾い、部門の列には重ねて出さない(同じ人が複数のグループにいる場合は1回だけ)
+  // 専務取締役(種類2)などは、部門のグループに入っていないことが多く、社員名簿の部門一覧には出てこない。会社別の全員の一覧(org.users)からも拾う
+  const usersLeft = (org && org.users && org.users.left) || [], usersRight = (org && org.users && org.users.right) || [];
   const topCand = [];
   left.forEach(g => g.members.forEach(m => topCand.push({ m, title: m.title || g.dept })));
+  usersLeft.forEach(m => topCand.push({ m, title: m.title || (empOf(m) === '2' ? '専務取締役' : '') }));
   const pickTop = emp => {
     const seenTop = new Set();
     return topCand.filter(c => empOf(c.m) === emp).filter(c => { const k = orgKeyOf(c.m); if (seenTop.has(k)) return false; seenTop.add(k); return true; });
@@ -104,9 +107,10 @@ function buildOrgChart(org, manual) {
 
     if (isRight) {
       // ゆめすみか: 従業員の種類 1=③常務取締役・2=④マネージャー(どのグループにいても拾う)。種類を付ける前の運用に備え、従来の見出し(PERSON_OVERRIDES)の人も同じ枠に載せる
-      right.forEach(g => g.members.forEach(m => { if (empOf(m) === '1') take(m, out.l3, '常務取締役'); }));
+      const rightAllMembers = [...right.flatMap(g => g.members), ...usersRight]; // グループに入っていない人も含む
+      rightAllMembers.forEach(m => { if (empOf(m) === '1') take(m, out.l3, '常務取締役'); });
       if (col.l3Group) groupMembers(pool, col.l3Group).forEach(m => take(m, out.l3, '常務取締役'));
-      right.forEach(g => g.members.forEach(m => { if (empOf(m) === '2') take(m, out.l4, 'マネージャー'); }));
+      rightAllMembers.forEach(m => { if (empOf(m) === '2') take(m, out.l4, 'マネージャー'); });
       if (col.l4Group) groupMembers(pool, col.l4Group).forEach(m => take(m, out.l4, 'マネージャー'));
     }
 
