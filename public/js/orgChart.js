@@ -64,8 +64,17 @@ function buildOrgChart(org, manual) {
   const dispName = m => displayName(m.name || '');
   const groupMembers = (groups, label) => ((groups.find(g => g.dept === label) || {}).members) || [];
 
-  const top = (labels, pool) => labels.flatMap(label => groupMembers(pool, label).map(m => ({ name: dispName(m), title: label })));
-  const chart = { l1: top(ORG_CHART_FRAME.top.l1, left), l2: top(ORG_CHART_FRAME.top.l2, left), columns: [] };
+  // ①会長・社長 ②専務: 役職の文字で判定する(社員名簿で従業員の種類=1の人は、役職が見出し名になる。「取締役会長」「代表取締役」「専務取締役」など表記が違っても拾う)。
+  // 部門のグループに入っている人でも、役職に「専務」を含めば②(部門の列には出さない)
+  const topCand = [];
+  left.forEach(g => g.members.forEach(m => topCand.push({ m, title: m.title || g.dept })));
+  const isL2 = t => String(t).includes('専務');
+  const isL1 = t => !isL2(t) && !String(t).includes('常務') && (String(t).includes('会長') || String(t).includes('社長') || String(t).startsWith('代表取締役'));
+  const pickTop = test => { const seenTop = new Set(); return topCand.filter(c => test(c.title)).filter(c => { const k = orgKeyOf(c.m); if (seenTop.has(k)) return false; seenTop.add(k); return true; }); };
+  const l1c = pickTop(isL1).sort((a, b) => (String(b.title).includes('会長') ? 1 : 0) - (String(a.title).includes('会長') ? 1 : 0)); // 会長を先に
+  const l2c = pickTop(isL2);
+  const topKeys = new Set([...l1c, ...l2c].map(c => orgKeyOf(c.m)));
+  const chart = { l1: l1c.map(c => ({ name: dispName(c.m), title: c.title })), l2: l2c.map(c => ({ name: dispName(c.m), title: c.title })), columns: [] };
 
   for (const col of ORG_CHART_FRAME.columns) {
     const pool = col.side === 'right' ? right : left;
@@ -80,7 +89,7 @@ function buildOrgChart(org, manual) {
     };
     const item = (m, extra) => ({ name: dispName(m), title: effTitle(m), key: orgKeyOf(m), ...extra });
     const out = { name: col.name, l3: [], l4: [], sections: [] };
-    const seen = new Set(); // 同じ人を、同じ部門の中で二重に出さない
+    const seen = new Set(topKeys); // 同じ人を、同じ部門の中で二重に出さない(①②の人は部門の列には出さない)
 
     if (col.l3Group) groupMembers(pool, col.l3Group).forEach(m => { out.l3.push({ ...item(m), title: effTitle(m) || col.l3Group.replace(/^ゆめすみか/, '') }); seen.add(orgKeyOf(m)); });
     if (col.l4Group) groupMembers(pool, col.l4Group).forEach(m => { out.l4.push({ ...item(m), title: effTitle(m) || col.l4Group }); seen.add(orgKeyOf(m)); });
@@ -165,7 +174,7 @@ function renderOrgChart(chart) {
       </div>` : ''}
     </div>`;
   }).join('');
-  ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-bus"></div><div class="oc-cols">${colsHtml}</div>`;
+  ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>`;
 }
 
 /** 印刷(PDF保存)用: 図の幅をA3横の用紙の幅に合わせて縮小する(印刷の前に設定し、後で戻す) */

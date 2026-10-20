@@ -163,6 +163,15 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 「部長」「次長(兼任)」は③④・「部長代理」「マネージャー補佐」は⑤に回る', ch2.columns.find(c => c.name === '総務部').l3.map(p => p.name).join() === '部長 本人' && ch2.columns.find(c => c.name === '総務部').l4.map(p => p.name).join() === '次長 兼' && ch2.columns.find(c => c.name === '総務部').sections[0].members.map(p => p.name).join() === '代理 人,マ 補');
   check('組織図: ⑤の順は 店長→係長→店長代理(「店長代理」が「店長」と同じ順位にならない)', ch2.columns.find(c => c.name === '㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,係長,店長代理');
 
+  // ①②は役職の文字で判定する(見出し名が「会長」でなく「取締役会長」、「専務」でなく「専務取締役」でも拾う。部門のグループにいる専務も拾い、部門の列には出さない)
+  const ocOrg3 = { left: [
+    { dept: '取締役会長', members: [P('友藤 昭弘', 'a@x.com', '取締役会長', '1')] }, { dept: '代表取締役', members: [P('友藤 忠昭', 'b@x.com', '代表取締役', '1')] },
+    { dept: '総務部', members: [P('東 伸考', 'c@x.com', '専務取締役'), P('総務 一', 'd@x.com')] }, { dept: '購買部', members: [P('常務 一', 'e@x.com', '常務取締役')] }
+  ], right: [], names: {} };
+  const ch3 = oc.buildOrgChart(ocOrg3, []);
+  check('組織図: 「取締役会長」「代表取締役」は①(会長が先)、「専務取締役」は部門のグループにいても②', ch3.l1.map(p => p.name).join() === '友藤 昭弘,友藤 忠昭' && ch3.l2.map(p => p.name + ':' + p.title).join() === '東 伸考:専務取締役');
+  check('組織図: ②の人は部門の列に重ねて出さない・「常務取締役」は①②に入らない', !JSON.stringify(ch3.columns.find(c => c.name === '総務部')).includes('東 伸考') && ch3.columns.find(c => c.name === '総務部').sections[0].members.length === 1 && !ch3.l1.concat(ch3.l2).some(p => p.name === '常務 一'));
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

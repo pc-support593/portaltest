@@ -14,7 +14,7 @@
 <style>
   /* 組織図(2026-10-20)。上から ①会長・社長 ②専務 ③部門長 ④次長 ⑤メンバー。印刷(PDF保存)は A3 横 */
   .oc-scroll { overflow-x: auto; padding-bottom: 12px; }
-  #oc-chart { min-width: 1500px; display: flex; flex-direction: column; align-items: center; }
+  #oc-chart { width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; } /* 部門が多い・小区分(本社・平野など)が横に並ぶと、図が広がる。画面は横にスクロール */
   .oc-top { display: flex; flex-direction: column; align-items: center; }
   .oc-box { border: 1px solid #b9c7d6; border-radius: 6px; background: #ffffff; padding: 6px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
   .oc-l1 { background: #1e3a5f; border-color: #1e3a5f; color: #ffffff; }
@@ -26,15 +26,22 @@
   .oc-name { font-weight: 700; white-space: nowrap; }
   .oc-vline { width: 2px; height: 18px; background: #9fbbdc; }
   .oc-vline.oc-short { height: 8px; }
-  .oc-bus { width: calc(100% - 160px); max-width: 1440px; height: 0; border-top: 2px solid #9fbbdc; }
-  .oc-cols { display: flex; gap: 10px; align-items: flex-start; justify-content: center; width: 100%; }
-  .oc-col { flex: 1 1 0; min-width: 150px; max-width: 200px; display: flex; flex-direction: column; align-items: stretch; gap: 0; position: relative; padding-top: 14px; }
-  .oc-col::before { content: ''; position: absolute; top: 0; left: 50%; width: 2px; height: 14px; background: #9fbbdc; }
+  .oc-cols { display: flex; align-items: flex-start; justify-content: center; width: max-content; }
+  /* 部門ごとの列。上の横線(母線)は、列ごとの ::after をつないで引く(最初の列は中央から、最後の列は中央まで) */
+  .oc-col { flex: 0 0 auto; min-width: 170px; display: flex; flex-direction: column; align-items: stretch; position: relative; padding: 14px 5px 0; }
+  .oc-col::before { content: ''; position: absolute; top: 0; left: calc(50% - 1px); width: 2px; height: 14px; background: #9fbbdc; }
+  .oc-col::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #9fbbdc; }
+  .oc-col:first-child::after { left: 50%; }
+  .oc-col:last-child::after { right: 50%; }
+  .oc-col:only-child::after { display: none; }
   .oc-dept { text-align: center; font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 6px 4px; }
-  .oc-col .oc-box { min-width: 0; border-radius: 0; margin-top: -1px; }
-  .oc-members { border: 1px solid #c4d2e1; border-top: none; background: #ffffff; padding: 4px 8px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; border-radius: 6px; }
-  .oc-section { display: flex; flex-direction: column; gap: 2px; }
-  .oc-section-label { font-size: 11px; font-weight: 700; color: #1e5fa8; border-bottom: 1px dashed #c4d2e1; margin-top: 2px; }
+  .oc-col .oc-box { min-width: 0; border-radius: 0; margin-top: -1px; align-self: center; width: 100%; max-width: 230px; }
+  /* 小区分(工務部の本社・平野・西宮、ゆめすみかの展示場など)は、横に並べる */
+  .oc-members { border: 1px solid #c4d2e1; background: #ffffff; padding: 6px 8px; display: flex; flex-direction: row; align-items: flex-start; gap: 0; margin-top: 8px; border-radius: 6px; }
+  .oc-section { display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 0 8px; border-left: 1px solid #e1e8f0; }
+  .oc-section:first-child { border-left: none; padding-left: 0; }
+  .oc-section:last-child { padding-right: 0; }
+  .oc-section-label { font-size: 11px; font-weight: 700; color: #1e5fa8; border-bottom: 1px dashed #c4d2e1; margin-bottom: 2px; white-space: nowrap; }
   .oc-m { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
   .oc-m .oc-title { min-width: 2.4em; color: #4a5b6c; opacity: 1; }
   .oc-added .oc-name::after { content: '(兼)'; font-size: 10px; font-weight: 400; color: #8a99a8; margin-left: 2px; }

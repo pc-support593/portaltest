@@ -111,6 +111,13 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       renderOrgChart(buildOrgChart(org, [{ email: 'e@x.com', dept: '', title: '課長', sort: 0 }]));
     })()`);
     check('組織図: 部門の列が9つ・①会長社長/②専務の枠・③部長・⑤課長が描かれる', await br.evaluate("document.querySelectorAll('.oc-col').length === 9 && document.querySelector('.oc-l1').textContent.includes('友藤 昭弘') && document.querySelector('.oc-l1').textContent.includes('友藤 忠昭') && document.querySelector('.oc-l2').textContent.includes('東 伸考') && document.querySelector('.oc-l3').textContent.includes('部長 一') && document.querySelector('.oc-m .oc-title').textContent === '課長'"));
+    await br.evaluate(`(() => {
+      const P = (name, email, title) => ({ name, email, title: title || '', empType: '', phone: '' });
+      const org = { left: [{ dept: '専務取締役', members: [P('東 伸考', 'c@x.com', '専務取締役')] }, { dept: '工務部(本社)', members: [P('本社 一', 'h1@x.com')] }, { dept: '工務部(平野)', members: [P('平野 一', 'h2@x.com')] }, { dept: '工務部(西宮)', members: [P('西宮 一', 'h3@x.com')] }], right: [], names: {} };
+      renderOrgChart(buildOrgChart(org, []));
+    })()`);
+    check('組織図: 専務取締役が②の枠に出る', await br.evaluate("document.querySelector('.oc-l2') && document.querySelector('.oc-l2').textContent.includes('東 伸考')"));
+    check('組織図: 工務部の小区分(本社・平野・西宮)は横に並ぶ(縦に積まない)', await br.evaluate("(() => { const s = [...document.querySelectorAll('.oc-col')].find(c => c.textContent.includes('工務部')).querySelectorAll('.oc-section'); return s.length === 3 && s[0].getBoundingClientRect().top === s[1].getBoundingClientRect().top && s[1].getBoundingClientRect().left > s[0].getBoundingClientRect().left; })()"));
     check('組織図: 画面の幅(1280px)でもページが横にはみ出さない(図の中だけスクロール)', await br.evaluate(noOverflow));
     check('組織図: 印刷用の設定(A3横)がある', await br.evaluate("[...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => r.cssText.includes('A3') || r.cssText.includes('a3')); } catch { return false; } })"));
 
