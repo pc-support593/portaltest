@@ -67,6 +67,7 @@ async function uploadAttachments(kind, itemId, files) {
   return failed;
 }
 
+const GUIDE_CAT_LABEL = { pc: 'PC・周辺機器', network: 'ネットワーク', m365: 'MS365', jinjer: 'jinjer(人事)', apply: '申請・手続き' };
 const CONFIG = {
   news: {
     label: 'お知らせ', hasBody: true,
@@ -103,6 +104,20 @@ const CONFIG = {
     ],
     cells: it => [it.char, it.label, it.url]
   },
+  guide: {
+    label: 'システム案内', hasBody: true, bodyMax: 20000,
+    h1: '分野', h2: 'タイトル', h3: '種類 / 更新日',
+    fields: [
+      { key: 'cat', label: '分野', type: 'select', defaultValue: 'pc', options: [
+        ['pc', 'PC・周辺機器'], ['network', 'ネットワーク'], ['m365', 'MS365'], ['jinjer', 'jinjer(人事)'], ['apply', '申請・手続き']
+      ] },
+      { key: 'kind', label: '種類', type: 'select', defaultValue: '手順', options: [['手順', '手順'], ['FAQ', 'FAQ'], ['申請', '申請'], ['お知らせ', 'お知らせ']] },
+      { key: 'title', label: 'タイトル', ph: '例: 社外から社内システムを使うには' },
+      { key: 'updated', label: '更新日(空なら保存した日)', type: 'date' },
+      { key: 'popular', label: '入口の「よくある困りごと」に表示する', type: 'checkbox' }
+    ],
+    cells: it => [GUIDE_CAT_LABEL[it.cat] || '(分野なし)', it.title, `${it.kind || ''} ・ 更新 ${it.updated || ''}${it.popular === '1' ? ' [よくある]' : ''}`]
+  },
   policies: {
     label: '社内規程', hasBody: false,
     h1: 'アイコン文字', h2: '名称', h3: 'リンク先URL',
@@ -117,7 +132,7 @@ const CONFIG = {
 
 const state = {
   tab: 'news',
-  data: { news: [], schedule: [], links: [], policies: [] },
+  data: { news: [], schedule: [], links: [], policies: [], guide: [] },
   draft: null,    // 編集中の1件(null でモーダル閉)
   editId: null    // 編集対象のid(null で新規)
 };
@@ -450,6 +465,7 @@ function renderModal() {
   const d = state.draft;
   const isEdit = state.editId != null;
   const body = d.body || '';
+  const bodyMax = cfg.bodyMax || BODY_MAX_LEN; // 本文の上限(システム案内の記事は長い手順を書くため20000字)
   root.innerHTML = `
   <div id="admin-overlay" style="position:fixed;inset:0;background:rgba(20,40,65,0.45);display:flex;align-items:center;justify-content:center;padding:24px;z-index:100">
     <div id="admin-box" style="background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(15,35,60,0.3);max-width:620px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
@@ -476,9 +492,9 @@ function renderModal() {
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="display:flex;align-items:baseline;gap:10px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">本文(詳細画面に表示)</span>
-            <span id="body-count" style="margin-left:auto;font-size:12px;color:${body.length >= BODY_MAX_LEN ? '#c05a5a' : '#8a99a8'}">${body.length} / ${BODY_MAX_LEN}文字</span>
+            <span id="body-count" style="margin-left:auto;font-size:12px;color:${body.length >= bodyMax ? '#c05a5a' : '#8a99a8'}">${body.length} / ${bodyMax}文字</span>
           </span>
-          <textarea id="body-input" class="in-input" rows="7" maxlength="${BODY_MAX_LEN}" placeholder="詳細を入力してください(最大${BODY_MAX_LEN}文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
+          <textarea id="body-input" class="in-input" rows="7" maxlength="${bodyMax}" placeholder="詳細を入力してください(最大${bodyMax}文字)。改行もそのまま表示されます。" style="line-height:1.7;resize:vertical">${esc(body)}</textarea>
         </label>` : ''}
       </div>
       <div style="padding:12px 26px;border-top:1px solid #eef1f5;flex-shrink:0;display:flex;flex-direction:column;gap:8px;max-height:45%;overflow-y:auto">
@@ -534,17 +550,17 @@ function renderModal() {
 
   const bodyInput = root.querySelector('#body-input');
   if (bodyInput) bodyInput.addEventListener('input', () => {
-    state.draft.body = bodyInput.value.slice(0, BODY_MAX_LEN);
+    state.draft.body = bodyInput.value.slice(0, (CONFIG[state.tab].bodyMax || BODY_MAX_LEN));
     const counter = root.querySelector('#body-count');
-    counter.textContent = `${state.draft.body.length} / ${BODY_MAX_LEN}文字`;
-    counter.style.color = state.draft.body.length >= BODY_MAX_LEN ? '#c05a5a' : '#8a99a8';
+    counter.textContent = `${state.draft.body.length} / ${(CONFIG[state.tab].bodyMax || BODY_MAX_LEN)}文字`;
+    counter.style.color = state.draft.body.length >= (CONFIG[state.tab].bodyMax || BODY_MAX_LEN) ? '#c05a5a' : '#8a99a8';
   });
 
   root.querySelector('#admin-save').addEventListener('click', async () => {
     const cfg2 = CONFIG[state.tab];
     const payload = {};
-    cfg2.fields.forEach(f => payload[f.key] = (state.draft[f.key] || '').trim());
-    if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, BODY_MAX_LEN);
+    cfg2.fields.forEach(f => payload[f.key] = (state.draft[f.key] || f.defaultValue || '').trim()); // 選択肢は、触らなくても表示中の既定値(defaultValue)で保存する
+    if (cfg2.hasBody) payload.body = (state.draft.body || '').slice(0, (CONFIG[state.tab].bodyMax || BODY_MAX_LEN));
     if (!cfg2.fields.some(f => f.type !== 'select' && f.type !== 'checkbox' && payload[f.key])) {
       root.querySelector('#admin-error').textContent = 'いずれかの項目を入力してください';
       return;

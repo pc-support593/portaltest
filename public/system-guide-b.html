@@ -37,14 +37,15 @@
   <div style="max-width:1100px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:14px;flex:1">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
       <h1 style="margin:0;font-size:19px;font-weight:700">システム案内</h1>
-      <span style="font-size:12px;color:#8a99a8">案B: 記事型(分野ごとの記事を、管理画面から追加・編集できる形)の枠組みです。表示中の記事はすべて仮の内容です。</span>
+      <span style="font-size:12px;color:#8a99a8">案B: 記事型。分野ごとの記事と添付のマニュアル(PDF・Word・Excel・PowerPoint)を管理画面から登録でき、添付の中の文字も検索できます。</span>
     </div>
 
     <!-- 障害・メンテナンスのお知らせ(実際は管理画面で入力。無いときは非表示) -->
     <div id="gb-notice" style="display:none;background:#fff7e6;border:1px solid #f6dfae;border-radius:10px;padding:10px 16px;font-size:13px;color:#8a5a00"></div>
 
+    <div id="gb-preview" style="display:none;background:#eef5fc;border:1px solid #cfe0f3;border-radius:10px;padding:8px 14px;font-size:12px;color:#2b5a8e">表示中の記事は、見た目を確認するための<b>仮の記事</b>です。管理画面の「システム案内」で記事(添付ファイルも可)を登録すると、仮の記事は出なくなります。</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <input id="gb-search" type="search" placeholder="記事を探す(例: Wi-Fi、パスワード、打刻)" style="flex:1;min-width:220px;border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit">
+      <input id="gb-search" type="search" placeholder="記事・添付ファイルの中の文字を探す(例: VPN、パスワード、打刻)" style="flex:1;min-width:220px;border:1px solid #dfe8f0;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit">
     </div>
 
     <div id="gb-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px"></div>

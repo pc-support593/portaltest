@@ -70,14 +70,32 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     // ---- システム案内(案B・案C。枠組み): トップのメニューにリンクがあり、ページが動く ----
     await br.open(`${sb.base}/index.html`, 1280);
     check('トップのメニューに「システム案内B」「システム案内C」がある', await br.evaluate("['system-guide-b.html', 'system-guide-c.html'].every(h => !!document.querySelector('header a[href=\"' + h + '\"]'))"));
+    // 案B: 記事がまだ無い間は、仮の記事(プレビュー)を表示する
     await br.open(`${sb.base}/system-guide-b.html`, 1280, 900, "document.querySelectorAll('#gb-cats [data-cat]').length > 0");
-    check('案B: 分野のカードが5つ・初期表示は「よくある困りごと」', await br.evaluate("document.querySelectorAll('#gb-cats [data-cat]').length === 5 && document.getElementById('gb-list-title').textContent === 'よくある困りごと' && document.querySelectorAll('#gb-list [data-article]').length > 0"));
+    check('案B: 記事が無い間は、仮の記事(プレビュー)と案内を表示する', await br.evaluate("document.getElementById('gb-preview').style.display !== 'none' && document.querySelectorAll('#gb-list [data-article]').length > 0"));
+    // 案B: 記事と添付(PDF)を登録 → DBの記事を表示・添付の中の文字で検索できる
+    const mkG = async o => (await api('POST', '/api/admin/guide', o)).id;
+    const gA = await mkG({ cat: 'network', kind: '手順', title: '社外から使う方法', body: '手順の説明', popular: '1' });
+    const gB = await mkG({ cat: 'jinjer', kind: 'FAQ', title: '打刻の直し方', body: '打刻を修正したいとき' });
+    const gC = await mkG({ cat: 'jinjer', kind: '申請', title: '休暇の申請方法', body: '申請の手順' });
+    const upRes = await fetch(`${sb.base}/api/attachments?kind=guide&itemId=${gA}&name=${encodeURIComponent('VPNマニュアル.pdf')}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: fs.readFileSync(path.join(__dirname, 'fixtures', 'manual-ja.pdf')) });
+    check('案B: 記事にPDFを添付できる', upRes.status === 200);
+    await br.open(`${sb.base}/system-guide-b.html`, 1280, 900, "document.querySelectorAll('#gb-cats [data-cat]').length > 0 && document.getElementById('gb-preview').style.display === 'none'");
+    check('案B: 登録した記事を表示し、仮の記事の案内は出ない・初期表示は「よくある困りごと」', await br.evaluate("document.getElementById('gb-preview').style.display === 'none' && document.querySelectorAll('#gb-cats [data-cat]').length === 5 && document.getElementById('gb-list-title').textContent === 'よくある困りごと' && document.querySelectorAll('#gb-list [data-article]').length === 1"));
     await br.evaluate("document.querySelector('#gb-cats [data-cat=jinjer]').click()");
     check('案B: 分野を押すと、その分野の記事だけに絞られる', await br.evaluate("document.getElementById('gb-list-title').textContent.includes('jinjer') && document.querySelectorAll('#gb-list [data-article]').length === 2"));
     await br.evaluate("document.querySelector('#gb-list [data-article]').click()");
     check('案B: 記事を押すと本文が開く', await br.evaluate("document.getElementById('gb-article').style.display !== 'none' && document.querySelector('#gb-article h2').textContent.length > 0"));
-    await br.evaluate("(() => { const s = document.getElementById('gb-search'); s.value = 'Wi-Fi'; s.dispatchEvent(new Event('input')); })()");
-    check('案B: 検索で絞り込める', await br.evaluate("document.querySelectorAll('#gb-list [data-article]').length === 1"));
+    await br.evaluate("(() => { const s = document.getElementById('gb-search'); s.value = '多要素認証'; s.dispatchEvent(new Event('input')); })()");
+    await br.open(`${sb.base}/system-guide-b.html`, 1280, 900, "document.querySelectorAll('#gb-cats [data-cat]').length > 0"); // 画面を開き直して、検索欄の動きを別に確認
+    await br.evaluate("(() => { const s = document.getElementById('gb-search'); s.value = '多要素認証'; s.dispatchEvent(new Event('input')); })()");
+    await sleep(1200); // 入力から検索までの待ち(0.25秒)+サーバーの応答
+    check('案B: 検索で、添付PDFの中の文字が見つかり、該当する添付と抜粋が出る', await br.evaluate("document.querySelectorAll('#gb-list [data-article]').length === 1 && document.getElementById('gb-list').textContent.includes('VPNマニュアル.pdf') && document.getElementById('gb-list').textContent.includes('多要素認証')"));
+    await br.evaluate("document.querySelector('#gb-list [data-article]').click()");
+    check('案B: 記事に添付ファイルのダウンロードボタンがある', await br.evaluate("document.querySelectorAll('#gb-article [data-dl]').length === 1 && document.getElementById('gb-article').textContent.includes('VPNマニュアル.pdf')"));
+    await br.evaluate("(() => { const s = document.getElementById('gb-search'); s.value = '存在しない言葉'; s.dispatchEvent(new Event('input')); })()");
+    await sleep(1000);
+    check('案B: 該当なしの表示', await br.evaluate("document.getElementById('gb-list').textContent.includes('該当する記事はありません')"));
     await br.open(`${sb.base}/system-guide-c.html`, 1280, 900, "document.querySelectorAll('#gc-cats section').length > 0");
     check('案C: 分野のカードが5つ・リンク未設定は「準備中」', await br.evaluate("document.querySelectorAll('#gc-cats section').length === 5 && document.getElementById('gc-cats').textContent.includes('準備中')"));
     check('案C: 外部リンクは新しいタブで開く', await br.evaluate("[...document.querySelectorAll('#gc-cats a[href^=https]')].every(a => a.target === '_blank' && a.rel.includes('noopener'))"));

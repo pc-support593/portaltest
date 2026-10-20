@@ -34,6 +34,8 @@ async function startSandbox(extraEnv = {}) {
   for (const f of ['server.js', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'src'), path.join(dir, 'src'), { recursive: true });
   fs.cpSync(path.join(ROOT, 'public'), path.join(dir, 'public'), { recursive: true });
+  // ESMの import()(unpdf)は NODE_PATH を見ないため、node_modules をコピー先から見えるようにする(本番と同じ配置)
+  try { fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'junction'); } catch { /* 作れなければ NODE_PATH だけ */ }
   const port = await freePort();
   // 外部連携のキー・スイッチ(jinjer・iGrace・テナント・休暇取込)は引き継がない。誤って本番のシェルで実行しても、外部へ接続しない
   const env = { ...process.env, PORT: String(port), AUTH_MODE: 'dev', SEED_SAMPLE_DATA: 'false', NODE_PATH: path.join(ROOT, 'node_modules') };

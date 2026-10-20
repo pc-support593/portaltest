@@ -11,7 +11,8 @@ const crypto = require('crypto');
 const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
 const jinjerAttendance = require('./src/jinjerAttendance');
-const { isConfigured: jinjerConfigured } = require('./src/jinjerClient');
+const { isConfigured: jinjerConfigured, jstNow } = require('./src/jinjerClient');
+const { extractAttachmentText, normalizeForSearch } = require('./src/textExtract');
 
 // Portal/.env があれば読み込む(環境変数の設定漏れ対策。既に設定済みの環境変数が優先される)
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* .env なしでも可 */ }
@@ -178,8 +179,19 @@ const KINDS = {
   news: ['tag', 'title', 'date', 'expires', 'pinned', 'body'],
   schedule: ['date', 'title', 'sub', 'body', 'calendar_scope'],
   links: ['char', 'label', 'url'],
-  policies: ['char', 'label', 'url']
+  policies: ['char', 'label', 'url'],
+  guide: ['cat', 'kind', 'title', 'updated', 'popular', 'body'] // システム案内(案B。2026-10-20)
 };
+// システム案内の分野・種類(画面の定義もここから /api/guide で受け取る=定義はこの1か所)
+const GUIDE_CATS = [
+  { id: 'pc', icon: '💻', label: 'PC・周辺機器', desc: '貸与・故障・購入申請、プリンタ、ソフトの導入' },
+  { id: 'network', icon: '🌐', label: 'ネットワーク', desc: 'Wi-Fi・VPN・社外から使う方法、ファイルサーバー' },
+  { id: 'm365', icon: '🔑', label: 'MS365', desc: 'サインイン・パスワード、Teams・Outlook・OneDrive' },
+  { id: 'jinjer', icon: '🕘', label: 'jinjer(人事)', desc: '打刻・修正、休暇申請、出勤状況の見かた' },
+  { id: 'apply', icon: '📝', label: '申請・手続き', desc: '入社/退社時の準備、アカウント申請、機器の返却' }
+];
+const GUIDE_KINDS = ['手順', 'FAQ', '申請', 'お知らせ'];
+const BODY_LIMITS = { guide: 20000 }; // 本文の上限(既定は2000字。システム案内の記事は長い手順を書くため20000字)
 const SCHEDULE_SCOPES = ['both', 'sunday_off', 'wednesday_off'];
 
 function kindOf(req, res) {
@@ -192,9 +204,12 @@ function pickFields(kind, body) {
   const row = {};
   for (const f of KINDS[kind]) {
     let v = typeof body[f] === 'string' ? body[f].trim() : '';
-    if (f === 'body') v = v.slice(0, 2000);
+    if (f === 'body') v = v.slice(0, BODY_LIMITS[kind] || 2000);
+    if (f === 'cat' && !GUIDE_CATS.some(c => c.id === v)) v = ''; // 許可外の分野は空(=どの分野にも入らない)
+    if (f === 'kind' && !GUIDE_KINDS.includes(v)) v = GUIDE_KINDS[0];
+    if (f === 'updated' && kind === 'guide' && !CAL_DATE_RE.test(v)) v = jstNow().date; // 更新日が空・不正なら当日(日本時間)
     if (f === 'calendar_scope' && !SCHEDULE_SCOPES.includes(v)) v = 'both';
-    if (f === 'pinned') v = (body[f] === '1' || body[f] === 1 || body[f] === true) ? '1' : ''; // 固定表示は'1'か空文字のみ
+    if (f === 'pinned' || f === 'popular') v = (body[f] === '1' || body[f] === 1 || body[f] === true) ? '1' : ''; // 固定表示・よくある困りごとは'1'か空文字のみ
     row[f] = v;
   }
   return row;
@@ -202,7 +217,7 @@ function pickFields(kind, body) {
 
 /** 「何か1つでも入力されているか」の判定。calendar_scope(未指定でも'both'が入る)と pinned(固定表示のチェックだけでは入力と見なさない)は判定から除く */
 function hasAnyInput(row) {
-  return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && k !== 'pinned' && v !== '');
+  return Object.entries(row).some(([k, v]) => k !== 'calendar_scope' && k !== 'pinned' && k !== 'popular' && k !== 'kind' && k !== 'updated' && v !== '');
 }
 
 /** リンクURLは http(s) と相対パスのみ許可(javascript: 等のスキームによる格納型XSS対策) */
@@ -231,7 +246,8 @@ app.get('/api/content', (_req, res) => {
     news: withFiles('news', db.prepare('SELECT * FROM news ORDER BY id').all()),
     schedule: withFiles('schedule', db.prepare('SELECT * FROM schedule ORDER BY id').all()),
     links: db.prepare('SELECT * FROM links ORDER BY id').all(),
-    policies: db.prepare('SELECT * FROM policies ORDER BY id').all()
+    policies: db.prepare('SELECT * FROM policies ORDER BY id').all(),
+    guide: withFiles('guide', db.prepare('SELECT * FROM guide ORDER BY id').all()) // 管理画面の一覧用
   });
 });
 
@@ -308,7 +324,8 @@ app.put('/api/tile-order', (req, res) => {
 const ATTACH_DIR = path.join(__dirname, 'data', 'uploads');
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
 const ATTACH_MAX_COUNT = 3;
-const ATTACH_KINDS = ['news', 'schedule'];
+const ATTACH_KINDS = ['news', 'schedule', 'guide'];
+const TEXT_EXTRACT_KINDS = ['guide']; // 添付の中の文字を検索用に取り出す添付先(システム案内の記事。お知らせ・スケジュールの添付は対象外)
 
 function isZip(b) { return b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04; }
 /** Officeファイル(zip)の判定。ファイル名一覧は平文で入っているため、種類ごとの必須フォルダの有無と、
@@ -342,7 +359,7 @@ function removeAttachmentFile(id) {
 /** 添付先の項目(お知らせ・全社スケジュール)を消すときに、添付のDB行とファイルも消す */
 function deleteAttachmentsFor(kind, itemId) {
   const rows = db.prepare('SELECT id FROM attachments WHERE kind = ? AND item_id = ?').all(kind, itemId);
-  rows.forEach(r => removeAttachmentFile(r.id));
+  rows.forEach(r => { removeAttachmentFile(r.id); db.prepare('DELETE FROM attachment_texts WHERE attachment_id = ?').run(r.id); });
   db.prepare('DELETE FROM attachments WHERE kind = ? AND item_id = ?').run(kind, itemId);
 }
 
@@ -361,7 +378,8 @@ function readRawBody(req, res, next) {
   });
 }
 
-app.post('/api/attachments', readRawBody, (req, res) => {
+app.post('/api/attachments', readRawBody, async (req, res, next) => {
+  try {
   if (!requireAdmin(req, res)) return;
   const kind = String(req.query.kind || '');
   const itemId = Number(req.query.itemId);
@@ -385,7 +403,12 @@ app.post('/api/attachments', readRawBody, (req, res) => {
     .run(id, kind, itemId, name, buf.length, type.mime);
   // CSV由来の行事に添付した場合は手入力扱いに切り替える(次回のCSV取込で、添付ごと消されないようにする)
   if (kind === 'schedule') db.prepare("UPDATE schedule SET source = '' WHERE id = ?").run(itemId);
+  // システム案内の添付は、中の文字を検索用に取り出して保存する(失敗しても添付そのものは成功させる)
+  if (TEXT_EXTRACT_KINDS.includes(kind)) await indexAttachmentText(id, ext, buf);
   res.json({ id, name, size: buf.length });
+  } catch (e) {
+    next(e); // Express 4 は async の例外を拾わないため明示的にエラーハンドラへ渡す(→ E001)
+  }
 });
 
 app.delete('/api/attachments/:id', (req, res) => {
@@ -393,6 +416,7 @@ app.delete('/api/attachments/:id', (req, res) => {
   const id = String(req.params.id);
   const info = db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
   if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  db.prepare('DELETE FROM attachment_texts WHERE attachment_id = ?').run(id); // 検索用の文字も一緒に消す
   removeAttachmentFile(id);
   res.json({ ok: true });
 });
@@ -410,6 +434,95 @@ app.get('/api/attachments/:id/download', (req, res, next) => {
     'Cache-Control': 'private, no-store'
   });
   stream.pipe(res);
+});
+
+// ---- システム案内(案B)の記事と、添付の中の文字の検索(2026-10-20・ユーザー依頼) ----
+// 記事は guide テーブル(管理画面で登録)。添付(PDF・Word・Excel・PowerPoint)は、アップロード時に中の文字を取り出して
+// attachment_texts に保存し(src/textExtract.js)、検索ではタイトル・本文・添付の文字をまとめてAND検索する(NFKC正規化・小文字・部分一致)。
+// 文字が取り出せない添付(スキャン画像のPDF・画像)は検索の対象外(記事のタイトル・本文では探せる)。閲覧はサインイン済みなら誰でも。
+
+const TEXT_VERSION = 1; // 抽出・正規化のルールの版(attachment_texts.version)。変えたら、古い版の行を再抽出する
+
+/** 添付の文字を取り出して保存する。例外は投げない(取り出せなくても添付は成功させる。→ E001) */
+async function indexAttachmentText(id, ext, buf) {
+  try {
+    const r = await extractAttachmentText(ext, buf);
+    db.prepare('INSERT OR REPLACE INTO attachment_texts (attachment_id, text, status, version) VALUES (?, ?, ?, ?)')
+      .run(id, r.text, r.status, TEXT_VERSION);
+  } catch (e) {
+    console.error('添付の文字の保存に失敗しました:', e.message || e);
+  }
+}
+
+/** 起動時: ①添付が無くなった検索用の文字(孤児)を掃除 ②システム案内の添付で、文字を取り出していないもの・古い版のものを順に取り出す(1件ずつ・失敗しても続ける) */
+async function reindexGuideAttachments() {
+  try {
+    db.prepare('DELETE FROM attachment_texts WHERE attachment_id NOT IN (SELECT id FROM attachments)').run();
+    const todo = db.prepare(
+      `SELECT a.id, a.original_name FROM attachments a
+       LEFT JOIN attachment_texts t ON t.attachment_id = a.id
+       WHERE a.kind IN (${TEXT_EXTRACT_KINDS.map(() => '?').join(',')}) AND (t.attachment_id IS NULL OR t.version < ?)`
+    ).all(...TEXT_EXTRACT_KINDS, TEXT_VERSION);
+    for (const row of todo) {
+      try {
+        const buf = fs.readFileSync(path.join(ATTACH_DIR, row.id));
+        await indexAttachmentText(row.id, (row.original_name.split('.').pop() || '').toLowerCase(), buf);
+      } catch (e) {
+        console.error('添付の文字の再取り出しに失敗しました:', e.message || e);
+      }
+    }
+  } catch (e) {
+    console.error('添付の文字の再取り出しの確認に失敗しました:', e.message || e);
+  }
+}
+
+/** text の中で、最初に見つかった語の前後を切り出した抜粋(1行・最大80字) */
+function makeSnippet(text, lowText, terms) {
+  let at = -1, len = 0;
+  for (const t of terms) {
+    const i = lowText.indexOf(t);
+    if (i >= 0 && (at < 0 || i < at)) { at = i; len = t.length; }
+  }
+  if (at < 0) return '';
+  const start = Math.max(0, at - 25);
+  const end = Math.min(text.length, at + len + 45);
+  return (start > 0 ? '…' : '') + text.slice(start, end).split('\n').join(' ') + (end < text.length ? '…' : '');
+}
+
+app.get('/api/guide', (req, res) => {
+  me(req);
+  const q = normalizeForSearch(req.query.q);
+  const terms = q.split(/[ 　]+/).filter(Boolean).slice(0, 8);
+
+  const files = {};
+  db.prepare("SELECT id, item_id, original_name, size FROM attachments WHERE kind = 'guide' ORDER BY created_at, rowid").all()
+    .forEach(a => { (files[a.item_id] ||= []).push({ id: a.id, name: a.original_name, size: a.size }); });
+  // 添付の文字は、検索語があるときだけ読む(一覧の取得では text 列を読まない)。attachments に無い行(孤児)は JOIN で除外
+  const texts = {};
+  if (terms.length) {
+    db.prepare("SELECT a.id, a.item_id, t.text FROM attachments a JOIN attachment_texts t ON t.attachment_id = a.id WHERE a.kind = 'guide' AND t.status = 'ok'").all()
+      .forEach(r => { (texts[r.item_id] ||= {})[r.id] = { raw: r.text, low: r.text.toLowerCase() }; }); // 保存した文字はNFKC済み。検索は小文字で比べ、抜粋は元の大文字小文字のまま出す
+  }
+
+  const out = [];
+  for (const a of db.prepare('SELECT * FROM guide ORDER BY id').all()) {
+    const attachments = files[a.id] || [];
+    const item = { ...a, attachments, hits: [] };
+    if (terms.length) {
+      const own = normalizeForSearch(`${a.title}\n${a.body}`);
+      const atts = texts[a.id] || {};
+      const all = own + '\n' + Object.values(atts).map(t => t.low).join('\n');
+      if (!terms.every(t => all.includes(t))) continue; // すべての語が、タイトル・本文・添付のどこかにあること(AND)
+      for (const att of attachments) {
+        const tx = atts[att.id];
+        if (tx && terms.some(t => tx.low.includes(t))) item.hits.push({ attachmentId: att.id, name: att.name, snippet: makeSnippet(tx.raw, tx.low, terms) });
+      }
+      item.inBody = terms.some(t => own.includes(t));
+    }
+    out.push(item);
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ categories: GUIDE_CATS, kinds: GUIDE_KINDS, articles: out });
 });
 
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
@@ -459,6 +572,7 @@ app.post('/api/admin/:kind', (req, res) => {
   if (!hasAnyInput(row)) {
     return res.status(400).json({ error: 'いずれかの項目を入力してください' });
   }
+  if (kind === 'guide' && !row.title) return res.status(400).json({ error: 'タイトルを入力してください' });
   if ('url' in row && !isSafeUrl(row.url)) {
     return res.status(400).json({ error: 'URLは http(s) または相対パスのみ使用できます' });
   }
@@ -477,6 +591,7 @@ app.put('/api/admin/:kind/:id', (req, res) => {
   if (!hasAnyInput(row)) {
     return res.status(400).json({ error: 'いずれかの項目を入力してください' });
   }
+  if (kind === 'guide' && !row.title) return res.status(400).json({ error: 'タイトルを入力してください' });
   if ('url' in row && !isSafeUrl(row.url)) {
     return res.status(400).json({ error: 'URLは http(s) または相対パスのみ使用できます' });
   }
@@ -490,6 +605,11 @@ app.put('/api/admin/:kind/:id', (req, res) => {
   if (kind === 'news' && !(req.body && 'pinned' in req.body)) {
     const cur = db.prepare('SELECT pinned FROM news WHERE id = ?').get(id);
     if (cur) row.pinned = cur.pinned;
+  }
+  // popular が送られてこなかった更新では、登録済みの値を維持する(「よくある困りごと」の表示が勝手に外れないように)
+  if (kind === 'guide' && !(req.body && 'popular' in req.body)) {
+    const cur = db.prepare('SELECT popular FROM guide WHERE id = ?').get(id);
+    if (cur) row.popular = cur.popular;
   }
   const fields = KINDS[kind];
   const info = db.prepare(
@@ -834,6 +954,7 @@ app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
   if (ATTENDANCE_ENABLED) jinjerAttendance.startScheduler(db);
+  reindexGuideAttachments(); // システム案内の添付で、検索用の文字が未取得のものを順に取り出す(待たずに起動する)
   if (AUTH_MODE === 'dev') {
     console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');
   }

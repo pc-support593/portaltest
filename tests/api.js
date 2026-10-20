@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { makeChecker, startSandbox } = require('./lib/harness');
+const { officeDummy } = require('./lib/zip');
 const { check, done } = makeChecker('api');
 let B, UPLOADS;
 const json = async (method, url, body) => {
@@ -115,6 +116,54 @@ const files = {
   await json('POST', '/api/admin/work-calendar/import', { csv: 'date,calendar_group,team,type,label\n2027-04-01,sunday_off,,holiday,x' });
   const survive = (await json('GET', '/api/content')).data.schedule.find(s => s.id === csvItem.id);
   check('再取込でも添付つきの行事は消えない', !!survive && survive.attachments.length === 1);
+
+  // システム案内(案B): 記事のCRUD・添付の中の文字の検索(PDF・Office)・削除の連動
+  const gpdf = fs.readFileSync(path.join(__dirname, 'fixtures', 'manual-ja.pdf'));
+  const mkGuide = async o => (await json('POST', '/api/admin/guide', o)).data.id;
+  const g1 = await mkGuide({ cat: 'network', kind: '手順', title: '社外から社内システムを使うには', body: '手順の概要です', popular: '1' });
+  const g2 = await mkGuide({ cat: 'm365', kind: 'FAQ', title: 'パスワードを変更する', body: '変更の手順は添付を見てください' });
+  const g3 = await mkGuide({ cat: 'bogus', kind: 'bogus', title: '分野と種類が不正' });
+  const gl = (await json('GET', '/api/guide')).data;
+  check('システム案内: 記事を登録でき、分野・種類の定義(categories/kinds)が返る', gl.articles.length === 3 && gl.categories.length === 5 && gl.kinds.includes('FAQ'));
+  const a3 = gl.articles.find(a => a.id === g3);
+  check('システム案内: 許可外の分野は空・種類は「手順」に正規化', a3.cat === '' && a3.kind === '手順', JSON.stringify([a3.cat, a3.kind]));
+  check('システム案内: 更新日が空なら当日(YYYY-MM-DD)', /^\d{4}-\d{2}-\d{2}$/.test(a3.updated));
+  check('システム案内: タイトルが無いと登録できない', (await json('POST', '/api/admin/guide', { cat: 'pc', body: 'x' })).status === 400);
+  const longBody = 'あ'.repeat(15000);
+  const g4 = await mkGuide({ cat: 'pc', title: '長い本文', body: longBody });
+  check('システム案内: 本文は20000字まで(お知らせの2000字制限は受けない)', (await json('GET', '/api/guide')).data.articles.find(a => a.id === g4).body.length === 15000);
+  await json('PUT', '/api/admin/guide/' + g1, { cat: 'network', kind: '手順', title: '社外から社内システムを使うには(更新)', body: '本文' });
+  check('システム案内: popularを送らない更新では「よくある」表示が外れない', (await json('GET', '/api/guide')).data.articles.find(a => a.id === g1).popular === '1');
+
+  const upG = (id, name, buf) => up('guide', id, name, buf);
+  const rp = await upG(g1, 'VPN接続マニュアル.pdf', gpdf);
+  check('システム案内: PDFを添付できる', rp.status === 200, JSON.stringify(rp.data));
+  const rd = await upG(g2, 'password.docx', officeDummy('docx', '<w:document><w:p><w:r><w:t>パスワード変更の画面手順 ＭＦＡ</w:t></w:r></w:p></w:document>'));
+  const rx = await upG(g2, 'list.xlsx', officeDummy('xlsx', '<sst><si><t>機器購入の申請番号</t></si></sst>'));
+  check('システム案内: Word・Excelも添付できる', rd.status === 200 && rx.status === 200);
+  const searchG = async q => (await json('GET', '/api/guide?q=' + encodeURIComponent(q))).data.articles;
+  const rs1 = await searchG('多要素認証');
+  check('添付PDFの中の文字で検索できる(記事の本文・タイトルに無い語)', rs1.length === 1 && rs1[0].id === g1 && rs1[0].hits.length === 1 && rs1[0].hits[0].name === 'VPN接続マニュアル.pdf' && rs1[0].hits[0].snippet.includes('多要素認証'), JSON.stringify(rs1.map(a => [a.id, a.hits])));
+  check('PDFの康熙部首(⼿順)が正規化され、「手順」で添付からも見つかる', (await searchG('手順1')).some(a => a.id === g1 && a.hits.length === 1));
+  check('Word添付の中の文字で検索できる(全角ＭＦＡ→半角・大文字小文字を区別しない)', (await searchG('mfa')).some(a => a.id === g2 && a.hits.some(h => h.name === 'password.docx')));
+  check('Excel添付の中の文字で検索できる', (await searchG('申請番号')).some(a => a.id === g2 && a.hits.some(h => h.name === 'list.xlsx')));
+  check('複数の語はすべて含むものだけ(AND。タイトル+添付をまたいでもよい)', (await searchG('社外 多要素認証')).some(a => a.id === g1) && (await searchG('社外 申請番号')).length === 0);
+  check('記事のタイトル・本文でも検索できる(添付ヒットなし)', (await searchG('概要')).length === 0 && (await searchG('更新')).some(a => a.id === g1) && (await searchG('更新')).find(a => a.id === g1).inBody === true);
+  check('該当なしは空', (await searchG('存在しない言葉xyz')).length === 0);
+  check('検索語なしの一覧では、添付の本文(text)を返さない', !JSON.stringify((await json('GET', '/api/guide')).data).includes('多要素認証'));
+  const brokenPdf = await upG(g1, 'broken.pdf', Buffer.from('%PDF-1.4 壊れたPDF'));
+  check('壊れたPDFでも、添付そのものは成功する(文字は取り出せない)', brokenPdf.status === 200);
+  const third = await upG(g1, 'third.pdf', gpdf);
+  const ng = await upG(g1, 'x.pdf', gpdf);
+  check('システム案内の添付も、1件3つまで(4つ目は断る)', third.status === 200 && ng.status === 400);
+  // 添付の削除で、検索用の文字も消える
+  const delId = (await json('GET', '/api/guide')).data.articles.find(a => a.id === g1).attachments.find(a => a.name === 'VPN接続マニュアル.pdf').id;
+  await json('DELETE', '/api/attachments/' + delId);
+  check('添付を削除すると、その添付の文字は検索されなくなる(残りの添付は検索される)', (await searchG('多要素認証')).every(a => a.hits.every(h => h.name !== 'VPN接続マニュアル.pdf')) && (await searchG('多要素認証')).some(a => a.hits.some(h => h.name === 'third.pdf')));
+  // 記事の削除で、添付とその文字も消える
+  const before2 = fs.readdirSync(UPLOADS).length;
+  const delG2 = await json('DELETE', '/api/admin/guide/' + g2);
+  check('記事を削除すると、添付ファイルも消える(検索にも出ない)', delG2.status === 200 && fs.readdirSync(UPLOADS).length === before2 - 2 && (await searchG('申請番号')).length === 0);
 
   // 年間カレンダー: typeに shift_holiday を指定できる(team空・A、他の種類との重複チェックの対象外)
   const csvOk = ['date,calendar_group,team,type,label', '2027-05-01,sunday_off,,shift_holiday,創立記念日', '2027-05-02,sunday_off,A,shift_holiday,特別休', '2027-05-02,sunday_off,A,shift_work,x'].join('\n');

@@ -74,14 +74,33 @@ function migrate(db) {
     );
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,           -- ランダムID(UUID)。保存ファイル名も同じ(元のファイル名は使わない)
-      kind TEXT NOT NULL,            -- 'news'(お知らせ) | 'schedule'(全社スケジュール)
-      item_id INTEGER NOT NULL,      -- 添付先の news.id / schedule.id
+      kind TEXT NOT NULL,            -- 'news'(お知らせ) | 'schedule'(全社スケジュール) | 'guide'(システム案内。2026-10-20)
+      item_id INTEGER NOT NULL,      -- 添付先の news.id / schedule.id / guide.id
       original_name TEXT NOT NULL,   -- 表示・ダウンロード時のファイル名
       size INTEGER NOT NULL,
       mime TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_attachments_item ON attachments(kind, item_id);
+    -- システム案内(案B)の記事(2026-10-20)。分野(cat)・種類(kind)の許容値はサーバー側(server.js の GUIDE_CATS / GUIDE_KINDS)で正規化する(CHECK制約は他のテーブルと同じく付けない)
+    CREATE TABLE IF NOT EXISTS guide (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cat TEXT NOT NULL DEFAULT '',          -- 分野: pc | network | m365 | jinjer | apply
+      kind TEXT NOT NULL DEFAULT '手順',     -- 種類: 手順 | FAQ | 申請 | お知らせ
+      title TEXT NOT NULL DEFAULT '',
+      updated TEXT NOT NULL DEFAULT '',      -- ISO 8601 (YYYY-MM-DD)。保存時に空なら当日(日本時間)
+      popular TEXT NOT NULL DEFAULT '',      -- '' | '1'(「よくある困りごと」に表示)
+      body TEXT NOT NULL DEFAULT ''          -- 本文(20000字まで)
+    );
+    -- 添付ファイルから取り出した検索用の文字(2026-10-20)。正は元ファイル(data/uploads/<UUID>)で、このテーブルは再生成できる派生データ。
+    -- 添付を消すとき(DELETE /api/attachments/:id・記事の削除)にアプリ側で一緒に消す(FKは使わない既存方針)。閲覧範囲は元の添付と同じ(サインイン済み全社員)
+    CREATE TABLE IF NOT EXISTS attachment_texts (
+      attachment_id TEXT PRIMARY KEY,        -- attachments.id と同じUUID
+      text TEXT NOT NULL DEFAULT '',         -- NFKC正規化済み・最大30万字。status が ok 以外は空
+      status TEXT NOT NULL,                  -- 'ok' | 'empty'(文字なし。スキャン画像のPDFなど) | 'failed' | 'unsupported'(画像など)
+      version INTEGER NOT NULL DEFAULT 1,    -- 抽出・正規化のルールの版(変えたら再抽出の対象を見分けるため)
+      extracted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS user_tile_orders (
       email TEXT NOT NULL,           -- ユーザーの同一性はメールで判定(user_layoutsと同方式)
       kind TEXT NOT NULL,            -- 'links'(業務システムリンク) | 'policies'(社内規程)
