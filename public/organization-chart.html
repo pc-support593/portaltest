@@ -39,9 +39,12 @@
   /* 小区分(工務部の本社・平野・西宮、ゆめすみかの展示場など)は、横に並べる */
   .oc-members { border: 1px solid #c4d2e1; background: #ffffff; padding: 6px 8px; display: flex; flex-direction: row; align-items: flex-start; gap: 0; margin-top: 8px; border-radius: 6px; }
   .oc-section { display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 0 8px; border-left: 1px solid #e1e8f0; }
-  .oc-stack { flex-direction: column; align-items: stretch; gap: 6px; }
-  .oc-stack .oc-section { border-left: none; padding: 0; min-width: 0; }
-  .oc-stack .oc-section + .oc-section { border-top: 1px solid #e1e8f0; padding-top: 4px; }
+  /* 下の段(ゆめすみかの展示場など): 元の部門の列から下へ線を引き、すべての列の下に横に並べる */
+  .oc-tier-link { align-self: stretch; }
+  .oc-dropline { align-self: center; flex: 1 1 auto; min-height: 24px; width: 0; border-left: 2px dashed #9fbbdc; margin-top: 4px; }
+  .oc-tier { align-self: flex-start; margin-top: 4px; display: flex; flex-direction: column; }
+  .oc-tier-title { font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 5px 10px; }
+  .oc-tier .oc-members { margin-top: 0; border-radius: 0 0 6px 6px; }
   .oc-section:first-child { border-left: none; padding-left: 0; }
   .oc-section:last-child { padding-right: 0; }
   .oc-section-label { font-size: 11px; font-weight: 700; color: #1e5fa8; border-bottom: 1px dashed #c4d2e1; margin-bottom: 2px; white-space: nowrap; }

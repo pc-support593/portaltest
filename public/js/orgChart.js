@@ -21,7 +21,7 @@ const ORG_CHART_FRAME = {
     { name: '購買部', side: 'left', sections: [{ label: '', groups: ['購買部'] }] },
     { name: '不動産部', side: 'left', sections: [{ label: '', groups: ['不動産部'] }] },
     {
-      name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', stack: true, sections: [ // stack: 展示場などを下に積む(横幅を広げない。2026-10-20・ユーザー指示)
+      name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', lowerTier: true, sections: [ // lowerTier: 展示場などの小区分は、他の部門の下の段に、横に並べて置く(他の部門の人の一覧にかぶらず、列の幅も広げない。2026-10-20・ユーザー指示)
         { label: '福田展示場', groups: ['福田展示場'] }, { label: '中百舌鳥展示場', groups: ['中百舌鳥展示場'] }, { label: '平野展示場', groups: ['平野展示場'] },
         { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }
       ]
@@ -175,25 +175,49 @@ function renderOrgChart(chart) {
       ${box(chart.l2, 'oc-l2')}
       ${chart.l2.length ? '<div class="oc-vline"></div>' : ''}
     </div>`;
-  const colsHtml = chart.columns.map(col => {
-    const secs = col.sections.filter(s => s.members.length);
-    const stack = ORG_CHART_FRAME.columns.find(c => c.name === col.name)?.stack; // 枠組みの設定(stack=縦に積む)
-    return `
-    <div class="oc-col">
-      <div class="oc-dept">${esc(col.name)}</div>
-      ${box(col.l3, 'oc-l3')}
-      ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
-      ${box(col.l4, 'oc-l4')}
-      ${secs.length ? `<div class="oc-members${stack ? ' oc-stack' : ''}">
+  const membersHtml = secs => `<div class="oc-members">
         ${secs.map(s => `
         <div class="oc-section">
           ${s.label ? `<div class="oc-section-label">${esc(s.label)}</div>` : ''}
           ${s.members.map(m => ocPersonHtml(m, 'oc-m' + (m.added ? ' oc-added' : ''))).join('')}
         </div>`).join('')}
-      </div>` : ''}
+      </div>`;
+  const tiers = []; // 下の段に置く部門(枠組みの lowerTier=true。ゆめすみかの展示場など)
+  const colsHtml = chart.columns.map((col, idx) => {
+    const secs = col.sections.filter(s => s.members.length);
+    const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
+    if (lower && secs.length) tiers.push({ idx, name: col.name, secs });
+    return `
+    <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}" data-col="${idx}">
+      <div class="oc-dept">${esc(col.name)}</div>
+      ${box(col.l3, 'oc-l3')}
+      ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
+      ${box(col.l4, 'oc-l4')}
+      ${lower && secs.length ? '<div class="oc-dropline"></div>' : (secs.length ? membersHtml(secs) : '')}
     </div>`;
   }).join('');
-  ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>`;
+  // 下の段: 他の部門の人の一覧にかぶらないよう、すべての列の下に、横に並べて置く(横幅を広げないため)
+  const tiersHtml = tiers.map(t => `
+    <div class="oc-tier" data-tier="${t.idx}">
+      <div class="oc-tier-title">${esc(t.name)}</div>
+      ${membersHtml(t.secs)}
+    </div>`).join('');
+  ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
+  alignOrgChartTiers();
+}
+
+/** 下の段の左端を、元の部門の列の左端にそろえる(右にはみ出さない範囲で)。表示のあと・画面の幅が変わったときに呼ぶ */
+function alignOrgChartTiers() {
+  const chartEl = ocEl('oc-chart');
+  const chartRect = chartEl.getBoundingClientRect();
+  chartEl.querySelectorAll('.oc-tier').forEach(t => {
+    const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.tier}"]`);
+    if (!col) return;
+    t.style.marginLeft = '0px';
+    const left = col.getBoundingClientRect().left - chartRect.left;
+    const max = Math.max(0, chartRect.width - t.getBoundingClientRect().width);
+    t.style.marginLeft = `${Math.max(0, Math.min(left, max))}px`;
+  });
 }
 
 /** 印刷(PDF保存)用: 図の幅をA3横の用紙の幅に合わせて縮小する(印刷の前に設定し、後で戻す) */
@@ -202,6 +226,7 @@ function setupOrgChartPrint() {
   window.addEventListener('beforeprint', () => {
     const avail = 1500; // A3横(420mm≒1587px)から余白を引いた幅
     chartEl.style.zoom = String(Math.min(1, avail / Math.max(1, chartEl.scrollWidth)));
+    alignOrgChartTiers();
   });
   window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; });
   const btn = ocEl('oc-print');
