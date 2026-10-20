@@ -547,7 +547,7 @@ app.put('/api/admin/orgchart-titles', (req, res) => {
   if (!requireAdmin(req, res)) return;
   const b = req.body || {};
   const email = normalizeOrgKey(b.email);
-  const dept = String(b.dept || '').normalize('NFKC').trim();
+  const dept = String(b.dept || '').trim(); // 部門名は正規化しない(㈱ は NFKC で「(株)」になり、画面の枠組み ORG_CHART_FRAME の名前と一致しなくなる)
   const title = String(b.title || '').normalize('NFKC').trim();
   let sort = Math.round(Number(b.sort) || 0);
   if (!email || email.length > 200 || hasControlChar(email)) return res.status(400).json({ error: 'メールアドレス(または氏名)が不正です' });

@@ -175,6 +175,8 @@ const files = {
   check('組織図の役職: 部門を指定した行(兼任)は、既定の行とは別に持てる', (await getT()).filter(r => r.email === 'k-test@yoshimuraichi.com').length === 2);
   await putT({ email: 'name:荒井　正義', dept: '', title: '主任' });
   check('組織図の役職: メールの無い人は「name:氏名」のキー(空白は全角・半角とも除去)', (await getT()).some(r => r.email === 'name:荒井正義' && r.title === '主任'));
+  await putT({ email: 'm@y.com', dept: '㈱ゆめすみか', title: '次長(兼任)' });
+  check('組織図の役職: 部門名「㈱ゆめすみか」が正規化で変わらず、そのまま保存・取得できる(NFKCで「(株)」にしない)', (await getT()).some(r => r.email === 'm@y.com' && r.dept === '㈱ゆめすみか'));
   check('組織図の役職: 役職が31字以上・制御文字・メールなしは拒否', (await putT({ email: 'a@x.com', dept: '', title: 'あ'.repeat(31) })).status === 400 && (await putT({ email: 'a@x.com', dept: '', title: 'a' + String.fromCharCode(10) + 'b' })).status === 400 && (await putT({ email: '', dept: '', title: '課長' })).status === 400);
   await putT({ email: 'k-test@yoshimuraichi.com', dept: '', title: '' });
   check('組織図の役職: 役職を空にすると行が削除される', !(await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '') && (await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '不動産部'));

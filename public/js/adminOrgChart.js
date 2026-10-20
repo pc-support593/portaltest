@@ -8,8 +8,10 @@ let orgTitlesCache = null; // { org, manual:[{email,dept,title,sort}] }
 async function loadOrgTitlesData(force) {
   if (orgTitlesCache && !force) return orgTitlesCache;
   const [org, manual] = await Promise.all([loadOrgData(), api('/api/orgchart-titles')]);
-  orgTitlesCache = { org, manual };
-  return orgTitlesCache;
+  const partial = [...(org.failedLeft || []), ...(org.failedRight || [])].length > 0;
+  const data = { org, manual, partial };
+  if (!partial) orgTitlesCache = data; // グループの取得が一部失敗したときはキャッシュしない(次に開いたとき取り直す)
+  return data;
 }
 
 function orgManualFind(manual, key, dept) {
@@ -18,10 +20,10 @@ function orgManualFind(manual, key, dept) {
 
 async function saveOrgTitle(email, dept, title, sort) {
   await api('/api/admin/orgchart-titles', { method: 'PUT', body: { email, dept, title, sort } });
-  const m = orgTitlesCache.manual;
-  const i = m.findIndex(r => r.email === email && r.dept === dept);
-  if (!title) { if (i >= 0) m.splice(i, 1); return; }
-  if (i >= 0) { m[i].title = title; m[i].sort = sort; } else m.push({ email, dept, title, sort });
+  // サーバーが正規化した値(メールの小文字化・役職の整形・表示順の範囲)を反映するため、手入力の一覧を取り直す
+  const manual = await api('/api/orgchart-titles');
+  if (orgTitlesCache) orgTitlesCache.manual = manual;
+  return manual;
 }
 
 async function renderOrgChartTitlesTab() {
@@ -41,7 +43,8 @@ async function renderOrgChartTitlesTab() {
   }
   if (state.tab !== 'orgchart-titles') return; // 取得中にタブが切り替わっていたら描き替えない
 
-  const { org, manual } = data;
+  const { org, partial } = data;
+  let manual = data.manual;
   const people = orgChartPeopleForAdmin(org, manual);
   const known = new Set(Object.keys(org.names || {}));
   [...(org.left || []), ...(org.right || [])].forEach(g => g.members.forEach(m => known.add(orgKeyOf(m))));
@@ -69,7 +72,7 @@ async function renderOrgChartTitlesTab() {
     .map(([email, name]) => `<option value="${esc(email)}">${esc(name)}(${esc(email)})</option>`).join('');
   const deptOptions = ORG_CHART_FRAME.columns.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   const extraRows = manual.filter(r => r.dept !== '');
-  const orphans = manual.filter(r => !known.has(r.email));
+  const orphans = partial ? [] : manual.filter(r => !known.has(r.email)); // グループの取得に失敗したときは、名簿にいないかの判定をしない(有効な行を消してしまわないため)
   const extraHtml = `
     <div style="padding:16px 24px;border-bottom:1px solid #e8edf3;background:#f7fafd;display:flex;flex-direction:column;gap:10px">
       <span style="font-size:13px;font-weight:700;color:#1c2b3a">兼任・追加(MS365のグループに入っていない部門に、人を追加で載せる)</span>
@@ -80,11 +83,12 @@ async function renderOrgChartTitlesTab() {
         <button id="oc-add-btn" type="button" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:7px 16px;font-size:12px;font-family:inherit;cursor:pointer">追加</button>
         <span id="oc-add-result" style="font-size:12px"></span>
       </div>
-      <span style="font-size:11px;color:#8a99a8">役職が「次長」で始まれば④、「部長・室長・マネージャー」で始まれば③の枠に載ります。それ以外は⑤のメンバーに載ります。</span>
+      <span style="font-size:11px;color:#8a99a8">役職が「次長」なら④、「部長・取締役部長・室長・マネージャー」なら③の枠に載ります(「次長(兼任)」のように括弧の注記つきも同じ)。それ以外は⑤のメンバーに載ります(ゆめすみかの列は、③=常務取締役・④=マネージャーの人だけなので、追加した人は⑤に載ります)。</span>
       ${extraRows.length ? `<div style="display:flex;flex-direction:column;gap:4px">${extraRows.map(r => `
         <div style="display:flex;gap:12px;align-items:center;font-size:12px"><span style="width:150px">${esc(r.dept)}</span><span style="flex:1">${esc((org.names || {})[r.email] || r.email)} — ${esc(r.title)}</span>
-        <button type="button" data-del-extra="${esc(r.email)}|${esc(r.dept)}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 12px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button></div>`).join('')}</div>` : ''}
-      ${orphans.length ? `<div style="font-size:12px;color:#c05a5a">名簿に見つからない行があります(退職・名前の変更など): ${orphans.map(r => `${esc(r.email)}(${esc(r.dept || '既定')}・${esc(r.title)}) <button type="button" data-del-extra="${esc(r.email)}|${esc(r.dept)}" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:2px 10px;cursor:pointer;font-size:11px;font-family:inherit">削除</button>`).join(' ・ ')}</div>` : ''}
+        <button type="button" data-del-extra data-del-email="${esc(r.email)}" data-del-dept="${esc(r.dept)}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 12px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button></div>`).join('')}</div>` : ''}
+      ${partial ? '<div style="font-size:12px;color:#c05a5a">一部のグループを取得できなかったため、「名簿に見つからない行」の確認は行っていません。時間をおいて開き直してください。</div>' : ''}
+      ${orphans.length ? `<div style="font-size:12px;color:#c05a5a">名簿に見つからない行があります(退職・名前の変更など): ${orphans.map(r => `${esc(r.email)}(${esc(r.dept || '既定')}・${esc(r.title)}) <button type="button" data-del-extra data-del-email="${esc(r.email)}" data-del-dept="${esc(r.dept)}" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:2px 10px;cursor:pointer;font-size:11px;font-family:inherit">削除</button>`).join(' ・ ')}</div>` : ''}
     </div>`;
 
   body.innerHTML = extraHtml + (people.length ? people.map(rowHtml).join('') : '<div style="padding:24px;font-size:13px;color:#8a99a8">表示できる人がいません</div>');
@@ -108,7 +112,7 @@ async function renderOrgChartTitlesTab() {
     sortEl.addEventListener('change', save);
   });
   body.querySelectorAll('[data-del-extra]').forEach(b => b.addEventListener('click', async () => {
-    const [email, dept] = b.dataset.delExtra.split('|');
+    const email = b.dataset.delEmail, dept = b.dataset.delDept; // 「|」で連結せず、別の属性で持つ(キーに「|」が含まれても壊れない)
     if (!confirm('この行を削除しますか?')) return;
     try { await saveOrgTitle(email, dept, '', 0); renderOrgChartTitlesTab(); } catch (e) { alert(e.message); }
   }));

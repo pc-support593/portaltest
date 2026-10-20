@@ -157,6 +157,12 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 兼任(手入力で部門を指定)は、MS365のグループに無くても④に載る', colOf('不動産部').l4.map(p => p.name + ':' + p.title).join() === '森下 直美:次長(兼任)');
   check('組織図: メールの無い手動メンバー(荒井 正義)は氏名のキーで手入力の役職が付く', colOf('工務部').sections.find(s => s.label === '物流事業係').members[0].title === '主任');
   check('組織図: 工務部の部長は③に載る', colOf('工務部').l3.map(p => p.name).join() === '工務 太郎');
+  // 役職の判定: 「部長代理」などは③に入らない・「店長代理」は「店長」より後ろ・「次長(兼任)」は④
+  const ocOrg2 = { left: [{ dept: '総務部', members: [P('部長 本人', 'p1@x.com', '部長'), P('代理 人', 'p2@x.com', '部長代理'), P('次長 兼', 'p3@x.com', '次長(兼任)'), P('マ 補', 'p4@x.com', 'マネージャー補佐')] }], right: [{ dept: '福田展示場', members: [P('代 理', 'q1@y.com', '店長代理'), P('店 長', 'q2@y.com', '店長'), P('係 長', 'q3@y.com', '係長')] }], names: {} };
+  const ch2 = oc.buildOrgChart(ocOrg2, []);
+  check('組織図: 「部長」「次長(兼任)」は③④・「部長代理」「マネージャー補佐」は⑤に回る', ch2.columns.find(c => c.name === '総務部').l3.map(p => p.name).join() === '部長 本人' && ch2.columns.find(c => c.name === '総務部').l4.map(p => p.name).join() === '次長 兼' && ch2.columns.find(c => c.name === '総務部').sections[0].members.map(p => p.name).join() === '代理 人,マ 補');
+  check('組織図: ⑤の順は 店長→係長→店長代理(「店長代理」が「店長」と同じ順位にならない)', ch2.columns.find(c => c.name === '㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,係長,店長代理');
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

@@ -38,15 +38,18 @@ const ORG_L4_TITLE = ['次長'];
 // ⑤の表示順(役職の先頭が一致。上にあるほど上位。ここに無い役職は後ろ、役職なしは最後)
 const ORG_L5_RANK = ['課長', '店長', '係長', '店長代理', '主任', 'リーダー'];
 
-const orgStartsWith = (title, list) => list.some(t => String(title || '').startsWith(t));
+// 役職が一覧のどれかと一致するか。完全一致、または「次長(兼任)」「部長(兼)」のように丸括弧の注記つき(「部長代理」「マネージャー補佐」などは別の役職なので含めない)
+const orgStartsWith = (title, list) => list.some(t => { const s = String(title || ''); return s === t || s.startsWith(t + '(') || s.startsWith(t + '（'); });
 const orgNorm = s => String(s || '').normalize('NFKC').replace(/\s+/g, ''); // サーバー(server.js の normalizeOrgKey)と同じ規則
 const orgKeyOf = m => (m.email ? m.email.toLowerCase() : 'name:' + orgNorm(m.name)); // メールの無い手動メンバーは 'name:氏名' で区別する
 
 function orgRank(title) {
   const t = String(title || '');
   if (!t) return ORG_L5_RANK.length + 1;
-  const i = ORG_L5_RANK.findIndex(r => t.startsWith(r));
-  return i >= 0 ? i : ORG_L5_RANK.length;
+  // 一致する中で一番長い名前を採る(「店長代理」が「店長」に先に当たらないように)
+  let best = -1;
+  ORG_L5_RANK.forEach((r, i) => { if (t.startsWith(r) && (best < 0 || r.length > ORG_L5_RANK[best].length)) best = i; });
+  return best >= 0 ? best : ORG_L5_RANK.length;
 }
 
 /** 組織図の中身を組み立てる(純粋な関数)。
