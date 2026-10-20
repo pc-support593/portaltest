@@ -21,7 +21,7 @@ const ORG_CHART_FRAME = {
     { name: '購買部', side: 'left', sections: [{ label: '', groups: ['購買部'] }] },
     { name: '不動産部', side: 'left', sections: [{ label: '', groups: ['不動産部'] }] },
     {
-      name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', sections: [
+      name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', stack: true, sections: [ // stack: 展示場などを下に積む(横幅を広げない。2026-10-20・ユーザー指示)
         { label: '福田展示場', groups: ['福田展示場'] }, { label: '中百舌鳥展示場', groups: ['中百舌鳥展示場'] }, { label: '平野展示場', groups: ['平野展示場'] },
         { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }
       ]
@@ -177,13 +177,14 @@ function renderOrgChart(chart) {
     </div>`;
   const colsHtml = chart.columns.map(col => {
     const secs = col.sections.filter(s => s.members.length);
+    const stack = ORG_CHART_FRAME.columns.find(c => c.name === col.name)?.stack; // 枠組みの設定(stack=縦に積む)
     return `
     <div class="oc-col">
       <div class="oc-dept">${esc(col.name)}</div>
       ${box(col.l3, 'oc-l3')}
       ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
       ${box(col.l4, 'oc-l4')}
-      ${secs.length ? `<div class="oc-members">
+      ${secs.length ? `<div class="oc-members${stack ? ' oc-stack' : ''}">
         ${secs.map(s => `
         <div class="oc-section">
           ${s.label ? `<div class="oc-section-label">${esc(s.label)}</div>` : ''}

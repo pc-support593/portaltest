@@ -39,6 +39,9 @@
   /* 小区分(工務部の本社・平野・西宮、ゆめすみかの展示場など)は、横に並べる */
   .oc-members { border: 1px solid #c4d2e1; background: #ffffff; padding: 6px 8px; display: flex; flex-direction: row; align-items: flex-start; gap: 0; margin-top: 8px; border-radius: 6px; }
   .oc-section { display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 0 8px; border-left: 1px solid #e1e8f0; }
+  .oc-stack { flex-direction: column; align-items: stretch; gap: 6px; }
+  .oc-stack .oc-section { border-left: none; padding: 0; min-width: 0; }
+  .oc-stack .oc-section + .oc-section { border-top: 1px solid #e1e8f0; padding-top: 4px; }
   .oc-section:first-child { border-left: none; padding-left: 0; }
   .oc-section:last-child { padding-right: 0; }
   .oc-section-label { font-size: 11px; font-weight: 700; color: #1e5fa8; border-bottom: 1px dashed #c4d2e1; margin-bottom: 2px; white-space: nowrap; }
