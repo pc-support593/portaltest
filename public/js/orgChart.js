@@ -193,51 +193,58 @@ function renderOrgChart(chart) {
           ${s.members.map(m => ocPersonHtml(m, 'oc-m' + (m.added ? ' oc-added' : ''))).join('')}
         </div>`).join('')}
       </div>`;
-  // カスタマーサポート室の左に線(spine)を出して下へ伸ばし、そこへ事業係などの部門を縦に並べる(横幅を広げないため)
+  // 下の段に置くもの(横に並べる): ①事業係などの部門(sideDepts)=カスタマーサポート室の左の線(spine)を下へ伸ばした先 ②ゆめすみかの展示場など(lowerTier)=ゆめすみかの列から点線で下へ
+  const tiers = [];
   const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length));
-  const sidesHtml = sidesList.length ? `<div class="oc-spine"></div><div class="oc-side">${sidesList.map(d => `
-      <div class="oc-side-dept">
-        <div class="oc-dept oc-dept-sm">${esc(d.name)}</div>
-        ${box(d.l3, 'oc-l3')}${box(d.l4, 'oc-l4')}
-        ${d.sections.some(s => s.members.length) ? membersHtml(d.sections.filter(s => s.members.length)) : ''}
-      </div>`).join('')}</div>` : '';
-  const tiers = []; // 下の段に置く部門(枠組みの lowerTier=true。ゆめすみかの展示場など)
+  if (sidesList.length) {
+    // 各部門を、展示場と同じ「区分(見出し+人の一覧)」として横に並べる。③④の人(役職つき)は、各区分の先頭に出す
+    tiers.push({ kind: 'side', anchor: 0, secs: sidesList.map(d => ({ label: d.name, members: [...d.l3, ...d.l4, ...d.sections.flatMap(s => s.members)] })) });
+  }
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
-    if (lower && secs.length) tiers.push({ idx, name: col.name, secs });
+    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs });
     return `
-    <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}${idx === 0 && sidesHtml ? ' oc-has-side' : ''}" data-col="${idx}">
+    <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}${idx === 0 && sidesList.length ? ' oc-has-side' : ''}" data-col="${idx}">
       <div class="oc-dept">${esc(col.name)}</div>
       ${box(col.l3, 'oc-l3')}
       ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
       ${box(col.l4, 'oc-l4')}
       ${lower && secs.length ? '<div class="oc-dropline"></div>' : (secs.length ? membersHtml(secs) : '')}
-      ${idx === 0 ? sidesHtml : ''}
+      ${idx === 0 && sidesList.length ? '<div class="oc-spine"></div>' : ''}
     </div>`;
   }).join('');
-  // 下の段: 他の部門の人の一覧にかぶらないよう、すべての列の下に、横に並べて置く(横幅を広げないため)
-  const tiersHtml = tiers.map(t => `
-    <div class="oc-tier" data-tier="${t.idx}">
-      <div class="oc-tier-title">${esc(t.name)}</div>
+  const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.map((t, i) => `
+    <div class="oc-tier" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}">
+      ${t.name ? `<div class="oc-tier-title">${esc(t.name)}</div>` : ''}
       ${membersHtml(t.secs)}
-    </div>`).join('');
+    </div>`).join('')}</div>` : '';
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
 }
 
-/** 下の段の左端を、元の部門の列の左端にそろえる(右にはみ出さない範囲で)。表示のあと・画面の幅が変わったときに呼ぶ */
+/** 下の段の位置を決める。左端は、元の部門の列の左端にそろえる(事業係などは、カスタマーサポート室の左の線の位置)。
+    右にはみ出さない範囲で寄せ、他の下の段と横に重なるときは、その下に回す。表示のあと・印刷の前に呼ぶ */
 function alignOrgChartTiers() {
   const chartEl = ocEl('oc-chart');
+  const wrap = chartEl.querySelector('.oc-tiers');
+  if (!wrap) return;
   const chartRect = chartEl.getBoundingClientRect();
-  chartEl.querySelectorAll('.oc-tier').forEach(t => {
-    const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.tier}"]`);
+  const placed = [];
+  wrap.querySelectorAll('.oc-tier').forEach(t => {
+    const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.anchor}"]`);
     if (!col) return;
-    t.style.marginLeft = '0px';
-    const left = col.getBoundingClientRect().left - chartRect.left;
-    const max = Math.max(0, chartRect.width - t.getBoundingClientRect().width);
-    t.style.marginLeft = `${Math.max(0, Math.min(left, max))}px`;
+    const w = t.getBoundingClientRect().width, h = t.getBoundingClientRect().height;
+    const offset = t.dataset.kind === 'side' ? 14 : 0; // 事業係などは、spine(列の左端から14px)の位置から
+    const wantLeft = col.getBoundingClientRect().left - (wrap.getBoundingClientRect().left) + offset;
+    const left = Math.max(0, Math.min(wantLeft, Math.max(0, chartRect.width - w)));
+    let top = 0;
+    placed.forEach(p => { if (left < p.left + p.w && p.left < left + w) top = Math.max(top, p.top + p.h + 8); });
+    t.style.left = `${left}px`;
+    t.style.top = `${top}px`;
+    placed.push({ left, w, top, h });
   });
+  wrap.style.height = `${Math.max(0, ...placed.map(p => p.top + p.h))}px`;
 }
 
 /** 印刷(PDF保存)用: 図の幅をA3横の用紙の幅に合わせて縮小する(印刷の前に設定し、後で戻す) */

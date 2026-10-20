@@ -43,16 +43,13 @@
   .oc-col.oc-has-side { padding-left: 30px; }
   .oc-col.oc-has-side::before { left: calc(50% + 14px); }
   .oc-col.oc-has-side::after { left: 14px; } /* 母線を、spine の位置まで左へ伸ばす */
-  .oc-spine { position: absolute; left: 14px; top: 0; bottom: 0; width: 2px; background: #9fbbdc; }
-  .oc-side { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-  .oc-side-dept { position: relative; }
-  .oc-side-dept::before { content: ''; position: absolute; left: -16px; top: 12px; width: 16px; height: 2px; background: #9fbbdc; }
-  .oc-dept-sm { font-size: 12px; }
-  .oc-side-dept .oc-members { margin-top: 0; border-radius: 0 0 6px 6px; }
+  .oc-col.oc-has-side { align-self: stretch; }
+  .oc-spine { position: absolute; left: 14px; top: 0; bottom: -14px; width: 2px; background: #9fbbdc; } /* 母線の左端から下へ。下の段(事業係などの部門)の上端まで */
   /* 下の段(ゆめすみかの展示場など): 元の部門の列から下へ線を引き、すべての列の下に横に並べる */
   .oc-tier-link { align-self: stretch; }
   .oc-dropline { align-self: center; flex: 1 1 auto; min-height: 24px; width: 0; border-left: 2px dashed #9fbbdc; margin-top: 4px; }
-  .oc-tier { align-self: flex-start; margin-top: 4px; display: flex; flex-direction: column; }
+  .oc-tiers { position: relative; align-self: stretch; margin-top: 14px; } /* 下の段(位置はJSで決める) */
+  .oc-tier { position: absolute; display: flex; flex-direction: column; }
   .oc-tier-title { font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 5px 10px; }
   .oc-tier .oc-members { margin-top: 0; border-radius: 0 0 6px 6px; }
   .oc-section:first-child { border-left: none; padding-left: 0; }
