@@ -1346,4 +1346,5 @@
    ユーザー: 工務事務に主任などの情報を反映したい → 「工務事務 主任」のように先頭を「工務事務」にする方法で。kotani@yoshimuraichi.com の固定だけ外し、naofumi_kotani@yumesumika.com は名簿・組織図から消す。
    実施: 役職が「工務事務」+空白で始まる人も箱に入れ、氏名の横に続く役職(主任など)を表示。DEPARTMENT_OVERRIDES を空に、EXCLUDED_EMAILS に naofumi_kotani@yumesumika.com を追加(社員名簿・出勤状況にも効く)。npm test 全て成功。
    確認してほしい点: 管理画面「組織図の役職」で、対象の人の役職を「工務事務 主任」のように入力する(MS365の役職でも可)。
-   状態: テスト環境に反映(コミット後)。本番は未反映(本番に出すときは、社員名簿・出勤状況にも影響することに注意)。
+   本番反映(2026-10-21・ユーザー依頼): /check Portal リリース(条件付きOK。記録 2026-10-21_Portal_リリース_2.md)→スナップショット portal-before-orgchart2-20261021→本番リポジトリに3ファイル(orgChart.js・orgData.js・organization-chart.html)と CLAUDE.md だけ反映(b47c414。DB・server.js変更なし、再起動なし)→サーバーで git pull。確認: 各URL 200、API未ログイン401、配信中のJSに新コード、メニューに組織図リンクなし。
+   状態: 本番に反映済み。
