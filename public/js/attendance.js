@@ -151,7 +151,9 @@ function render(data) {
   const isYume = i => (i.email || '').toLowerCase().endsWith('@yumesumika.com');
   // 列の振り分けは社員名簿と同じ(個別指定 PERSON_OVERRIDES があればそれを優先)。部門情報がなければメールアドレスのドメインで分ける
   const person = i => PERSON_OVERRIDES[(i.email || '').toLowerCase()];
-  const isRight = i => (person(i) ? person(i).column === 'right' : isYume(i));
+  // 社員名簿(loadOrgData)で右列(ゆめすみか)に振り分けられた人(ゆめすみかの部門グループに入っている@yoshimuraichi.comの人を含む)は右列(2026-10-21・ユーザー指示)
+  const orgRight = new Set(((org && org.users && org.users.right) || []).map(u => (u.email || '').toLowerCase()).filter(Boolean));
+  const isRight = i => orgRight.has((i.email || '').toLowerCase()) || (person(i) ? person(i).column === 'right' : isYume(i));
   const names = org && org.names;
   el('att-left').innerHTML = groupsHtml(buildAttendanceGroups(org && org.left, visible.filter(i => !isRight(i)), names));
   el('att-right').innerHTML = groupsHtml(buildAttendanceGroups(org && org.right, visible.filter(isRight), names));
