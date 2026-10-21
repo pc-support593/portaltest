@@ -190,6 +190,12 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 工務部は、部長と次長の種類の数字が同じでも、役職が「次長」なら④に分かれる', kk3.l3.map(p => p.name).join() === '千葉 由樹' && kk3.l4.map(p => p.name).join() === '佐藤 末明');
   check('組織図: 工務部に種類が1つだけのときは、従来どおり(4=④次長。③にはしない)', kk2.l3.length === 0 && kk2.l4.map(p => p.name).join() === '次長 のみ');
 
+  // 兼任の追加で区分を指定: 「部門名/区分名」の dept は、その区分に載る(指定なしは先頭の区分)
+  const chSec = oc.buildOrgChart({ left: [], right: [{ dept: '福田展示場', members: [P('福田 一', 'f1@y.com')] }, { dept: '設計', members: [P('設計 一', 'd1@y.com')] }], names: { 'x1@x.com': '兼任 甲', 'x2@x.com': '兼任 乙', 'x3@x.com': '兼任 丙' } },
+    [{ email: 'x1@x.com', dept: '㈱ゆめすみか/設計', title: '設計(兼)', sort: 0 }, { email: 'x2@x.com', dept: '㈱ゆめすみか', title: '店長(兼)', sort: 0 }, { email: 'x3@x.com', dept: '㈱ゆめすみか/存在しない区分', title: '主任(兼)', sort: 0 }]);
+  const ymSec = chSec.columns.find(c => c.name === '㈱ゆめすみか').sections;
+  check('組織図: 兼任の追加で区分を指定すると、その区分(ゆめすみかの設計)に載る・指定なしや存在しない区分は先頭の区分', ymSec.find(s => s.label === '設計').members.map(m => m.name).join() === '兼任 甲,設計 一' && ymSec.find(s => s.label === '福田展示場').members.map(m => m.name).sort().join() === ['福田 一', '兼任 乙', '兼任 丙'].sort().join());
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

@@ -144,7 +144,9 @@ function buildOrgChart(org, manual) {
 
     // 兼任・追加: この部門を指定した手入力の行のうち、まだ載っていない人を足す(MS365のグループに入っていない人)。
     // 手入力の行には従業員の種類が無いので、役職の文字(「次長」「部長」など。括弧の注記つきも可)で③④を判定する(ゆめすみかの列は⑤)
-    (manual || []).filter(r => r.dept === col.name).forEach(r => {
+    // dept は「部門名」または「部門名/区分名」(区分=工務部の本社・平野・西宮、ゆめすみかの展示場・設計など。区分を指定しないときは先頭の区分)
+    (manual || []).filter(r => r.dept === col.name || r.dept.startsWith(col.name + '/')).forEach(r => {
+      const secLabel = r.dept.length > col.name.length ? r.dept.slice(col.name.length + 1) : '';
       const k = String(r.email).toLowerCase();
       if (seen.has(k)) return;
       seen.add(k);
@@ -152,7 +154,7 @@ function buildOrgChart(org, manual) {
       const it = { name: displayName(nm), title: r.title, key: k, added: true };
       if (!isRight && orgStartsWith(it.title, ORG_L3_TITLE)) out.l3.push(it);
       else if (!isRight && orgStartsWith(it.title, ORG_L4_TITLE)) out.l4.push(it);
-      else if (out.sections.length) out.sections[0].members.push(it);
+      else if (out.sections.length) (out.sections.find(s => s.label === secLabel) || out.sections[0]).members.push(it);
     });
 
     // ⑤の並び: 役職の順(課長→店長→係長…)→手入力の順(sort)→名簿の順(元の並びのまま)
