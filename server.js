@@ -550,7 +550,7 @@ app.put('/api/admin/orgchart-titles', (req, res) => {
   const dept = String(b.dept || '').trim(); // 部門名は正規化しない(㈱ は NFKC で「(株)」になり、画面の枠組み ORG_CHART_FRAME の名前と一致しなくなる)
   const title = String(b.title || '').normalize('NFKC').trim();
   let sort = Math.round(Number(b.sort) || 0);
-  if (!email || email.length > 200 || hasControlChar(email)) return res.status(400).json({ error: 'メールアドレス(または氏名)が不正です' });
+  if (!email || email === 'name:' || email.length > 200 || hasControlChar(email)) return res.status(400).json({ error: 'メールアドレス(または氏名)が不正です' });
   if (dept.length > 60 || hasControlChar(dept)) return res.status(400).json({ error: '部門名が不正です' });
   if (title.length > 30 || hasControlChar(title)) return res.status(400).json({ error: '役職は30文字までです' });
   sort = Math.max(0, Math.min(9999, sort));
