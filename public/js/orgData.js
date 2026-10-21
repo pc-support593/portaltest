@@ -63,13 +63,13 @@ async function fetchOrgUsers() {
 // (MS365グループ)の方が正確なため)。いずれのグループにも所属しないゆめすみか社員は表示しない
 // (ユーザー指示。department属性へのフォールバックはしない)
 const YUMESUMIKA_GROUPS = [
+  { label: '広報企画室', groupMail: 'yumesumika_marketing@yumesumika.com' }, // 2026-10-21・ユーザー指示で追加。マネージャー(優先見出し)の次=展示場より前
   { label: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
   { label: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
   { label: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { label: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { label: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
-  { label: '設計', groupMail: 'yumesumika_6@yumesumika.com' },
-  { label: 'マーケティング', groupMail: 'yumesumika_marketing@yumesumika.com' } // 2026-10-21・ユーザー指示で追加
+  { label: '設計', groupMail: 'yumesumika_6@yumesumika.com' }
 ];
 const YUMESUMIKA_GROUP_ORDER = YUMESUMIKA_GROUPS.map(g => g.label);
 

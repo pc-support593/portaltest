@@ -21,7 +21,7 @@ const ORG_CHART_FRAME = {
     {
       name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', lowerTier: true, sections: [ // lowerTier: 展示場などの小区分は、他の部門の下の段に、横に並べて置く(他の部門の人の一覧にかぶらず、列の幅も広げない。2026-10-20・ユーザー指示)
         { label: '福田展示場', groups: ['福田展示場'] }, { label: '中百舌鳥展示場', groups: ['中百舌鳥展示場'] }, { label: '平野展示場', groups: ['平野展示場'] },
-        { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }, { label: 'マーケティング', groups: ['マーケティング'] }
+        { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }, { label: '広報企画室', groups: ['広報企画室'] } // 先頭の区分は兼任の既定の置き場(福田展示場)のため、広報企画室は末尾
       ]
     },
     { name: '建築営業部', side: 'left', sections: [{ label: '', groups: ['建築営業部'] }] },
