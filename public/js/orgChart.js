@@ -28,6 +28,9 @@ const ORG_CHART_FRAME = {
     { name: '設計企画部', side: 'left', sections: [{ label: '', groups: ['設計企画部'] }] },
     { name: '総務部', side: 'left', sections: [{ label: '', groups: ['総務部'] }] }
   ],
+  // 工務事務: 役職(MS365の役職、または管理画面の手入力)が「工務事務」の人は、本来の部門の箱からは外し、この箱(2行に均等に並べる)にまとめる。
+  // 箱は、parents の3部門の下に置き、3部門と実線でつなぐ(2026-10-21・ユーザー指示)。「事務員」は、区別せず、役職として⑤の一覧に出す
+  jimu: { name: '工務事務', title: '工務事務', parents: ['カスタマーサポート室', 'リフォーム部', '工務部'] },
   // 工務部の配下ではなく、他の部門と同じ立ち位置(専務の配下)の部門。横に長くなるため、カスタマーサポート室の左に線を出して下へ伸ばし、そこに縦に並べる(2026-10-20・ユーザー指示)
   sideDepts: [
     { name: 'エクステリア事業係', side: 'left', sections: [{ label: '', groups: ['エクステリア事業係'] }] },
@@ -168,6 +171,19 @@ function buildOrgChart(org, manual) {
   };
   chart.columns = ORG_CHART_FRAME.columns.map(buildCol);
   chart.sides = (ORG_CHART_FRAME.sideDepts || []).map(buildCol); // カスタマーサポート室の左の線にぶら下げる部門
+  // 工務事務: 役職が「工務事務」の人を、本来の部門の箱(⑤の一覧)から外して、1つの箱にまとめる(同じ人は1回だけ)。並びは、手入力の表示順の小さい順→元の並び
+  const jf = ORG_CHART_FRAME.jimu;
+  chart.jimu = { name: jf.name, parents: jf.parents, members: [] };
+  const seenJimu = new Set();
+  [...chart.columns, ...chart.sides].forEach(c => c.sections.forEach(sec => {
+    sec.members = sec.members.filter(m => {
+      if (m.title !== jf.title) return true;
+      if (!seenJimu.has(m.key)) { seenJimu.add(m.key); chart.jimu.members.push(m); }
+      return false;
+    });
+  }));
+  const jimuSort = m => { const r = man.get(`${m.key}|`) || (manual || []).find(x => String(x.email).toLowerCase() === m.key); return r ? Number(r.sort) || 0 : 0; };
+  chart.jimu.members = chart.jimu.members.map((m, i) => ({ m, i })).sort((a, b) => jimuSort(a.m) - jimuSort(b.m) || a.i - b.i).map(x => x.m);
   return chart;
 }
 
@@ -187,6 +203,7 @@ function orgChartGroupChoices() {
 function orgChartPeopleForAdmin(org, manual) {
   const chart = buildOrgChart(org, manual);
   const rows = [];
+  chart.jimu.members.forEach(m => rows.push({ dept: chart.jimu.name, section: '', key: m.key, name: m.name, title: m.title, added: false })); // 工務事務の人も、役職を直せるように一覧に出す
   [...chart.columns, ...chart.sides].forEach(col => {
     col.sections.forEach(sec => sec.members.forEach(m => rows.push({ dept: col.name, section: sec.label, key: m.key, name: m.name, title: m.title, added: !!m.added })));
   });
@@ -216,8 +233,14 @@ function renderOrgChart(chart) {
           ${s.members.map(m => ocPersonHtml(m, 'oc-m' + (m.added ? ' oc-added' : ''))).join('')}
         </div>`).join('')}
       </div>`;
-  // 下の段に置くもの(横に並べる): ①事業係などの部門(sideDepts)=カスタマーサポート室の左の線(spine)を下へ伸ばした先 ②ゆめすみかの展示場など(lowerTier)=ゆめすみかの列から点線で下へ
+  // 下の段に置くもの: ①工務事務の箱(jimu)=カスタマーサポート室・リフォーム部・工務部の下に置き、3部門と実線でつなぐ ②事業係などの部門(sideDepts)=カスタマーサポート室の左の線(spine)を下へ伸ばした先(横に並べる)
+  //   ③ゆめすみかの展示場など(lowerTier)=ゆめすみかの列から実線で下へ。位置と線は alignOrgChartTiers が決める
   const tiers = [];
+  const jimu = chart.jimu;
+  if (jimu && jimu.members.length) {
+    const parents = (jimu.parents || []).map(n => chart.columns.findIndex(c => c.name === n)).filter(i => i >= 0);
+    tiers.push({ kind: 'jimu', anchor: parents[0] || 0, parents, name: jimu.name, members: jimu.members });
+  }
   const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length));
   if (sidesList.length) {
     // 各部門は独立した枠(見出し+人の一覧)にし、間をあけて横に並べる(2026-10-20・ユーザー指示)。③④の人(役職つき)は、一覧の先頭に出す
@@ -239,10 +262,15 @@ function renderOrgChart(chart) {
       ${idx === 0 && sidesList.length ? '<div class="oc-spine"></div>' : ''}
     </div>`;
   }).join('');
+  // 工務事務の人は、2行に均等に分けて並べる(1行目=半分(端数は1行目)・2行目=残り。2026-10-21・ユーザー指示)
+  const jimuHtml = t => {
+    const perRow = Math.max(1, Math.ceil(t.members.length / 2));
+    return `<div class="oc-tier-title">${esc(t.name)}</div>
+      <div class="oc-jimu-grid" style="grid-template-columns:repeat(${perRow},1fr)">${t.members.map(m => `<span class="oc-jm">${esc(m.name)}</span>`).join('')}</div>`;
+  };
   const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
-    <div class="oc-tier" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}">
-      ${t.name ? `<div class="oc-tier-title">${esc(t.name)}</div>` : ''}
-      ${membersHtml(t.secs)}
+    <div class="oc-tier${t.kind === 'jimu' ? ' oc-jimu' : ''}" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}"${t.kind === 'jimu' ? ` data-parents="${t.parents.join(',')}"` : ''}>
+      ${t.kind === 'jimu' ? jimuHtml(t) : `${t.name ? `<div class="oc-tier-title">${esc(t.name)}</div>` : ''}${membersHtml(t.secs)}`}
     </div>`).join('')}</div>` : '';
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
@@ -254,21 +282,52 @@ function col0Left(chartEl, wrap) {
   return col ? col.getBoundingClientRect().left - wrap.getBoundingClientRect().left : 0;
 }
 
-/** 下の段の位置を決める。左端は、元の部門の列の左端にそろえる(事業係などは、カスタマーサポート室の左の線の位置)。
-    右にはみ出さない範囲で寄せ、他の下の段と横に重なるときは、その下に回す。表示のあと・印刷の前に呼ぶ */
+/** 下の段の位置と、つなぐ線を決める。左端は、元の部門の列の左端にそろえる(事業係などは、カスタマーサポート室の左の線の位置)。
+    右にはみ出さない範囲で寄せ、他の下の段と横に重なるときは、その下に回す(そのとき、事業係などをつなぐ横線と、左の線の長さも合わせる)。
+    工務事務の箱は、3部門(カスタマーサポート室・リフォーム部・工務部)の幅に合わせ、各部門の箱の下から実線でつなぐ。表示のあと・印刷の前に呼ぶ */
 function alignOrgChartTiers() {
   const chartEl = ocEl('oc-chart');
   const wrap = chartEl.querySelector('.oc-tiers');
   if (!wrap) return;
+  wrap.querySelectorAll('.oc-jline').forEach(e => e.remove());
   const chartRect = chartEl.getBoundingClientRect();
+  const wrapRect = () => wrap.getBoundingClientRect();
   const placed = [];
   let sideCursor = null; // 事業係などの独立した枠は、左から順に、間をあけて並べる
+  const JIMU_TOP = 40;   // 工務事務の箱の上端(下の段の置き場所の上端から)。その14px上に、3部門をつなぐ横線を引く
+  const line = (x, y, w, h) => { const d = document.createElement('div'); d.className = 'oc-jline'; d.style.cssText = `position:absolute;background:#9fbbdc;left:${x}px;top:${y}px;width:${w}px;height:${h}px`; wrap.appendChild(d); };
   wrap.querySelectorAll('.oc-tier').forEach(t => {
+    if (t.dataset.kind === 'jimu') {
+      const parents = (t.dataset.parents || '').split(',').filter(Boolean).map(i => chartEl.querySelector(`.oc-col[data-col="${i}"]`)).filter(Boolean);
+      if (!parents.length) return;
+      const wr = wrapRect();
+      const pad = (el, side) => parseFloat(getComputedStyle(el)['padding' + side]) || 0;
+      const left = Math.min(...parents.map(c => c.getBoundingClientRect().left + pad(c, 'Left'))) - wr.left;
+      const right = Math.max(...parents.map(c => c.getBoundingClientRect().right - pad(c, 'Right'))) - wr.left;
+      t.style.width = `${Math.max(120, right - left)}px`;
+      t.style.left = `${left}px`;
+      t.style.top = `${JIMU_TOP}px`;
+      const h = t.getBoundingClientRect().height, w = t.getBoundingClientRect().width;
+      const busY = JIMU_TOP - 14;
+      const centers = [];
+      parents.forEach(c => {
+        const dept = c.querySelector('.oc-dept');
+        const cx = dept.getBoundingClientRect().left + dept.getBoundingClientRect().width / 2 - wr.left;
+        const bottoms = [...c.children].filter(e => e.matches('.oc-dept,.oc-box,.oc-members')).map(e => e.getBoundingClientRect().bottom);
+        const y1 = Math.max(...bottoms) - wr.top; // 部門の箱の一番下(上の段との間は、負の値になる)
+        line(cx - 1, y1, 2, busY - y1 + 2);
+        centers.push(cx);
+      });
+      if (centers.length > 1) line(Math.min(...centers) - 1, busY, Math.max(...centers) - Math.min(...centers) + 2, 2);
+      line(left + w / 2 - 1, busY, 2, 14); // 横線から工務事務の箱へ
+      placed.push({ left, w, top: JIMU_TOP, h, side: false });
+      return;
+    }
     const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.anchor}"]`);
     if (!col) return;
     const w = t.getBoundingClientRect().width, h = t.getBoundingClientRect().height;
     const offset = t.dataset.kind === 'side' ? 14 : 0; // 事業係などは、spine(列の左端から14px)の位置から
-    const wantLeft = col.getBoundingClientRect().left - (wrap.getBoundingClientRect().left) + offset;
+    const wantLeft = col.getBoundingClientRect().left - (wrapRect().left) + offset;
     let left;
     if (t.dataset.kind === 'side') { // 横に並べる(右にはみ出しても、図の中だけが横にスクロールする)
       left = sideCursor == null ? Math.max(0, wantLeft) : sideCursor;
@@ -282,14 +341,18 @@ function alignOrgChartTiers() {
     t.style.top = `${top}px`;
     placed.push({ left, w, top, h, side: t.dataset.kind === 'side' });
   });
-  // 事業係などをつなぐ横線: カスタマーサポート室の左の線の位置から、最後の枠の中央まで
+  // 事業係などをつなぐ横線: カスタマーサポート室の左の線の位置から、最後の枠の中央まで。上の段(工務事務の箱など)の下に回ったときは、横線と左の線も下げる
   const bus = wrap.querySelector('.oc-sidebus');
   const sides = placed.filter(p => p.side);
   if (bus && sides.length) {
     const first = col0Left(chartEl, wrap) + 14;
     const lastCenter = sides[sides.length - 1].left + sides[sides.length - 1].w / 2;
+    const busTop = Math.min(...sides.map(p => p.top)) - 12;
     bus.style.left = `${first}px`;
+    bus.style.top = `${busTop}px`;
     bus.style.width = `${Math.max(2, lastCenter - first)}px`;
+    const spine = chartEl.querySelector('.oc-col[data-col="0"] .oc-spine');
+    if (spine) spine.style.bottom = `${-(14 + busTop)}px`; // 左の線を、横線の位置まで伸ばす
   }
   wrap.style.height = `${Math.max(0, ...placed.map(p => p.top + p.h))}px`;
 }

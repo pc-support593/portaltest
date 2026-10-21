@@ -208,6 +208,14 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     [{ email: 's1@x.com', dept: '', title: '', sort: 3 }, { email: 's2@x.com', dept: '', title: '課長', sort: 2 }, { email: 's3@x.com', dept: '', title: '', sort: 1 }]);
   check('組織図: ⑤は表示順の小さい順(役職が空の人も)。表示順なし(0)が先頭で、同じ0の中は役職の順→名簿の順。役職が空の行はMS365の役職を消さない', chSort.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '戊 五,丁 四,丙 三,乙 二,甲 一' && chSort.columns.find(c => c.name === '購買部').sections[0].members[0].title === '主任');
 
+  // 工務事務: 役職(手入力またはMS365)が「工務事務」の人は、本来の箱の一覧から外し、1つの箱(chart.jimu)にまとめる
+  const jOrg = { left: [{ dept: 'カスタマーサポート室', members: [P('CS 一', 'j1@x.com'), P('CS 二', 'j2@x.com')] }, { dept: 'リフォーム部', members: [P('リ 一', 'j3@x.com', '工務事務')] }, { dept: '工務部(本社)', members: [P('工 一', 'j4@x.com'), P('工 二', 'j5@x.com')] }, { dept: '購買部', members: [P('購 一', 'j6@x.com')] }], right: [], names: {} };
+  const jManual = [{ email: 'j1@x.com', dept: '', title: '工務事務', sort: 2 }, { email: 'j4@x.com', dept: '', title: '工務事務', sort: 1 }, { email: 'j5@x.com', dept: '', title: '事務員', sort: 0 }, { email: 'j6@x.com', dept: '', title: '工務事務', sort: 0 }];
+  const chJ = oc.buildOrgChart(jOrg, jManual);
+  check('組織図: 工務事務の人(手入力・MS365の役職)は、1つの箱にまとまり、並びは表示順の小さい順', chJ.jimu.name === '工務事務' && chJ.jimu.members.map(m => m.name).join() === 'リ 一,購 一,工 一,CS 一' && chJ.jimu.parents.join() === 'カスタマーサポート室,リフォーム部,工務部');
+  check('組織図: 工務事務の人は、本来の箱(⑤の一覧)から外れる。「事務員」は区別せず役職として残る', chJ.columns.find(c => c.name === 'カスタマーサポート室').sections[0].members.map(m => m.name).join() === 'CS 二' && chJ.columns.find(c => c.name === 'リフォーム部').sections[0].members.length === 0 && chJ.columns.find(c => c.name === '工務部').sections[0].members.map(m => m.name + ':' + m.title).join() === '工 二:事務員' && chJ.columns.find(c => c.name === '購買部').sections[0].members.length === 0);
+  check('組織図: 工務事務の人も、管理画面の役職の一覧に出る(役職を直せる)', oc.orgChartPeopleForAdmin(jOrg, jManual).filter(r => r.dept === '工務事務').length === 4);
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない
