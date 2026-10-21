@@ -181,6 +181,15 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: どのグループにも入っていない専務取締役(種類2)も②に出る', chU.l2.map(p => p.name + ':' + p.title).join() === '東 伸考:専務取締役');
   check('組織図: どのグループにも入っていないゆめすみかの種類1・2も③④に出る', chU.columns.find(c => c.name === '㈱ゆめすみか').l3.map(p => p.name).join() === '森下 直美' && chU.columns.find(c => c.name === '㈱ゆめすみか').l4.map(p => p.name).join() === '大平 国弘' && chU.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '購買 一');
 
+  // 工務部: 従業員の種類(3以上)が2種類以上あれば、小さい数字=③部長・次の数字=④次長に分ける(番号が3・4でなくても)
+  const chK = oc.buildOrgChart({ left: [{ dept: '工務部(本社)', members: [P('千葉 由樹', 'k1@x.com', '部長', '3'), P('佐藤 末明', 'k2@x.com', '次長', '5'), P('本社 一', 'k3@x.com')] }, { dept: '工務部(平野)', members: [P('平野 二', 'k4@x.com', '', '7')] }], right: [], names: {} }, []);
+  const kk = chK.columns.find(c => c.name === '工務部');
+  check('組織図: 工務部は、従業員の種類の小さい数字=③部長、次の数字=④次長に分かれる(同じ枠に入らない)', kk.l3.map(p => p.name).join() === '千葉 由樹' && kk.l4.map(p => p.name).join() === '佐藤 末明' && kk.sections.flatMap(s => s.members).map(m => m.name).sort().join() === ['本社 一', '平野 二'].sort().join());
+  const kk2 = oc.buildOrgChart({ left: [{ dept: '工務部(本社)', members: [P('次長 のみ', 'k5@x.com', '次長', '4')] }], right: [], names: {} }, []).columns.find(c => c.name === '工務部');
+  const kk3 = oc.buildOrgChart({ left: [{ dept: '工務部(本社)', members: [P('千葉 由樹', 'k6@x.com', '部長', '3'), P('佐藤 末明', 'k7@x.com', '次長', '3')] }], right: [], names: {} }, []).columns.find(c => c.name === '工務部');
+  check('組織図: 工務部は、部長と次長の種類の数字が同じでも、役職が「次長」なら④に分かれる', kk3.l3.map(p => p.name).join() === '千葉 由樹' && kk3.l4.map(p => p.name).join() === '佐藤 末明');
+  check('組織図: 工務部に種類が1つだけのときは、従来どおり(4=④次長。③にはしない)', kk2.l3.length === 0 && kk2.l4.map(p => p.name).join() === '次長 のみ');
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

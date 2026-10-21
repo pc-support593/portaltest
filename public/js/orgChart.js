@@ -12,7 +12,7 @@ const ORG_CHART_FRAME = {
     { name: 'カスタマーサポート室', side: 'left', sections: [{ label: '', groups: ['カスタマーサポート室'] }] },
     { name: 'リフォーム部', side: 'left', sections: [{ label: '', groups: ['リフォーム部'] }] },
     {
-      name: '工務部', side: 'left', sections: [
+      name: '工務部', side: 'left', rankSplit: true, sections: [ // rankSplit: 従業員の種類(3以上)の数字が2種類以上あるとき、数字の小さい方=③部長・次の数字=④次長に分ける(2026-10-21・ユーザー指示)
         { label: '本社', groups: ['工務部(本社)'] }, { label: '平野', groups: ['工務部(平野)'] }, { label: '西宮', groups: ['工務部(西宮)'] }
       ]
     },
@@ -119,6 +119,12 @@ function buildOrgChart(org, manual) {
       if (col.l4Group) groupMembers(pool, col.l4Group).forEach(m => take(m, out.l4, 'マネージャー'));
     }
 
+    // 階層の判定(吉村一建設側): 種類3=③・4=④。rankSplit の列(工務部)は、種類(3以上)の数字が2種類以上あれば、小さい方=③・次の数字=④・それ以外=⑤
+    let levelOf = emp => (emp === '3' ? 3 : emp === '4' ? 4 : 5);
+    if (col.rankSplit && !isRight) {
+      const nums = [...new Set(col.sections.flatMap(sec => sec.groups.flatMap(g => groupMembers(pool, g))).map(m => Number(empOf(m))).filter(n => Number.isFinite(n) && n >= 3))].sort((a, b) => a - b);
+      if (nums.length >= 2) levelOf = emp => (Number(emp) === nums[0] ? 3 : Number(emp) === nums[1] ? 4 : 5);
+    }
     col.sections.forEach(sec => {
       const members = [];
       sec.groups.forEach(g => groupMembers(pool, g).forEach(m => {
@@ -127,8 +133,10 @@ function buildOrgChart(org, manual) {
         seen.add(k);
         const it = item(m);
         const emp = empOf(m);
-        if (!isRight && emp === '3') out.l3.push(it);
-        else if (!isRight && emp === '4') out.l4.push(it);
+        let lv = isRight ? 5 : levelOf(emp);
+        if (col.rankSplit && lv === 3 && orgStartsWith(it.title, ORG_L4_TITLE)) lv = 4; // 工務部: 部長と次長の種類の数字が同じでも、役職が「次長」なら④
+        if (lv === 3) out.l3.push(it);
+        else if (lv === 4) out.l4.push(it);
         else members.push(it);
       }));
       out.sections.push({ label: sec.label, members });
