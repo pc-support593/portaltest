@@ -227,13 +227,15 @@ function renderOrgChart(chart) {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
     if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs });
+    // 部門の箱(見出し→③→④→⑤の一覧)を、上から順に短い線でつなぐ(2026-10-21・ユーザー指示)
+    const parts = [`<div class="oc-dept">${esc(col.name)}</div>`];
+    if (col.l3.length) parts.push(box(col.l3, 'oc-l3'));
+    if (col.l4.length) parts.push(box(col.l4, 'oc-l4'));
+    if (!(lower && secs.length) && secs.length) parts.push(membersHtml(secs));
     return `
     <div class="oc-col${lower && secs.length ? ' oc-tier-link' : ''}${idx === 0 && sidesList.length ? ' oc-has-side' : ''}" data-col="${idx}">
-      <div class="oc-dept">${esc(col.name)}</div>
-      ${box(col.l3, 'oc-l3')}
-      ${col.l3.length && col.l4.length ? '<div class="oc-vline oc-short"></div>' : ''}
-      ${box(col.l4, 'oc-l4')}
-      ${lower && secs.length ? '<div class="oc-dropline"></div>' : (secs.length ? membersHtml(secs) : '')}
+      ${parts.join('<div class="oc-vline oc-short"></div>')}
+      ${lower && secs.length ? '<div class="oc-dropline"></div>' : ''}
       ${idx === 0 && sidesList.length ? '<div class="oc-spine"></div>' : ''}
     </div>`;
   }).join('');

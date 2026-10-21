@@ -35,9 +35,12 @@
   .oc-col:last-child::after { right: 50%; }
   .oc-col:only-child::after { display: none; }
   .oc-dept { text-align: center; font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 6px 4px; }
-  .oc-col .oc-box { min-width: 0; border-radius: 0; margin-top: -1px; align-self: center; width: 100%; max-width: 230px; }
+  .oc-col .oc-box { min-width: 0; border-radius: 6px; align-self: center; width: 100%; max-width: 230px; }
+  .oc-col > .oc-vline { align-self: center; }
+  .oc-vline.oc-short { height: 10px; }
+  .oc-col .oc-dept { border-radius: 6px; }
   /* 小区分(工務部の本社・平野・西宮、ゆめすみかの展示場など)は、横に並べる */
-  .oc-members { border: 1px solid #c4d2e1; background: #ffffff; padding: 6px 8px; display: flex; flex-direction: row; align-items: flex-start; gap: 0; margin-top: 8px; border-radius: 6px; }
+  .oc-members { border: 1px solid #c4d2e1; background: #ffffff; padding: 6px 8px; display: flex; flex-direction: row; align-items: flex-start; gap: 0; margin-top: 0; border-radius: 6px; }
   .oc-section { display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 0 8px; border-left: 1px solid #e1e8f0; }
   /* カスタマーサポート室の左の線(spine)と、そこにぶら下げる部門(事業係など)。母線の左端から下へ伸ばす */
   .oc-col.oc-has-side { padding-left: 30px; }
