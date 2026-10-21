@@ -100,8 +100,8 @@ function migrate(db) {
     CREATE TABLE IF NOT EXISTS orgchart_titles (
       email TEXT NOT NULL,
       dept TEXT NOT NULL DEFAULT '',
-      title TEXT NOT NULL,                   -- 30字まで。例: 課長・係長・主任・次長(兼任)
-      sort INTEGER NOT NULL DEFAULT 0,       -- 同じ部門・役職内の表示順(0=名簿の順)
+      title TEXT NOT NULL,                   -- 30字まで。例: 課長・係長・主任・次長(兼任)。空文字も可(表示順だけを指定する行。2026-10-21)
+      sort INTEGER NOT NULL DEFAULT 0,       -- ⑤の表示順(小さい順。役職に関係なく。0=指定なしで先頭側・同じ値の中は役職の順→名簿の順)
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (email, dept)
     );

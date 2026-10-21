@@ -554,7 +554,8 @@ app.put('/api/admin/orgchart-titles', (req, res) => {
   if (dept.length > 60 || hasControlChar(dept)) return res.status(400).json({ error: '部門名が不正です' });
   if (title.length > 30 || hasControlChar(title)) return res.status(400).json({ error: '役職は30文字までです' });
   sort = Math.max(0, Math.min(9999, sort));
-  if (!title) {
+  // 役職が空でも、表示順(1以上)があれば行を残す(役職を付けない人の並び順だけを指定できる)。両方が空(表示順0)のときだけ、行を削除する
+  if (!title && sort === 0) {
     db.prepare('DELETE FROM orgchart_titles WHERE email = ? AND dept = ?').run(email, dept);
     return res.json({ ok: true, deleted: true });
   }

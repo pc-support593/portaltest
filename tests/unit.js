@@ -203,6 +203,11 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 兼任の追加で選ぶMS365のグループは、社員名簿のグループ(吉村一建設14+ゆめすみか6)をすべて含み、部門・区分に対応づく', [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].every(g => gmap[g.label]) && gch.length === 20, gch.length + ' ' + [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].filter(g => !gmap[g.label]).map(g => g.label).join());
   check('組織図: グループ→部門/区分(設計→㈱ゆめすみか/設計・工務部(平野)→工務部/平野・購買部→購買部・来夢エンジニア→事業課)', gmap['設計'] === '㈱ゆめすみか/設計' && gmap['工務部(平野)'] === '工務部/平野' && gmap['購買部'] === '購買部' && gmap['来夢エンジニア'] === '外壁・2×4事業課(㈱来夢エンジニア)');
 
+  // ⑤の並びは、手入力の表示順の小さい順(役職に関係なく)。役職が空でも表示順だけの行で並べられる。同じ表示順なら役職の順
+  const chSort = oc.buildOrgChart({ left: [{ dept: '購買部', members: [P('甲 一', 's1@x.com'), P('乙 二', 's2@x.com'), P('丙 三', 's3@x.com'), P('丁 四', 's4@x.com'), P('戊 五', 's5@x.com', '主任')] }], right: [], names: {} },
+    [{ email: 's1@x.com', dept: '', title: '', sort: 3 }, { email: 's2@x.com', dept: '', title: '課長', sort: 2 }, { email: 's3@x.com', dept: '', title: '', sort: 1 }]);
+  check('組織図: ⑤は表示順の小さい順(役職が空の人も)。表示順なし(0)が先頭で、同じ0の中は役職の順→名簿の順。役職が空の行はMS365の役職を消さない', chSort.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '戊 五,丁 四,丙 三,乙 二,甲 一' && chSort.columns.find(c => c.name === '購買部').sections[0].members[0].title === '主任');
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

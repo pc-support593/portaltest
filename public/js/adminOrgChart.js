@@ -54,7 +54,7 @@ async function renderOrgChartTitlesTab() {
     const def = orgManualFind(manual, p.key, '');
     const own = orgManualFind(manual, p.key, p.dept);
     const cur = own || def;
-    const ms365 = !cur && p.title ? p.title : ''; // MS365にある役職(手入力が無いとき、参考に表示)
+    const ms365 = (!cur || !cur.title) && p.title ? p.title : ''; // MS365にある役職(手入力の役職が無いとき、参考に表示)
     return `
     <div data-row="${esc(p.key)}" data-dept="${esc(own ? p.dept : '')}" style="display:flex;align-items:center;gap:24px;padding:10px 24px;border-bottom:1px solid #f2f5f9">
       <span style="font-size:12px;width:150px;flex-shrink:0;color:#6b7d8f">${esc(p.dept)}${p.section ? ` / ${esc(p.section)}` : ''}</span>

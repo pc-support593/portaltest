@@ -94,11 +94,12 @@ function buildOrgChart(org, manual) {
     const effTitle = m => {
       const k = orgKeyOf(m);
       // 優先順: ①この部門を指定した手入力(兼任など) ②MS365の役職 ③部門を問わない手入力の既定(MS365に役職が無い人)
+      // (役職が空の手入力の行は、表示順だけのための行なので、役職の表示は変えない)
       const hit = man.get(`${k}|${col.name}`);
-      if (hit) return hit.title;
+      if (hit && hit.title) return hit.title;
       if (m.title) return m.title;
       const def = man.get(`${k}|`);
-      return def ? def.title : '';
+      return def && def.title ? def.title : '';
     };
     const item = (m, extra) => ({ name: dispName(m), title: effTitle(m), key: orgKeyOf(m), ...extra });
     const out = { name: col.name, l3: [], l4: [], sections: [] };
@@ -157,10 +158,10 @@ function buildOrgChart(org, manual) {
       else if (out.sections.length) (out.sections.find(s => s.label === secLabel) || out.sections[0]).members.push(it);
     });
 
-    // ⑤の並び: 役職の順(課長→店長→係長…)→手入力の順(sort)→名簿の順(元の並びのまま)
+    // ⑤の並び: 手入力の表示順の小さい順(役職に関係なく。表示順を入れない人は0)→同じ表示順の中は、役職の順(課長→店長→係長…)→名簿の順(元の並びのまま)(2026-10-21・ユーザー指示)
     out.sections.forEach(sec => {
       sec.members = sec.members.map((m, i) => ({ m, i }))
-        .sort((a, b) => orgRank(a.m.title) - orgRank(b.m.title) || sortOf(a.m) - sortOf(b.m) || a.i - b.i).map(x => x.m);
+        .sort((a, b) => sortOf(a.m) - sortOf(b.m) || orgRank(a.m.title) - orgRank(b.m.title) || a.i - b.i).map(x => x.m);
     });
     function sortOf(m) { const r = man.get(`${m.key}|${col.name}`) || man.get(`${m.key}|`); return r ? Number(r.sort) || 0 : 0; }
     return out;
