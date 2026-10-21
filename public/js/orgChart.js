@@ -277,7 +277,7 @@ function renderOrgChart(chart) {
   const jimuHtml = t => {
     const cols = Math.min(2, t.members.length), rows = Math.max(1, Math.ceil(t.members.length / cols));
     return `<div class="oc-tier-title">${esc(t.name)}</div>
-      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols},max-content)">${t.members.map(m => `<span class="oc-jm">${esc(m.name)}${m.jimuSub ? ` <span class="oc-jm-sub">${esc(m.jimuSub)}</span>` : ''}</span>`).join('')}</div>`;
+      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols},max-content)">${t.members.map(m => `<span class="oc-jm">${m.jimuSub ? `<span class="oc-jm-sub">${esc(m.jimuSub)}</span> ` : ''}${esc(m.name)}</span>`).join('')}</div>`;
   };
   const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
     <div class="oc-tier${t.kind === 'jimu' ? ' oc-jimu' : ''}" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}"${t.kind === 'jimu' ? ` data-parents="${t.parents.join(',')}"` : ''}>
