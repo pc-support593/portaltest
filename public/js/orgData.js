@@ -246,7 +246,7 @@ function buildGroups(users, priorityTitles, options) {
 }
 
 /** @yumesumika.com は右列(ゆめすみか)、それ以外は左列に振り分ける(ユーザー指示 2026-09-10)。
-    優先順位(2026-10-21・ユーザー指示): ①ゆめすみかの部門グループ(YUMESUMIKA_GROUPS=yumesumika_1〜6@yumesumika.com)に入っている人は、メールドメインに関わらず右列
+    優先順位(2026-10-21・ユーザー指示): ①ゆめすみかの部門グループ(YUMESUMIKA_GROUPS=yumesumika_1〜6・yumesumika_marketing@yumesumika.com)に入っている人は、メールドメインに関わらず右列
     ②PERSON_OVERRIDESで列が指定されている人はその列(森下直美はメールドメインが@yoshimuraichi.comのままだが右列に表示するため) ③それ以外はメールドメイン。
     yumesumikaGroupMap=メールアドレス(小文字)→ゆめすみかのグループ名の配列(fetchGroupLabelMap(YUMESUMIKA_GROUPS).map。省略時は①を使わない) */
 function splitByCompany(users, yumesumikaGroupMap) {
