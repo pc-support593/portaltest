@@ -53,10 +53,11 @@
   .oc-dropline { align-self: center; flex: 1 1 auto; min-height: 24px; width: 0; border-left: 2px solid #9fbbdc; margin-top: 0; }
   .oc-tiers { position: relative; align-self: stretch; margin-top: 14px; } /* 下の段(位置はJSで決める) */
   .oc-tier { position: absolute; display: flex; flex-direction: column; }
-  /* 工務事務の箱: 3部門(カスタマーサポート室・リフォーム部・工務部)の下に置き、人は2行に均等に並べる */
+  /* 工務事務の箱: 3部門(カスタマーサポート室・リフォーム部・工務部)の下に置く。人数で大きさが変わり、人は最大2列(左の列→右の列の順に均等に) */
+  .oc-jimu { width: max-content; min-width: 150px; }
   .oc-jimu .oc-tier-title { text-align: center; }
-  .oc-jimu-grid { display: grid; gap: 6px 12px; border: 1px solid #c4d2e1; border-top: none; background: #ffffff; padding: 8px 12px; border-radius: 0 0 6px 6px; }
-  .oc-jm { font-size: 12px; font-weight: 700; color: #1c2b3a; text-align: center; white-space: nowrap; }
+  .oc-jimu-grid { display: grid; grid-auto-flow: column; gap: 6px 22px; justify-content: center; border: 1px solid #c4d2e1; border-top: none; background: #ffffff; padding: 8px 14px; border-radius: 0 0 6px 6px; }
+  .oc-jm { font-size: 12px; font-weight: 700; color: #1c2b3a; white-space: nowrap; }
   .oc-tier[data-kind=side] { width: 175px; }
   .oc-tier[data-kind=side]::before { content: ''; position: absolute; left: calc(50% - 1px); top: -12px; width: 2px; height: 12px; background: #9fbbdc; }
   .oc-sidebus { position: absolute; top: 0; height: 2px; background: #9fbbdc; }
