@@ -376,9 +376,11 @@ function setupOrgChartPrint() {
   const chartEl = ocEl('oc-chart');
   window.addEventListener('beforeprint', () => {
     // A3横(420×297mm≒1587×1123px)から余白と見出しを引いた大きさに、幅と高さの両方で収める
+    // 位置の計算(alignOrgChartTiers)は、拡大・縮小(zoom)をかける前に済ませる(zoom中は getBoundingClientRect の値がpx指定とずれ、事業係などの枠が重なって崩れる。2026-10-22・ユーザー指摘)
     const availW = 1500, availH = 980;
-    chartEl.style.zoom = String(Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight)));
+    chartEl.style.zoom = '';
     alignOrgChartTiers();
+    chartEl.style.zoom = String(Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight)));
   });
   window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; });
   const btn = ocEl('oc-print');

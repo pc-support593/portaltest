@@ -129,7 +129,7 @@ async function launchEdge(edge) {
   };
   /** 画面の見た目の確認用(自動テストでは使わない): 現在の表示を PNG に保存する */
   const shot = async file => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(file, Buffer.from(r.result.data, 'base64')); };
-  return { open, evaluate, setPreScript, shot, close };
+  return { open, evaluate, setPreScript, shot, close, send };
 }
 
 module.exports = { ROOT, makeChecker, startSandbox, findEdge, launchEdge, sleep };
