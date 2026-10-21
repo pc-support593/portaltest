@@ -70,7 +70,9 @@ async function renderOrgChartTitlesTab() {
   // 兼任・追加の入力欄(MS365のグループに入っていない部門に、別の部門の人を載せる)と、名簿にいない行の一覧
   const peopleOptions = Object.entries(org.names || {}).sort((a, b) => a[1].localeCompare(b[1], 'ja'))
     .map(([email, name]) => `<option value="${esc(email)}">${esc(name)}(${esc(email)})</option>`).join('');
-  const deptOptions = [...ORG_CHART_FRAME.columns, ...(ORG_CHART_FRAME.sideDepts || [])].map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  // 載せる先は、MS365のグループ(社員名簿・組織図と同じ区分)から選ぶ。選んだグループが組織図のどの部門・区分に当たるかは、枠組み(ORG_CHART_FRAME)から決める(保存は「部門名/区分名」)
+  const groupChoices = orgChartGroupChoices();
+  const deptOptions = groupChoices.map(c => `<option value="${esc(c.dept)}">${esc(c.dept === c.label ? c.label : `${c.label} → ${c.dept}`)}</option>`).join('');
   const extraRows = manual.filter(r => r.dept !== '');
   const orphans = partial ? [] : manual.filter(r => !known.has(r.email)); // グループの取得に失敗したときは、名簿にいないかの判定をしない(有効な行を消してしまわないため)
   const extraHtml = `
@@ -78,13 +80,12 @@ async function renderOrgChartTitlesTab() {
       <span style="font-size:13px;font-weight:700;color:#1c2b3a">兼任・追加(MS365のグループに入っていない部門に、人を追加で載せる)</span>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <select class="in-input" id="oc-add-person" style="${inputStyle};max-width:260px">${peopleOptions}</select>
-        <select class="in-input" id="oc-add-dept" style="${inputStyle}">${deptOptions}</select>
-        <select class="in-input" id="oc-add-section" style="${inputStyle}" title="どの区分に載せるか(工務部の本社・平野・西宮、ゆめすみかの展示場・設計など)"></select>
+        <select class="in-input" id="oc-add-dept" style="${inputStyle};max-width:260px" title="MS365のグループ(社員名簿と同じ区分)から選びます">${deptOptions}</select>
         <input class="in-input" id="oc-add-title" maxlength="30" placeholder="役職(例: 次長(兼任))" style="${inputStyle};width:160px">
         <button id="oc-add-btn" type="button" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:7px 16px;font-size:12px;font-family:inherit;cursor:pointer">追加</button>
         <span id="oc-add-result" style="font-size:12px"></span>
       </div>
-      <span style="font-size:11px;color:#8a99a8">階層(①〜④)は、MS365の「従業員の種類」の数字で決まります(通常のメンバー)。ここで追加する兼任の人は、区分(工務部の本社・平野・西宮、ゆめすみかの展示場・設計など)を選ぶと、その区分に載ります。役職が「次長」なら④、「部長・取締役部長・室長・マネージャー」なら③の枠に載ります(「次長(兼任)」のように括弧の注記つきも同じ)。それ以外は⑤のメンバーに載ります(ゆめすみかの列は、③=常務取締役・④=マネージャーの人だけなので、追加した人は⑤に載ります)。</span>
+      <span style="font-size:11px;color:#8a99a8">階層(①〜④)は、MS365の「従業員の種類」の数字で決まります(通常のメンバー)。ここで追加する兼任の人は、載せる先は、MS365のグループ(社員名簿と同じ区分)から選びます。役職が「次長」なら④、「部長・取締役部長・室長・マネージャー」なら③の枠に載ります(「次長(兼任)」のように括弧の注記つきも同じ)。それ以外は⑤のメンバーに載ります(ゆめすみかの列は、③=常務取締役・④=マネージャーの人だけなので、追加した人は⑤に載ります)。</span>
       ${extraRows.length ? `<div style="display:flex;flex-direction:column;gap:4px">${extraRows.map(r => `
         <div style="display:flex;gap:12px;align-items:center;font-size:12px"><span style="width:150px">${esc(r.dept)}</span><span style="flex:1">${esc((org.names || {})[r.email] || r.email)} — ${esc(r.title)}</span>
         <button type="button" data-del-extra data-del-email="${esc(r.email)}" data-del-dept="${esc(r.dept)}" class="hv-btn-danger" style="border:1px solid #e4eaf1;background:#ffffff;border-radius:7px;padding:3px 12px;cursor:pointer;color:#a8b5c2;font-size:12px;font-family:inherit">削除</button></div>`).join('')}</div>` : ''}
@@ -93,16 +94,6 @@ async function renderOrgChartTitlesTab() {
     </div>`;
 
   body.innerHTML = extraHtml + (people.length ? people.map(rowHtml).join('') : '<div style="padding:24px;font-size:13px;color:#8a99a8">表示できる人がいません</div>');
-
-  // 部門を選ぶと、その部門の区分(工務部=本社・平野・西宮、ゆめすみか=展示場・設計など)を選べる。区分が無い部門は選択欄を隠す
-  const deptSel = document.getElementById('oc-add-dept'), secSel = document.getElementById('oc-add-section');
-  const fillSections = () => {
-    const col = [...ORG_CHART_FRAME.columns, ...(ORG_CHART_FRAME.sideDepts || [])].find(c => c.name === deptSel.value);
-    const labels = ((col && col.sections) || []).map(s => s.label).filter(Boolean);
-    secSel.innerHTML = labels.length ? `<option value="">(先頭の区分)</option>${labels.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}` : '';
-    secSel.style.display = labels.length ? '' : 'none';
-  };
-  if (deptSel && secSel) { deptSel.addEventListener('change', fillSections); fillSections(); }
 
   body.querySelectorAll('[data-row]').forEach(row => {
     const key = row.dataset.row;
@@ -131,9 +122,7 @@ async function renderOrgChartTitlesTab() {
   if (addBtn) addBtn.addEventListener('click', async () => {
     const resultEl = document.getElementById('oc-add-result');
     const email = document.getElementById('oc-add-person').value;
-    const deptName = document.getElementById('oc-add-dept').value;
-    const section = document.getElementById('oc-add-section').value; // 区分(空=先頭の区分)
-    const dept = section ? `${deptName}/${section}` : deptName; // 「部門名/区分名」で保存する
+    const dept = document.getElementById('oc-add-dept').value; // 選んだMS365グループに当たる「部門名/区分名」
     const title = document.getElementById('oc-add-title').value.trim();
     if (!email || !title) { resultEl.textContent = '人と役職を入力してください'; resultEl.style.color = '#c05a5a'; return; }
     try {

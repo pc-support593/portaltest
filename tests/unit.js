@@ -196,6 +196,13 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   const ymSec = chSec.columns.find(c => c.name === '㈱ゆめすみか').sections;
   check('組織図: 兼任の追加で区分を指定すると、その区分(ゆめすみかの設計)に載る・指定なしや存在しない区分は先頭の区分', ymSec.find(s => s.label === '設計').members.map(m => m.name).join() === '兼任 甲,設計 一' && ymSec.find(s => s.label === '福田展示場').members.map(m => m.name).sort().join() === ['福田 一', '兼任 乙', '兼任 丙'].sort().join());
 
+  // 兼任の追加で選ぶ「MS365のグループ」と、組織図の部門・区分の対応(社員名簿のグループがすべて含まれる)
+  const ocAll = load(['common.js', 'roomsData.js', 'orgData.js', 'orgChart.js'], ['orgChartGroupChoices', 'LEFT_GROUPS', 'YUMESUMIKA_GROUPS']);
+  const gch = ocAll.orgChartGroupChoices();
+  const gmap = Object.fromEntries(gch.map(c => [c.label, c.dept]));
+  check('組織図: 兼任の追加で選ぶMS365のグループは、社員名簿のグループ(吉村一建設14+ゆめすみか6)をすべて含み、部門・区分に対応づく', [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].every(g => gmap[g.label]) && gch.length === 20, gch.length + ' ' + [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].filter(g => !gmap[g.label]).map(g => g.label).join());
+  check('組織図: グループ→部門/区分(設計→㈱ゆめすみか/設計・工務部(平野)→工務部/平野・購買部→購買部・来夢エンジニア→事業課)', gmap['設計'] === '㈱ゆめすみか/設計' && gmap['工務部(平野)'] === '工務部/平野' && gmap['購買部'] === '購買部' && gmap['来夢エンジニア'] === '外壁・2×4事業課(㈱来夢エンジニア)');
+
   check('組織図: 管理画面用の一覧に、⑤の人と兼任が含まれる', oc.orgChartPeopleForAdmin(ocOrg, ocManual).some(r => r.dept === '購買部' && r.name === '課長 一郎') && oc.buildOrgChart({ left: [], right: [], names: {} }, []).columns.length === oc.ORG_CHART_FRAME.columns.length);
 
   // 年間カレンダー: shift_holiday は文字枠(ラベル)を赤で表示し、日付枠は色を付けない

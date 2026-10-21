@@ -170,6 +170,18 @@ function buildOrgChart(org, manual) {
   return chart;
 }
 
+/** 管理画面の兼任の追加で選ぶ「MS365のグループ」の一覧と、そのグループが組織図のどの部門・区分に当たるか。
+    戻り値: [{ label: MS365のグループ名(社員名簿の見出しと同じ), dept: 「部門名」または「部門名/区分名」(orgchart_titles.dept に保存する値) }]。枠組みの順(吉村一建設の部門→ゆめすみか) */
+function orgChartGroupChoices() {
+  const out = [];
+  [...ORG_CHART_FRAME.columns, ...(ORG_CHART_FRAME.sideDepts || [])].forEach(col => {
+    col.sections.forEach(sec => sec.groups.forEach(g => {
+      out.push({ label: g, dept: sec.label ? `${col.name}/${sec.label}` : col.name });
+    }));
+  });
+  return out;
+}
+
 /** 管理画面「組織図の役職」用: 枠組みの各部門に入る人(⑤になる人を中心に)の一覧。役職の手入力の欄を出すためのもの */
 function orgChartPeopleForAdmin(org, manual) {
   const chart = buildOrgChart(org, manual);
