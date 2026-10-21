@@ -203,7 +203,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   const ocAll = load(['common.js', 'roomsData.js', 'orgData.js', 'orgChart.js'], ['orgChartGroupChoices', 'LEFT_GROUPS', 'YUMESUMIKA_GROUPS']);
   const gch = ocAll.orgChartGroupChoices();
   const gmap = Object.fromEntries(gch.map(c => [c.label, c.dept]));
-  check('組織図: 兼任の追加で選ぶMS365のグループは、社員名簿のグループ(吉村一建設14+ゆめすみか6)をすべて含み、部門・区分に対応づく', [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].every(g => gmap[g.label]) && gch.length === 20, gch.length + ' ' + [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].filter(g => !gmap[g.label]).map(g => g.label).join());
+  check('組織図: 兼任の追加で選ぶMS365のグループは、社員名簿のグループ(吉村一建設14+ゆめすみか7)をすべて含み、部門・区分に対応づく', [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].every(g => gmap[g.label]) && gch.length === 21, gch.length + ' ' + [...ocAll.LEFT_GROUPS, ...ocAll.YUMESUMIKA_GROUPS].filter(g => !gmap[g.label]).map(g => g.label).join());
   check('組織図: グループ→部門/区分(設計→㈱ゆめすみか/設計・工務部(平野)→工務部/平野・購買部→購買部・来夢エンジニア→事業課)', gmap['設計'] === '㈱ゆめすみか/設計' && gmap['工務部(平野)'] === '工務部/平野' && gmap['購買部'] === '購買部' && gmap['来夢エンジニア'] === '外壁・2×4事業課(㈱来夢エンジニア)');
 
   // ⑤の並びは、手入力の表示順の小さい順(役職に関係なく)。役職が空でも表示順だけの行で並べられる。同じ表示順なら役職の順
