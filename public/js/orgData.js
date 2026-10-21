@@ -44,6 +44,7 @@ async function fetchOrgUsers() {
     .filter(u => isOrgMail(u.mail))
     .filter(u => !isBeforeHireDate(u.employeeHireDate)) // 従業員入社日がまだ来ていない人は表示しない(入社日が空なら表示)
     .filter(u => !RESOURCE_EMAILS.has((u.mail || '').toLowerCase()))
+    .filter(u => !EXCLUDED_EMAILS.has((u.mail || '').toLowerCase())) // 名簿・組織図・出勤状況に出さない個人(下のEXCLUDED_EMAILS)
     .map(u => ({
       name: fullNameOf(u.surname, u.givenName, u.displayName) || '(名前未設定)', // 姓・名から「姓 名」(空なら表示名)
       email: u.mail || '',
@@ -168,10 +169,11 @@ const OVERRIDE_GROUP_ORDER = ['ゆめすみか常務取締役', 'マネージャ
 // (メールアドレスの完全一致・大文字小文字を区別しない)。
 // 2026-09-10: naofumi_kotani@yumesumika.com / kotani@yoshimuraichi.com をどちらも設計企画部に
 // 固定(ユーザー指示。Entra ID側のdepartment属性が実際の所属と異なる/未設定のための個別対応)
-const DEPARTMENT_OVERRIDES = {
-  'naofumi_kotani@yumesumika.com': '設計企画部',
-  'kotani@yoshimuraichi.com': '設計企画部'
-};
+// 2026-10-21(ユーザー指示): kotani@yoshimuraichi.com の固定は外した(MS365の部署に従う)。naofumi_kotani@yumesumika.com は下の EXCLUDED_EMAILS で名簿から外した
+const DEPARTMENT_OVERRIDES = {};
+
+// 名簿・組織図・出勤状況に出さない個人(メールアドレスの完全一致・小文字。2026-10-21・ユーザー指示)
+const EXCLUDED_EMAILS = new Set(['naofumi_kotani@yumesumika.com']);
 
 /** 役職優先グループ(PERSON_OVERRIDESの該当者 → priorityTitlesの語順、該当者がいるものだけ)
     → 残りを通常グループ(既定はdepartment属性。DEPARTMENT_OVERRIDESがあればそちらを優先)でグループ化。

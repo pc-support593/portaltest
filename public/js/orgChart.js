@@ -64,6 +64,15 @@ function orgRank(title) {
     org: loadOrgData() の結果 { left:[{dept,members}], right:[...], names:{email→氏名} }
     manual: [{ email, dept, title, sort }](orgchart_titles。dept='' はその人の既定の役職、dept=部門名はその部門だけ)
     戻り値: { l1:[{name,title}], l2:[...], columns:[{ name, l3:[{name,title}], l4:[...], sections:[{ label, members:[{name,title,key,added}] }] }] } */
+/** 役職が「工務事務」で始まるか(「工務事務」だけ、または「工務事務 主任」のように空白(半角・全角)で続けたもの)。
+    当たれば「工務事務」より後ろの文字(例: 主任。なければ空文字)、当たらなければ null(2026-10-21・ユーザー指示) */
+function jimuTitleRest(title, key) {
+  const t = String(title || '').trim();
+  if (t === key) return '';
+  const m = t.startsWith(key) ? t.slice(key.length) : null;
+  return m !== null && /^[\s　]/.test(m) ? m.trim() : null;
+}
+
 function buildOrgChart(org, manual) {
   const left = (org && org.left) || [], right = (org && org.right) || [];
   const names = (org && org.names) || {};
@@ -177,7 +186,9 @@ function buildOrgChart(org, manual) {
   const seenJimu = new Set();
   [...chart.columns, ...chart.sides].forEach(c => c.sections.forEach(sec => {
     sec.members = sec.members.filter(m => {
-      if (m.title !== jf.title) return true;
+      const jt = jimuTitleRest(m.title, jf.title);
+      if (jt === null) return true;
+      m.jimuSub = jt; // 「工務事務 主任」の「主任」(なければ空)。箱の中で氏名の横に出す
       if (!seenJimu.has(m.key)) { seenJimu.add(m.key); chart.jimu.members.push(m); }
       return false;
     });
@@ -266,7 +277,7 @@ function renderOrgChart(chart) {
   const jimuHtml = t => {
     const cols = Math.min(2, t.members.length), rows = Math.max(1, Math.ceil(t.members.length / cols));
     return `<div class="oc-tier-title">${esc(t.name)}</div>
-      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols},max-content)">${t.members.map(m => `<span class="oc-jm">${esc(m.name)}</span>`).join('')}</div>`;
+      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols},max-content)">${t.members.map(m => `<span class="oc-jm">${esc(m.name)}${m.jimuSub ? ` <span class="oc-jm-sub">${esc(m.jimuSub)}</span>` : ''}</span>`).join('')}</div>`;
   };
   const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
     <div class="oc-tier${t.kind === 'jimu' ? ' oc-jimu' : ''}" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}"${t.kind === 'jimu' ? ` data-parents="${t.parents.join(',')}"` : ''}>

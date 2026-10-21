@@ -1,0 +1,173 @@
+【Exchange PowerShell コマンド集(用途別)】(2026-09-15時点)
+
+このファイルは、ポータルの会議室予約機能のためにこれまでご案内したExchange管理用
+PowerShellコマンドを用途ごとにまとめたものです。実行はExchange Online PowerShellに
+管理者アカウントで接続した状態で行ってください。「§」はPortal/CLAUDE.mdの対応する
+節番号です(詳しい背景・経緯はそちらを参照)。
+
+────────────────────────────────────────
+1. 会議室・社用車の一覧確認(参考・確認用)
+────────────────────────────────────────
+会議室(Room)のみ:
+  Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited | Select DisplayName, PrimarySmtpAddress
+
+会議室+社用車(Room+Equipment)まとめて:
+  Get-Mailbox -RecipientTypeDetails RoomMailbox,EquipmentMailbox -ResultSize Unlimited | Select DisplayName, PrimarySmtpAddress
+
+
+────────────────────────────────────────
+2. 全社員が予約状況(件名・主催者名)を閲覧できるようにする(Reviewer権限)
+   [§14-①/2026-08-21ご案内・実行済み]
+────────────────────────────────────────
+全会議室を動的に列挙して一括付与します。新しく会議室を追加した場合も、
+このコマンドを再実行するだけで新しい会議室にも自動的に反映されます
+(泉佐野の2室もこの再実行で対応できます)。
+
+  Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited | ForEach-Object {
+    Set-MailboxFolderPermission -Identity "$($_.PrimarySmtpAddress):\Calendar" -User Default -AccessRights Reviewer
+  }
+
+
+────────────────────────────────────────
+3. 会議室の自動承諾時に件名を主催者名で上書きしないようにする
+   [§14-②/2026-08-21ご案内・実行済み]
+────────────────────────────────────────
+※このコマンドは遡及しません(実行前に自動承諾済みの予定は件名が既に上書きされたまま)。
+新しく会議室を追加した場合は、このコマンドを再実行してください。
+
+  Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited | ForEach-Object {
+    Set-CalendarProcessing -Identity $_.PrimarySmtpAddress -DeleteSubject $false -AddOrganizerToSubject $false -DeleteComments $false
+  }
+
+
+────────────────────────────────────────
+4. 会議室が空いていれば自動承諾・重複を許可しないようにする(AutoAccept設定)
+   [これまで口頭でのご案内はなく、Exchange管理センターのGUIで個別設定済みとのこと
+    でした。泉佐野の2室にも同じ設定が必要なため、コマンド版として今回新規にご案内します]
+────────────────────────────────────────
+  Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited | ForEach-Object {
+    Set-CalendarProcessing -Identity $_.PrimarySmtpAddress -AutomateProcessing AutoAccept -AllowConflicts $false
+  }
+
+
+────────────────────────────────────────
+5. 拠点/区分け/部門代表者による削除権限の付与(Editor権限)
+   [§12/2026-09-07ご案内・実行済み。§15=2026-09-15の泉佐野追加分は
+    このコマンドの再実行で対応可能]
+────────────────────────────────────────
+(a) ゆめすみか展示場(6拠点・yumesumika.comドメインの会議室)の共通担当者3名:
+
+  $commonReps = @('k-iwatani@yumesumika.com','m-sakahara@yumesumika.com','y-nishida@yumesumika.com')
+  Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited |
+    Where-Object { $_.PrimarySmtpAddress -like '*@yumesumika.com' } |
+    ForEach-Object {
+      foreach ($user in $commonReps) {
+        Add-MailboxFolderPermission -Identity "$($_.PrimarySmtpAddress):\Calendar" -User $user -AccessRights Editor
+      }
+    }
+
+(b) 全リソース(会議室+社用車)に対する全体管理者(y-honda@yoshimuraichi.com):
+
+  Get-Mailbox -RecipientTypeDetails RoomMailbox,EquipmentMailbox -ResultSize Unlimited | ForEach-Object {
+    Add-MailboxFolderPermission -Identity "$($_.PrimarySmtpAddress):\Calendar" -User 'y-honda@yoshimuraichi.com' -AccessRights Editor
+  }
+
+
+────────────────────────────────────────
+6. 権限が正しく付与されているかの確認(診断用)
+   [2026-09-07のHTTP 403調査で使用]
+────────────────────────────────────────
+  Get-MailboxFolderPermission -Identity "<会議室のメールアドレス>:\Calendar" -User <確認したい担当者のメールアドレス>
+
+  例: Get-MailboxFolderPermission -Identity "Hirano_room5@yumesumika.com:\Calendar" -User y-honda@yoshimuraichi.com
+  → 「ユーザーの既存のアクセス許可エントリがありません」と表示された場合は、
+    5番のコマンドがまだそのユーザー・会議室の組み合わせに実行されていないことを意味します。
+
+
+────────────────────────────────────────
+7. ゆめすみかスタッフの個人予定(件名)を社内から閲覧できるようにする(Reviewer権限)
+   [2026-10-01ご案内。「ゆめすみかスタッフ予定」画面用。2026-10-02修正・実行済み(結果OK確認済み)]
+────────────────────────────────────────
+会議室と同じ理屈で、個人の予定表にも全社員向けのReviewer権限が無いと件名が
+取得できません(403になり、該当スタッフの行に「予定の取得に失敗しました」と
+表示されます)。対象は @yumesumika.com の通常の個人メールボックスのみです
+(会議室・社用車・共有メールボックスは対象外)。
+
+※プライバシー影響: 実行後は全社員が対象スタッフ全員の予定の件名を閲覧可能に
+なります。実行前に認識しておいてください。
+
+※2026-10-02修正: 会議室(英語ロケール、フォルダ名「Calendar」)と異なり、個人の
+メールボックス(日本語ロケール)はカレンダーフォルダの名前が「予定表」になっており、
+"<mailbox>:\Calendar" と決め打ちすると「オブジェクトが見つからない」エラーに
+なることが判明した(全アカウントで発生)。フォルダ名を決め打ちせず、各メール
+ボックスごとに実際のフォルダ名を取得してから権限を付与するよう修正済み。
+
+確認用(1件だけ試す場合。Name が「予定表」等と表示されるはず):
+  Get-MailboxFolderStatistics -Identity "<メールアドレス>" -FolderScope Calendar | Select-Object Name, FolderType
+
+本実行(全@yumesumika.comユーザーメールボックス):
+  Get-Mailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited |
+    Where-Object { $_.PrimarySmtpAddress -like '*@yumesumika.com' } |
+    ForEach-Object {
+      $mailbox = $_.PrimarySmtpAddress
+      $calendarFolder = (Get-MailboxFolderStatistics -Identity $mailbox -FolderScope Calendar |
+        Where-Object { $_.FolderType -eq 'Calendar' }).Name
+      if ($calendarFolder) {
+        Set-MailboxFolderPermission -Identity "$($mailbox):\$calendarFolder" -User Default -AccessRights Reviewer
+      } else {
+        Write-Warning "カレンダーフォルダが見つかりませんでした: $mailbox"
+      }
+    }
+
+
+────────────────────────────────────────
+補足
+────────────────────────────────────────
+- 2〜5は「全会議室(・社用車)を動的に列挙」する書き方にしているため、今後
+  roomsData.js に会議室・社用車を追加した場合でも、このファイルのコマンドを
+  再実行するだけで新しいリソースにも同じ設定が適用されます(コマンド自体の
+  書き換えは不要です)。
+- このファイルはGitリポジトリにはコミットしていません(メールアドレスを含む
+  内部の作業メモのため)。
+- **カレンダーフォルダ名のロケール依存に注意**(2026-10-02判明): 会議室・社用車
+  (英語ロケール)は「Calendar」、個人メールボックス(日本語ロケール)は「予定表」
+  のように、メールボックスの言語設定によってカレンダーフォルダの表示名が異なる。
+  今後、会議室・社用車以外(個人メールボックスなど)に同様の権限設定コマンドを
+  追加する場合は、"<mailbox>:\Calendar" と決め打ちせず、7番のように
+  `Get-MailboxFolderStatistics -FolderScope Calendar` で実際のフォルダ名を
+  取得してから指定すること。
+
+
+────────────────────────────────────────
+8. 吉村一建設スタッフの個人予定(件名)を社内から閲覧できるようにする(Reviewer権限)
+   [2026-10-08ご案内。「吉村一建設スタッフ予定」画面用。未実行]
+────────────────────────────────────────
+7番(ゆめすみかスタッフ)と同じ要領で、@yoshimuraichi.com の個人の予定表にも
+全社員向けのReviewer権限が無いと、予定の件名が取得できません(403になり、該当スタッフの
+行全体に「取得失敗」と表示されます。ほかの人の表示は崩れません)。
+対象は @yoshimuraichi.com の通常の個人メールボックスのみです(会議室・社用車・
+共有メールボックスは UserMailbox ではないため対象外)。
+
+※プライバシー影響: 実行後は全社員が対象スタッフ全員の予定の件名を閲覧可能に
+なります。実行前に認識しておいてください。
+※カレンダーフォルダ名は日本語ロケールの個人メールボックスでは「予定表」です。
+7番と同様に、フォルダ名を決め打ちせず、各メールボックスで実際の名前を取得してから付与します。
+※すでに別の権限(Editor等)を個別に付けている人がいても、Default(全員)のみを
+Reviewerにするコマンドなので、個別の権限は変わりません。
+
+確認用(1件だけ試す場合。Name が「予定表」等と表示されるはず):
+  Get-MailboxFolderStatistics -Identity "<メールアドレス>" -FolderScope Calendar | Select-Object Name, FolderType
+
+本実行(全@yoshimuraichi.comユーザーメールボックス):
+  Get-Mailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited |
+    Where-Object { $_.PrimarySmtpAddress -like '*@yoshimuraichi.com' } |
+    ForEach-Object {
+      $mailbox = $_.PrimarySmtpAddress
+      $calendarFolder = (Get-MailboxFolderStatistics -Identity $mailbox -FolderScope Calendar |
+        Where-Object { $_.FolderType -eq 'Calendar' }).Name
+      if ($calendarFolder) {
+        Set-MailboxFolderPermission -Identity "$($mailbox):\$calendarFolder" -User Default -AccessRights Reviewer
+      } else {
+        Write-Warning "カレンダーフォルダが見つかりませんでした: $mailbox"
+      }
+    }
