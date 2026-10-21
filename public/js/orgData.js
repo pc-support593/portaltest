@@ -68,7 +68,8 @@ const YUMESUMIKA_GROUPS = [
   { label: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { label: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },
   { label: '西宮展示場', groupMail: 'yumesumika_5@yumesumika.com' },
-  { label: '設計', groupMail: 'yumesumika_6@yumesumika.com' }
+  { label: '設計', groupMail: 'yumesumika_6@yumesumika.com' },
+  { label: 'マーケティング', groupMail: 'yumesumika_marketing@yumesumika.com' } // 2026-10-21・ユーザー指示で追加
 ];
 const YUMESUMIKA_GROUP_ORDER = YUMESUMIKA_GROUPS.map(g => g.label);
 
