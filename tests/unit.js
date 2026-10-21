@@ -111,6 +111,9 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   // 種類2を専務以外の人に付けても、その人は部門のグループに残る(役職が空の種類2も見出しにはしない)
   check('LEFT_GROUP_ORDER: 総務部が一番下', o.LEFT_GROUP_ORDER[o.LEFT_GROUP_ORDER.length - 1] === '総務部');
   const sp = o.splitByCompany([u('x@yumesumika.com', 'ゆめ'), u('y@yoshimuraichi.com', '吉村'), u('n-morishita@yoshimuraichi.com', '森下'), u('s-tada@yumesumika.com', '多田')]);
+  // ゆめすみかの部門グループに入っている人は、@yoshimuraichi.com でも、左列に固定されている @yumesumika.com でも、右列(グループ未所属はこれまでどおり)
+  const spg = o.splitByCompany([u('k@yoshimuraichi.com', '小谷'), u('s-tada@yumesumika.com', '多田'), u('y@yoshimuraichi.com', '吉村'), u('x@yumesumika.com', 'ゆめ')], { 'k@yoshimuraichi.com': ['設計'], 's-tada@yumesumika.com': ['福田展示場'] });
+  check('splitByCompany: ゆめすみかのグループに入っている人は右列(ドメイン・左列固定より優先)。未所属はドメインどおり', spg.right.map(x => x.name).join() === '小谷,多田,ゆめ' && spg.left.map(x => x.name).join() === '吉村', JSON.stringify(spg));
   check('splitByCompany: ドメインで左右(個別指定が優先)', sp.right.map(x => x.name).join() === 'ゆめ,森下' && sp.left.map(x => x.name).join() === '吉村,多田', JSON.stringify(sp));
 
   const it = (email, name, left_at = '') => ({ email, name, left_at, attended: '09:00' });

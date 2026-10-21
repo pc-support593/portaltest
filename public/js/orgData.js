@@ -245,13 +245,16 @@ function buildGroups(users, priorityTitles, options) {
 }
 
 /** @yumesumika.com は右列(ゆめすみか)、それ以外は左列に振り分ける(ユーザー指示 2026-09-10)。
-    PERSON_OVERRIDESで列が指定されている場合はメールドメインより優先する
-    (森下直美はメールドメインが@yoshimuraichi.comのままだが右列に表示するため) */
-function splitByCompany(users) {
+    優先順位(2026-10-21・ユーザー指示): ①ゆめすみかの部門グループ(YUMESUMIKA_GROUPS=yumesumika_1〜6@yumesumika.com)に入っている人は、メールドメインに関わらず右列
+    ②PERSON_OVERRIDESで列が指定されている人はその列(森下直美はメールドメインが@yoshimuraichi.comのままだが右列に表示するため) ③それ以外はメールドメイン。
+    yumesumikaGroupMap=メールアドレス(小文字)→ゆめすみかのグループ名の配列(fetchGroupLabelMap(YUMESUMIKA_GROUPS).map。省略時は①を使わない) */
+function splitByCompany(users, yumesumikaGroupMap) {
   const right = [], left = [];
   users.forEach(u => {
-    const person = PERSON_OVERRIDES[u.email.toLowerCase()];
-    const isRight = person ? person.column === 'right' : u.email.toLowerCase().endsWith('@yumesumika.com');
+    const key = u.email.toLowerCase();
+    const person = PERSON_OVERRIDES[key];
+    const inYumesumikaGroup = !!(yumesumikaGroupMap && (yumesumikaGroupMap[key] || []).length);
+    const isRight = inYumesumikaGroup || (person ? person.column === 'right' : key.endsWith('@yumesumika.com'));
     (isRight ? right : left).push(u);
   });
   return { left, right };
@@ -262,8 +265,8 @@ function splitByCompany(users) {
     従業員の種類が「1」の人だけは、役職を組織名として表示しグループ側には載せない(buildGroups) */
 async function loadOrgData() {
   const users = await fetchOrgUsers();
-  const { left, right } = splitByCompany(users);
   const [leftMaps, rightMaps] = await Promise.all([fetchGroupLabelMap(LEFT_GROUPS), fetchGroupLabelMap(YUMESUMIKA_GROUPS)]);
+  const { left, right } = splitByCompany(users, rightMaps.map); // ゆめすみかの部門グループに入っている人は、メールドメインに関わらず右列
   const manualLeft = MANUAL_MEMBERS.filter(m => m.column === 'left').map(manualMemberToUser);
   const manualRight = MANUAL_MEMBERS.filter(m => m.column === 'right').map(manualMemberToUser);
   // メールアドレスの無い手動追加メンバーは、指定した見出し(dept)に表示する。個別指定(DEPARTMENT_OVERRIDES)は追加で効かせる
