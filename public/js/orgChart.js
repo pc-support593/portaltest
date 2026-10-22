@@ -227,7 +227,7 @@ const ocEl = id => document.getElementById(id);
 /** 役職の末尾の「(兼任)」「(兼)」の注記を外し、兼任かどうかを返す。表示は、役職には注記を付けず、名前の後ろに一律「(兼任)」を付ける(2026-10-22・ユーザー指示)。階層の判定(次長(兼任)=④など)は元の役職の文字のまま */
 function ocSplitKenmu(title) {
   const t = String(title || '');
-  const m = t.match(/^(.*?)s*[(（]兼任?[)）]s*$/);
+  const m = t.match(/^(.*?)\s*[(（]兼任?[)）]\s*$/);
   return m ? { title: m[1], kenmu: true } : { title: t, kenmu: false };
 }
 
@@ -291,7 +291,8 @@ function renderOrgChart(chart) {
     const cols = Math.min(2, t.members.length), rows = Math.max(1, Math.ceil(t.members.length / cols));
     return `<div class="oc-tier-title">${esc(t.name)}</div>
       <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols * 2},max-content)">${t.members.map((m, i) => { const r = (i % rows) + 1, c = Math.floor(i / rows); // 人ごとに「役職の列」と「名前の列」の2マス(役職のない人も、名前は名前の列に出す。2026-10-22・ユーザー指示)
-        return `<span class="oc-jm-t" style="grid-row:${r};grid-column:${c * 2 + 1}">${esc(m.jimuSub || '')}</span><span class="oc-jm-n" style="grid-row:${r};grid-column:${c * 2 + 2}">${esc(m.name)}</span>`; }).join('')}</div>`;
+        const k = ocSplitKenmu(m.jimuSub); // 兼任の表示は他の箱と同じ(役職には付けず、名前の後ろに「(兼任)」)
+        return `<span class="oc-jm-t" style="grid-row:${r};grid-column:${c * 2 + 1}">${esc(k.title)}</span><span class="oc-jm-n" style="grid-row:${r};grid-column:${c * 2 + 2}">${esc(m.name)}${(m.added || k.kenmu) ? '<span class="oc-kenmu">(兼任)</span>' : ''}</span>`; }).join('')}</div>`;
   };
   const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
     <div class="oc-tier${t.kind === 'jimu' ? ' oc-jimu' : ''}" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}"${t.kind === 'jimu' ? ` data-parents="${t.parents.join(',')}"` : ''}>
