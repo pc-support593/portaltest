@@ -224,8 +224,17 @@ function orgChartPeopleForAdmin(org, manual) {
 // ---- 画面(organization-chart.html) ----
 const ocEl = id => document.getElementById(id);
 
+/** 役職の末尾の「(兼任)」「(兼)」の注記を外し、兼任かどうかを返す。表示は、役職には注記を付けず、名前の後ろに一律「(兼任)」を付ける(2026-10-22・ユーザー指示)。階層の判定(次長(兼任)=④など)は元の役職の文字のまま */
+function ocSplitKenmu(title) {
+  const t = String(title || '');
+  const m = t.match(/^(.*?)s*[(（]兼任?[)）]s*$/);
+  return m ? { title: m[1], kenmu: true } : { title: t, kenmu: false };
+}
+
 function ocPersonHtml(p, cls) {
-  return `<div class="${cls}"><span class="oc-title">${esc(p.title || '')}</span><span class="oc-name">${esc(p.name)}</span></div>`;
+  const k = ocSplitKenmu(p.title);
+  const mark = (p.added || k.kenmu) ? '<span class="oc-kenmu">(兼任)</span>' : '';
+  return `<div class="${cls}"><span class="oc-title">${esc(k.title)}</span><span class="oc-name">${esc(p.name)}${mark}</span></div>`;
 }
 
 function renderOrgChart(chart) {
