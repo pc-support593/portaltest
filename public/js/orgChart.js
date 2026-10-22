@@ -393,7 +393,7 @@ function setupOrgChartPrint() {
   window.addEventListener('beforeprint', () => {
     // A3横(420×297mm≒1587×1123px)から余白と見出しを引いた大きさに、幅と高さの両方で収める
     // 位置の計算(alignOrgChartTiers)は、拡大・縮小(zoom)をかける前に済ませる(zoom中は getBoundingClientRect の値がpx指定とずれ、事業係などの枠が重なって崩れる。2026-10-22・ユーザー指摘)
-    const availW = 1500, availH = 980;
+    const availW = 1500, availH = 900;
     // 図の幅は、中身の幅のままにする(min-width:100%のままだと、印刷のレイアウトで図が広がって部門の列が中央に寄り、測った位置の線が数pxずれる)
     chartEl.style.minWidth = '0';
     chartEl.style.zoom = '';
