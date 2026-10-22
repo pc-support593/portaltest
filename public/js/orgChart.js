@@ -285,6 +285,8 @@ function renderOrgChart(chart) {
     </div>`).join('')}</div>` : '';
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
+  // Webフォントの読み込みで文字の高さが変わるため、読み込み後にも線と枠の位置を計算し直す(箱の下から出る線が箱に食い込むずれの対策。2026-10-22)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => alignOrgChartTiers()).catch(() => {});
 }
 
 /** 最初の列(カスタマーサポート室)の左端の位置(下の段の置き場所の左端からの距離) */
@@ -354,6 +356,14 @@ function alignOrgChartTiers() {
     t.style.left = `${left}px`;
     t.style.top = `${top}px`;
     placed.push({ left, w, top, h, side: t.dataset.kind === 'side' });
+    if (t.dataset.kind === 'lower') { // 元の部門(マネージャーの箱など)の下の線を、下の段の見出しの上端までつなぐ(途中で切れないように)
+      const drop = col.querySelector('.oc-dropline');
+      if (drop) {
+        const dr = drop.getBoundingClientRect(), wr = wrapRect();
+        const x = dr.left - wr.left, y1 = dr.bottom - wr.top;
+        if (top > y1) line(x - 1, y1, 2, top - y1 + 1);
+      }
+    }
   });
   // 事業係などをつなぐ横線: カスタマーサポート室の左の線の位置から、最後の枠の中央まで。上の段(工務事務の箱など)の下に回ったときは、横線と左の線も下げる
   const bus = wrap.querySelector('.oc-sidebus');
