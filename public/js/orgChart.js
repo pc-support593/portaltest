@@ -289,10 +289,19 @@ function renderOrgChart(chart) {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!ocEl('oc-chart').style.zoom) alignOrgChartTiers(); }).catch(e => console.error('組織図の再配置に失敗しました', e)); // 印刷中(縮小中)は計算し直さない
 }
 
+/** 位置の計測。縮小(zoom)中は getBoundingClientRect が縮小後の値を返すので、縮小率で割って、px指定と同じ単位(縮小前)にそろえる。
+    縮小後は、人数の多い箱の高さが、縮小前の寸法×縮小率とずれる(行の高さの丸め)ため、縮小後のレイアウトで測り直さないと、線が箱から数pxずれる(2026-10-22・ユーザー指摘) */
+function ocRect(el) {
+  const chartEl = ocEl('oc-chart');
+  const z = parseFloat(chartEl && chartEl.style.zoom) || 1;
+  const b = el.getBoundingClientRect();
+  return { left: b.left / z, right: b.right / z, top: b.top / z, bottom: b.bottom / z, width: b.width / z, height: b.height / z };
+}
+
 /** 最初の列(カスタマーサポート室)の左端の位置(下の段の置き場所の左端からの距離) */
 function col0Left(chartEl, wrap) {
   const col = chartEl.querySelector('.oc-col[data-col="0"]');
-  return col ? col.getBoundingClientRect().left - wrap.getBoundingClientRect().left : 0;
+  return col ? ocRect(col).left - ocRect(wrap).left : 0;
 }
 
 /** 下の段の位置と、つなぐ線を決める。左端は、元の部門の列の左端にそろえる(事業係などは、カスタマーサポート室の左の線の位置)。
@@ -304,8 +313,8 @@ function alignOrgChartTiers() {
   if (!wrap) return;
   wrap.querySelectorAll('.oc-jline').forEach(e => e.remove());
   chartEl.querySelectorAll('.oc-dropline-ext').forEach(e => e.remove());
-  const chartRect = chartEl.getBoundingClientRect();
-  const wrapRect = () => wrap.getBoundingClientRect();
+  const chartRect = ocRect(chartEl);
+  const wrapRect = () => ocRect(wrap);
   const placed = [];
   let sideCursor = null; // 事業係などの独立した枠は、左から順に、間をあけて並べる
   let jimuBottom = 0;    // 工務事務の箱の下端(あれば、事業係などの行は、その下に置く=線とかぶらないようにする)
@@ -319,17 +328,17 @@ function alignOrgChartTiers() {
       const wr = wrapRect();
       const pad = (el, side) => parseFloat(getComputedStyle(el)['padding' + side]) || 0;
       // 枠の幅は、人数(最大2列)に合わせた内容の幅。位置は、3部門の見出しの中央どうしの真ん中
-      const centers = parents.map(c => { const d = c.querySelector('.oc-dept'); return d.getBoundingClientRect().left + d.getBoundingClientRect().width / 2 - wr.left; });
+      const centers = parents.map(c => { const d = c.querySelector('.oc-dept'); return ocRect(d).left + ocRect(d).width / 2 - wr.left; });
       t.style.width = '';
-      const w = t.getBoundingClientRect().width;
+      const w = ocRect(t).width;
       const left = Math.max(0, (Math.min(...centers) + Math.max(...centers)) / 2 - w / 2);
       t.style.left = `${left}px`;
       t.style.top = `${JIMU_TOP}px`;
-      const h = t.getBoundingClientRect().height;
+      const h = ocRect(t).height;
       const busY = JIMU_TOP - 14;
       parents.forEach((c, i) => {
         const cx = centers[i];
-        const bottoms = [...c.children].filter(e => e.matches('.oc-dept,.oc-box,.oc-members')).map(e => e.getBoundingClientRect().bottom);
+        const bottoms = [...c.children].filter(e => e.matches('.oc-dept,.oc-box,.oc-members')).map(e => ocRect(e).bottom);
         const y1 = Math.max(...bottoms) - wr.top; // 部門の箱の一番下(上の段との間は、負の値になる)
         line(cx - LW / 2, y1 - 1, LW, busY - y1 + LW + 1); // 箱の下端に1px重ねる
       });
@@ -343,9 +352,9 @@ function alignOrgChartTiers() {
     }
     const col = chartEl.querySelector(`.oc-col[data-col="${t.dataset.anchor}"]`);
     if (!col) return;
-    const w = t.getBoundingClientRect().width, h = t.getBoundingClientRect().height;
+    const w = ocRect(t).width, h = ocRect(t).height;
     const offset = t.dataset.kind === 'side' ? 14 : 0; // 事業係などは、spine(列の左端から14px)の位置から
-    const wantLeft = col.getBoundingClientRect().left - (wrapRect().left) + offset;
+    const wantLeft = ocRect(col).left - (wrapRect().left) + offset;
     let left;
     if (t.dataset.kind === 'side') { // 横に並べる(右にはみ出しても、図の中だけが横にスクロールする)
       left = sideCursor == null ? Math.max(0, wantLeft) : sideCursor;
@@ -361,7 +370,7 @@ function alignOrgChartTiers() {
     if (t.dataset.kind === 'lower') { // 元の部門(マネージャーの箱など)の下の線を、下の段の見出しの上端までつなぐ(途中で切れないように)
       const drop = col.querySelector('.oc-dropline');
       if (drop) {
-        const y1 = drop.getBoundingClientRect().bottom - wrapRect().top;
+        const y1 = ocRect(drop).bottom - wrapRect().top;
         if (top > y1) { // 線の延長は、下りる線の子にする(横の位置は線と同じ。印刷の縮小や再配置でもずれない)
           const ext = document.createElement('div');
           ext.className = 'oc-dropline-ext';
@@ -401,8 +410,9 @@ function setupOrgChartPrint() {
     alignOrgChartTiers();
     const z = Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight));
     // 縮小後の線の太さをちょうど2px(整数)にする。小数だと、線ごとに1px・2pxに丸められて太さがそろわない(2026-10-22・ユーザー指摘)
-    if (z < 1) { chartEl.style.setProperty('--oc-lw', `${2 / z}px`); alignOrgChartTiers(); }
+    if (z < 1) chartEl.style.setProperty('--oc-lw', `${2 / z}px`);
     chartEl.style.zoom = String(z);
+    alignOrgChartTiers(); // 縮小後のレイアウトで測り直す(ocRect が縮小率で割る)
   });
   window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; chartEl.style.minWidth = ''; chartEl.style.removeProperty('--oc-lw'); alignOrgChartTiers(); });
   const btn = ocEl('oc-print');
