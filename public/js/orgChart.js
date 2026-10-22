@@ -286,7 +286,7 @@ function renderOrgChart(chart) {
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
   // Webフォントの読み込みで文字の高さが変わるため、読み込み後にも線と枠の位置を計算し直す(箱の下から出る線が箱に食い込むずれの対策。2026-10-22)
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => alignOrgChartTiers()).catch(() => {});
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!ocEl('oc-chart').style.zoom) alignOrgChartTiers(); }).catch(e => console.error('組織図の再配置に失敗しました', e)); // 印刷中(縮小中)は計算し直さない
 }
 
 /** 最初の列(カスタマーサポート室)の左端の位置(下の段の置き場所の左端からの距離) */
@@ -310,6 +310,7 @@ function alignOrgChartTiers() {
   let sideCursor = null; // 事業係などの独立した枠は、左から順に、間をあけて並べる
   let jimuBottom = 0;    // 工務事務の箱の下端(あれば、事業係などの行は、その下に置く=線とかぶらないようにする)
   const JIMU_TOP = 40;   // 工務事務の箱の上端(下の段の置き場所の上端から)。その14px上に、3部門をつなぐ横線を引く
+  const LW = parseFloat(getComputedStyle(chartEl).getPropertyValue('--oc-lw')) || 2; // 線の太さ(印刷の縮小中は、縮小後に2pxになる値)
   const line = (x, y, w, h) => { const d = document.createElement('div'); d.className = 'oc-jline'; d.style.cssText = `position:absolute;background:#9fbbdc;left:${x}px;top:${y}px;width:${w}px;height:${h}px`; wrap.appendChild(d); };
   wrap.querySelectorAll('.oc-tier').forEach(t => {
     if (t.dataset.kind === 'jimu') {
@@ -330,12 +331,12 @@ function alignOrgChartTiers() {
         const cx = centers[i];
         const bottoms = [...c.children].filter(e => e.matches('.oc-dept,.oc-box,.oc-members')).map(e => e.getBoundingClientRect().bottom);
         const y1 = Math.max(...bottoms) - wr.top; // 部門の箱の一番下(上の段との間は、負の値になる)
-        line(cx - 1, y1, 2, busY - y1 + 2);
+        line(cx - LW / 2, y1 - 1, LW, busY - y1 + LW + 1); // 箱の下端に1px重ねる
       });
       const boxCenter = left + w / 2;
       const lo = Math.min(...centers, boxCenter), hi = Math.max(...centers, boxCenter);
-      line(lo - 1, busY, hi - lo + 2, 2); // 3部門の線と、箱へ下りる線を、1本の横線でつなぐ
-      line(boxCenter - 1, busY, 2, 14); // 横線から工務事務の箱へ
+      line(lo - LW / 2, busY, hi - lo + LW, LW); // 3部門の線と、箱へ下りる線を、1本の横線でつなぐ
+      line(boxCenter - LW / 2, busY, LW, 15); // 横線から工務事務の箱へ
       placed.push({ left, w, top: JIMU_TOP, h, side: false });
       jimuBottom = JIMU_TOP + h;
       return;
@@ -393,11 +394,17 @@ function setupOrgChartPrint() {
     // A3横(420×297mm≒1587×1123px)から余白と見出しを引いた大きさに、幅と高さの両方で収める
     // 位置の計算(alignOrgChartTiers)は、拡大・縮小(zoom)をかける前に済ませる(zoom中は getBoundingClientRect の値がpx指定とずれ、事業係などの枠が重なって崩れる。2026-10-22・ユーザー指摘)
     const availW = 1500, availH = 980;
+    // 図の幅は、中身の幅のままにする(min-width:100%のままだと、印刷のレイアウトで図が広がって部門の列が中央に寄り、測った位置の線が数pxずれる)
+    chartEl.style.minWidth = '0';
     chartEl.style.zoom = '';
+    chartEl.style.removeProperty('--oc-lw');
     alignOrgChartTiers();
-    chartEl.style.zoom = String(Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight)));
+    const z = Math.min(1, availW / Math.max(1, chartEl.scrollWidth), availH / Math.max(1, chartEl.scrollHeight));
+    // 縮小後の線の太さをちょうど2px(整数)にする。小数だと、線ごとに1px・2pxに丸められて太さがそろわない(2026-10-22・ユーザー指摘)
+    if (z < 1) { chartEl.style.setProperty('--oc-lw', `${2 / z}px`); alignOrgChartTiers(); }
+    chartEl.style.zoom = String(z);
   });
-  window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; });
+  window.addEventListener('afterprint', () => { chartEl.style.zoom = ''; chartEl.style.minWidth = ''; chartEl.style.removeProperty('--oc-lw'); alignOrgChartTiers(); });
   const btn = ocEl('oc-print');
   if (btn) btn.addEventListener('click', () => window.print());
 }
