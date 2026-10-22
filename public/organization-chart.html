@@ -60,13 +60,15 @@
   /* 工務事務の箱: 3部門(カスタマーサポート室・リフォーム部・工務部)の下に置く。人数で大きさが変わり、人は最大2列(左の列→右の列の順に均等に) */
   .oc-jimu { width: max-content; min-width: 150px; }
   .oc-jimu .oc-tier-title { text-align: center; }
-  .oc-jimu-grid { justify-items: center; display: grid; grid-auto-flow: column; gap: 6px 22px; justify-content: center; border: 1px solid #c4d2e1; border-top: none; background: #ffffff; padding: 8px 14px; border-radius: 0 0 6px 6px; }
-  .oc-jm { font-size: 12px; font-weight: 700; color: #1c2b3a; white-space: nowrap; text-align: center; }
-  .oc-jm-sub { font-size: 11px; font-weight: 400; color: #4a5b6c; margin-right: 2px; }
+  .oc-jimu-grid { justify-items: center; display: grid; row-gap: 6px; column-gap: 0; justify-content: center; border: 1px solid #c4d2e1; border-top: none; background: #ffffff; padding: 8px 14px; border-radius: 0 0 6px 6px; }
+  .oc-jm-t { font-size: 11px; font-weight: 400; color: #4a5b6c; white-space: nowrap; text-align: center; }
+  .oc-jm-t:not(:empty) { padding-left: 11px; padding-right: 6px; }
+  .oc-jm-n { font-size: 12px; font-weight: 700; color: #1c2b3a; white-space: nowrap; text-align: center; padding: 0 11px; }
   .oc-tier[data-kind=side] { width: 175px; }
   .oc-tier[data-kind=side]::before { content: ''; position: absolute; left: calc(50% - var(--oc-lw) / 2); top: -12px; width: var(--oc-lw); height: 12px; background: #9fbbdc; }
   .oc-sidebus { position: absolute; top: 0; height: var(--oc-lw); background: #9fbbdc; }
-  .oc-tier[data-kind=side] .oc-tier-title { text-align: center; }
+  .oc-tier[data-kind=side] .oc-tier-title, .oc-tier[data-kind=lower] .oc-tier-title { text-align: center; }
+  .oc-tier-note { font-size: 12px; font-weight: 400; margin-right: 12px; }
   .oc-tier-title { font-weight: 700; font-size: 13px; background: #2e6fc0; color: #ffffff; border-radius: 6px 6px 0 0; padding: 5px 10px; }
   .oc-tier .oc-members { margin-top: 0; border-radius: 0 0 6px 6px; }
   .oc-section:first-child { border-left: none; padding-left: 0; }

@@ -274,14 +274,19 @@ function renderOrgChart(chart) {
     </div>`;
   }).join('');
   // 工務事務の人は、人数に応じて枠の大きさを変え、最大2列に並べる(1人=1列・2人以上=2列。左の列に上から半分(端数は左)、残りを右の列に。2026-10-21・ユーザー指示)
+  // 下の段の見出し: ㈱ゆめすみか(展示場の段)は、左に「注文住宅営業担当」を添えて中央揃え。事業係などの名前は、「(」の前で改行する(2026-10-22・ユーザー指示)
+  const tierTitleHtml = t => t.kind === 'lower'
+    ? `<span class="oc-tier-note">注文住宅営業担当</span>${esc(t.name)}`
+    : esc(t.name).replace(/([(（])/, '<br>$1');
   const jimuHtml = t => {
     const cols = Math.min(2, t.members.length), rows = Math.max(1, Math.ceil(t.members.length / cols));
     return `<div class="oc-tier-title">${esc(t.name)}</div>
-      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols},max-content)">${t.members.map(m => `<span class="oc-jm">${m.jimuSub ? `<span class="oc-jm-sub">${esc(m.jimuSub)}</span> ` : ''}${esc(m.name)}</span>`).join('')}</div>`;
+      <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols * 2},max-content)">${t.members.map((m, i) => { const r = (i % rows) + 1, c = Math.floor(i / rows); // 人ごとに「役職の列」と「名前の列」の2マス(役職のない人も、名前は名前の列に出す。2026-10-22・ユーザー指示)
+        return `<span class="oc-jm-t" style="grid-row:${r};grid-column:${c * 2 + 1}">${esc(m.jimuSub || '')}</span><span class="oc-jm-n" style="grid-row:${r};grid-column:${c * 2 + 2}">${esc(m.name)}</span>`; }).join('')}</div>`;
   };
   const tiersHtml = tiers.length ? `<div class="oc-tiers">${tiers.some(t => t.kind === 'side') ? '<div class="oc-sidebus"></div>' : ''}${tiers.map((t, i) => `
     <div class="oc-tier${t.kind === 'jimu' ? ' oc-jimu' : ''}" data-tier="${i}" data-anchor="${t.anchor}" data-kind="${t.kind}"${t.kind === 'jimu' ? ` data-parents="${t.parents.join(',')}"` : ''}>
-      ${t.kind === 'jimu' ? jimuHtml(t) : `${t.name ? `<div class="oc-tier-title">${esc(t.name)}</div>` : ''}${membersHtml(t.secs)}`}
+      ${t.kind === 'jimu' ? jimuHtml(t) : `${t.name ? `<div class="oc-tier-title">${tierTitleHtml(t)}</div>` : ''}${membersHtml(t.secs)}`}
     </div>`).join('')}</div>` : '';
   ocEl('oc-chart').innerHTML = `${topHtml}<div class="oc-cols">${colsHtml}</div>${tiersHtml}`;
   alignOrgChartTiers();
