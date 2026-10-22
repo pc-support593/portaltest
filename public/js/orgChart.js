@@ -360,8 +360,8 @@ function alignOrgChartTiers() {
       const drop = col.querySelector('.oc-dropline');
       if (drop) {
         const dr = drop.getBoundingClientRect(), wr = wrapRect();
-        const x = dr.left - wr.left, y1 = dr.bottom - wr.top;
-        if (top > y1) line(x - 1, y1, 2, top - y1 + 1);
+        const x = dr.left - wr.left, y1 = dr.bottom - wr.top; // dropline は幅2pxの左罫線(dr.left が線の左端)。線の左端をそのままそろえる(以前は1px左にずれていた)
+        if (top > y1) line(x, y1, 2, top - y1 + 1);
       }
     }
   });
