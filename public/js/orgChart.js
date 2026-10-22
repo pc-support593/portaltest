@@ -303,6 +303,7 @@ function alignOrgChartTiers() {
   const wrap = chartEl.querySelector('.oc-tiers');
   if (!wrap) return;
   wrap.querySelectorAll('.oc-jline').forEach(e => e.remove());
+  chartEl.querySelectorAll('.oc-dropline-ext').forEach(e => e.remove());
   const chartRect = chartEl.getBoundingClientRect();
   const wrapRect = () => wrap.getBoundingClientRect();
   const placed = [];
@@ -359,9 +360,13 @@ function alignOrgChartTiers() {
     if (t.dataset.kind === 'lower') { // 元の部門(マネージャーの箱など)の下の線を、下の段の見出しの上端までつなぐ(途中で切れないように)
       const drop = col.querySelector('.oc-dropline');
       if (drop) {
-        const dr = drop.getBoundingClientRect(), wr = wrapRect();
-        const x = dr.left - wr.left, y1 = dr.bottom - wr.top; // dropline は幅2pxの左罫線(dr.left が線の左端)。線の左端をそのままそろえる(以前は1px左にずれていた)
-        if (top > y1) line(x, y1, 2, top - y1 + 1);
+        const y1 = drop.getBoundingClientRect().bottom - wrapRect().top;
+        if (top > y1) { // 線の延長は、下りる線の子にする(横の位置は線と同じ。印刷の縮小や再配置でもずれない)
+          const ext = document.createElement('div');
+          ext.className = 'oc-dropline-ext';
+          ext.style.height = `${top - y1 + 1}px`;
+          drop.appendChild(ext);
+        }
       }
     }
   });

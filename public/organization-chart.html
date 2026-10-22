@@ -51,7 +51,9 @@
   .oc-spine { position: absolute; left: 14px; top: 0; bottom: -14px; width: 2px; background: #9fbbdc; } /* 母線の左端から下へ。下の段(事業係などの部門)の上端まで */
   /* 下の段(ゆめすみかの展示場など): 元の部門の列から下へ線を引き、すべての列の下に横に並べる */
   .oc-tier-link { align-self: stretch; }
-  .oc-dropline { align-self: center; flex: 1 1 auto; min-height: 24px; width: 0; border-left: 2px solid #9fbbdc; margin-top: 0; }
+  /* 下の段へ下りる線: 他の線と同じ背景色の2px線にする(罫線だと、印刷の縮小で1pxに丸められて太さ・位置がずれた)。下の段の見出しまでの延長(.oc-dropline-ext)は、この線の子にして、位置がずれないようにする(2026-10-22・ユーザー指摘) */
+  .oc-dropline { position: relative; align-self: center; flex: 1 1 auto; min-height: 24px; width: 2px; background: #9fbbdc; margin-top: 0; }
+  .oc-dropline-ext { position: absolute; left: 0; top: 100%; width: 2px; background: #9fbbdc; }
   .oc-tiers { position: relative; align-self: stretch; margin-top: 14px; } /* 下の段(位置はJSで決める) */
   .oc-tier { position: absolute; display: flex; flex-direction: column; }
   /* 工務事務の箱: 3部門(カスタマーサポート室・リフォーム部・工務部)の下に置く。人数で大きさが変わり、人は最大2列(左の列→右の列の順に均等に) */
