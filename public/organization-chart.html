@@ -92,6 +92,9 @@
   /* 印刷(PDF)でも、背景色で引いている線と箱の色を消さない(2026-10-22・ユーザー指摘。線が出なかった) */
   #oc-chart, #oc-chart *, #oc-chart *::before, #oc-chart *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @media print {
+    /* 印刷では、見出し「株式会社吉村一建設グループ 組織図」(文字の大きさ36)を、ページの中央に寄せる。右上のISOの表記はそのまま右端(2026-10-28・ユーザー指示) */
+    .oc-head { position: relative; min-height: 52px; }
+    .oc-h1 { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
     header, .oc-noprint { display: none !important; }
     body { background: #ffffff; }
     .oc-scroll { overflow: visible; }
@@ -122,8 +125,8 @@
   </header>
 
   <div style="max-width:1640px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:10px;flex:1">
-    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
-      <h1 style="margin:0;font-size:19px;font-weight:700">株式会社吉村一建設グループ 組織図</h1>
+    <div class="oc-head" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h1 class="oc-h1" style="margin:0;font-size:36px;font-weight:700">株式会社吉村一建設グループ 組織図</h1>
       <span class="oc-iso">ISO 本社・堺ゲストプラザ・倉庫事務所認証取得</span>
       <button id="oc-print" type="button" class="oc-noprint hv-btn-primary" style="margin-left:12px;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;font-family:inherit;cursor:pointer">PDFで保存(印刷)</button>
     </div>
