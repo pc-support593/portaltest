@@ -317,7 +317,7 @@ function renderOrgChart(chart) {
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
-    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs, count: col.count });
+    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs, count: col.sections.reduce((n, x) => n + (x.count || 0), 0) }); // 下の段の帯の人数=下の箱(展示場など)に載っている人の合計。上の帯の人数(常務取締役・マネージャーを含む)とは別(2026-10-28・ユーザー指示)
     // 部門の箱(見出し→③→④→⑤の一覧)を、上から順に短い線でつなぐ(2026-10-21・ユーザー指示)
     const parts = [`<div class="oc-dept">${esc(col.name)}${ocCnt(col.count)}</div>`];
     if (col.l3.length) parts.push(box(col.l3, 'oc-l3'));
