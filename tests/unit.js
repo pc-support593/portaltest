@@ -139,7 +139,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
 
   // 組織図(orgChart.js): 従業員の種類の数字(1〜4)と手入力の役職から、5階層の枠組みに振り分ける(2026-10-20・ユーザーが整理)
   //   吉村一建設側: 1=①会長・社長 / 2=②専務取締役 / 3=③室長・マネージャー・部長 / 4=④次長 / なし=⑤。ゆめすみか側: 1=③常務取締役 / 2=④マネージャー / それ以外=⑤
-  const oc = load(['common.js', 'orgChart.js'], ['buildOrgChart', 'ORG_CHART_FRAME', 'orgChartPeopleForAdmin']);
+  const oc = load(['common.js', 'orgChart.js'], ['buildOrgChart', 'ORG_CHART_FRAME', 'orgChartPeopleForAdmin', 'orgHanMatch']);
   const P = (name, email, title = '', empType = '') => ({ name, email, title, empType, phone: '' });
   const ocOrg = {
     left: [
@@ -200,6 +200,19 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 兼任の追加で区分を指定すると、その区分(ゆめすみかの設計)に載る・指定なしや存在しない区分は先頭の区分', ymSec.find(s => s.label === '設計').members.map(m => m.name).join() === '兼任 甲,設計 一' && ymSec.find(s => s.label === '福田展示場').members.map(m => m.name).sort().join() === ['福田 一', '兼任 乙', '兼任 丙'].sort().join());
 
   // 兼任の追加で選ぶ「MS365のグループ」と、組織図の部門・区分の対応(社員名簿のグループがすべて含まれる)
+  { // 班(2026-10-26): 「部署グループのアドレスの@より前 + -han」で始まるグループ。親の区分のすぐ右の区分になり、親の一覧からは外れる。従業員の種類は見ない
+    const parents = [{ label: '工務部(本社)', groupMail: 'koumu_1@yoshimuraichi.com' }, { label: '工務部(平野)', groupMail: 'koumu_2@yoshimuraichi.com' }];
+    const hm = oc.orgHanMatch([{ mail: 'koumu_1-han2@yoshimuraichi.com', displayName: '2班' }, { mail: 'koumu_1-han1@yoshimuraichi.com', displayName: '1班' }, { mail: 'koumu_2-han1@yoshimuraichi.com', displayName: ' 平野1班 ' }, { mail: 'koumu_1@yoshimuraichi.com', displayName: '本社' }, { mail: 'koumu_1-han1@other.com', displayName: '他' }, { mail: 'koumu_10-han1@yoshimuraichi.com', displayName: '別' }, { mail: 'sekkei-han1@yoshimuraichi.com', displayName: '設計' }, { mail: '', displayName: 'メールなし' }], parents);
+    check('組織図の班: 部署グループのアドレス+-hanで始まるグループだけを班として見つける(同じドメインのみ・親のグループ自身や前半が違うものは対象外)・アドレス順・表示名が枠の名前', hm.map(h => h.parent + ':' + h.label).join() === '工務部(本社):1班,工務部(本社):2班,工務部(平野):平野1班', JSON.stringify(hm));
+    const Pm = (name, email, empType, title) => ({ name, email, title: title || '', empType: empType || '', phone: '' });
+    const hOrg = { left: [{ dept: '工務部(本社)', members: [Pm('甲', 'a@x.com'), Pm('乙', 'b@x.com', '3'), Pm('丙', 'c@x.com')] }, { dept: '工務部(平野)', members: [Pm('丁', 'd@x.com')] }], right: [], names: {}, users: { left: [Pm('戊', 'z@x.com')], right: [] },
+      han: [{ parent: '工務部(本社)', label: '1班', emails: ['b@x.com', 'z@x.com'] }, { parent: '工務部(本社)', label: '2班', emails: ['c@x.com'] }] };
+    const hc = oc.buildOrgChart(hOrg, [{ email: 'a@x.com', dept: '工務部/2班', title: '', sort: 0 }]).columns.find(c => c.name === '工務部');
+    check('組織図の班: 班は親の区分(本社)のすぐ右に並び(本社・1班・2班・平野・西宮)、班の人は親の一覧から外れる。親のグループにいない人も班に載る', hc.sections.map(x => x.label).join() === '本社,1班,2班,平野,西宮' && hc.sections[0].members.map(m => m.name).join() === '甲' && hc.sections[1].members.map(m => m.name).join() === '乙,戊' && hc.sections[2].members.map(m => m.name).join() === '丙', JSON.stringify(hc.sections.map(x => [x.label, x.members.map(m => m.name)])));
+    check('組織図の班: 班の人は従業員の種類を見ない(種類3でも③に上がらず、班の一覧に載る)。同じ人は1回だけ(兼任の追加が班の区分でも、すでに載っていれば重ねない)', hc.l3.length === 0 && hc.sections.flatMap(x => x.members).filter(m => m.name === '甲').length === 1);
+    const hc0 = oc.buildOrgChart({ ...hOrg, han: undefined }, []).columns.find(c => c.name === '工務部');
+    check('組織図の班: 班が無ければ、これまでどおり(班の区分なし・種類3は③)', hc0.sections.map(x => x.label).join() === '本社,平野,西宮' && hc0.l3.map(m => m.name).join() === '乙');
+  }
   const ocAll = load(['common.js', 'roomsData.js', 'orgData.js', 'orgChart.js'], ['orgChartGroupChoices', 'LEFT_GROUPS', 'YUMESUMIKA_GROUPS']);
   const gch = ocAll.orgChartGroupChoices();
   const gmap = Object.fromEntries(gch.map(c => [c.label, c.dept]));

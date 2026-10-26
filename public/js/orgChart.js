@@ -98,6 +98,10 @@ function buildOrgChart(org, manual) {
   const l1c = pickTop('1').sort((a, b) => (String(b.title).includes('会長') ? 1 : 0) - (String(a.title).includes('会長') ? 1 : 0)); // 会長を先に
   const l2c = pickTop('2');
   const topKeys = new Set([...l1c, ...l2c].map(c => orgKeyOf(c.m)));
+  // 班(2026-10-26・ユーザー指示): org.han=[{ parent: 親の部署グループ名(社員名簿の見出しと同じ), label: 班の名前, emails: [班のグループのメンバー] }]。
+  // 班の人は、親の区分の一覧から取り出し、同じ部門の中の次の区分(本社・平野・西宮と同じ並び)として親の区分のすぐ右に出す。従業員の種類は見ない(⑤)
+  const hanOf = new Map();
+  ((org && org.han) || []).forEach(h => { if (!hanOf.has(h.parent)) hanOf.set(h.parent, []); hanOf.get(h.parent).push(h); });
   const chart = { l1: l1c.map(c => ({ name: dispName(c.m), title: c.title })), l2: l2c.map(c => ({ name: dispName(c.m), title: c.title })), columns: [] };
 
   const buildCol = col => {
@@ -138,11 +142,16 @@ function buildOrgChart(org, manual) {
       const nums = [...new Set(col.sections.flatMap(sec => sec.groups.flatMap(g => groupMembers(pool, g))).map(m => Number(empOf(m))).filter(n => Number.isFinite(n) && n >= 3))].sort((a, b) => a - b);
       if (nums.length >= 2) levelOf = emp => (Number(emp) === nums[0] ? 3 : Number(emp) === nums[1] ? 4 : 5);
     }
+    const poolEmail = new Map(); // メールアドレス(小文字)→人(この会社側の全員。班のメンバーが親のグループに入っていなくても拾う)
+    [...pool.flatMap(g => g.members), ...(isRight ? usersRight : usersLeft)].forEach(m => { const e = String(m.email || '').toLowerCase(); if (e && !poolEmail.has(e)) poolEmail.set(e, m); });
     col.sections.forEach(sec => {
       const members = [];
+      const hans = sec.groups.flatMap(g => hanOf.get(g) || []);
+      const hanEmails = new Set(hans.flatMap(h => h.emails.map(e => String(e).toLowerCase())));
       sec.groups.forEach(g => groupMembers(pool, g).forEach(m => {
         const k = orgKeyOf(m);
         if (seen.has(k)) return;
+        if (m.email && hanEmails.has(String(m.email).toLowerCase())) return; // 班の区分に出す(ここには出さない)
         seen.add(k);
         const it = item(m);
         const emp = empOf(m);
@@ -153,6 +162,14 @@ function buildOrgChart(org, manual) {
         else members.push(it);
       }));
       out.sections.push({ label: sec.label, members });
+      hans.forEach(h => {
+        const want = new Set(h.emails.map(e => String(e).toLowerCase()));
+        const hm = [];
+        const add = m => { const k = orgKeyOf(m); if (seen.has(k)) return; seen.add(k); hm.push(item(m)); };
+        sec.groups.forEach(g => groupMembers(pool, g).forEach(m => { if (m.email && want.has(String(m.email).toLowerCase())) add(m); })); // 名簿の順
+        h.emails.forEach(e => { const m = poolEmail.get(String(e).toLowerCase()); if (m) add(m); });                                                 // 親のグループにいない人は後ろに
+        if (hm.length) out.sections.push({ label: h.label, members: hm });
+      });
     });
 
     // 兼任・追加: この部門を指定した手入力の行のうち、まだ載っていない人を足す(MS365のグループに入っていない人)。
@@ -434,6 +451,50 @@ function setupOrgChartPrint() {
   if (btn) btn.addEventListener('click', () => window.print());
 }
 
+/** 班のグループを見つける(純粋な関数)。班のグループ = 部署のグループのアドレスの@より前 + 「-han」で始まるアドレス(同じドメイン。例: koumu_1-han1@yoshimuraichi.com は koumu_1@yoshimuraichi.com の班)。
+    groups: [{ mail, displayName }]、parents: [{ label, groupMail }]。戻り値: [{ parent: 親の部署グループ名, label: 班の名前(グループの表示名), mail }](アドレス順) */
+function orgHanMatch(groups, parents) {
+  const out = [];
+  (groups || []).forEach(g => {
+    const mail = String(g.mail || '').toLowerCase();
+    const at = mail.indexOf('@');
+    if (at < 1) return;
+    const local = mail.slice(0, at), domain = mail.slice(at);
+    const p = (parents || []).find(x => { const pm = String(x.groupMail).toLowerCase(), pa = pm.indexOf('@'); return pm.slice(pa) === domain && local.startsWith(pm.slice(0, pa) + '-han'); });
+    if (p) out.push({ parent: p.label, label: String(g.displayName || '').trim() || mail.slice(0, at), mail });
+  });
+  return out.sort((a, b) => a.mail.localeCompare(b.mail));
+}
+
+/** 組織図だけで使う班のグループを取得する(社員名簿・出勤状況・スタッフ予定は読まない)。MS365のグループ一覧を1回で取り、アドレスで班を見つけ、メンバーを読む。
+    戻り値: { han: [{ parent, label, emails }], failed: [取得できなかったもの] }。1つ失敗しても他は表示する */
+async function fetchOrgHanGroups() {
+  const failed = [];
+  let groups = [];
+  try {
+    const token = await Auth.getGraphToken(['GroupMember.Read.All']);
+    let url = 'https://graph.microsoft.com/v1.0/groups?$select=id,mail,displayName&$top=999';
+    while (url) {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(await graphErrorMessage(res, `グループ一覧の取得に失敗しました(HTTP ${res.status})`));
+      const data = await res.json();
+      groups.push(...(data.value || []));
+      url = data['@odata.nextLink'] || null;
+    }
+  } catch (e) {
+    console.error(e);
+    return { han: [], failed: ['班のグループの一覧'] };
+  }
+  const found = orgHanMatch(groups, [...LEFT_GROUPS, ...YUMESUMIKA_GROUPS]);
+  const han = [];
+  await Promise.all(found.map(async h => {
+    try { han.push({ parent: h.parent, label: h.label, mail: h.mail, emails: await fetchGroupMemberEmails(h.mail) }); }
+    catch (e) { console.error(e); failed.push(h.label); }
+  }));
+  han.sort((a, b) => a.mail.localeCompare(b.mail));
+  return { han, failed };
+}
+
 async function initOrgChartPage() {
   try {
     await Auth.init();
@@ -447,9 +508,10 @@ async function initOrgChartPage() {
   }
   ocEl('oc-chart').innerHTML = '<p style="margin:0;padding:24px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
-    const [org, manual] = await Promise.all([loadOrgData(), api('/api/orgchart-titles')]);
+    const [org, manual, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'), fetchOrgHanGroups()]);
+    org.han = hanRes.han; // 班(組織図だけ)
     renderOrgChart(buildOrgChart(org, manual));
-    const failed = [...(org.failedLeft || []), ...(org.failedRight || [])];
+    const failed = [...(org.failedLeft || []), ...(org.failedRight || []), ...hanRes.failed];
     ocEl('oc-notice').textContent = failed.length ? `次のグループを取得できませんでした(該当する方が表示されていない可能性があります): ${failed.join('、')}` : '';
   } catch (e) {
     console.error(e);
