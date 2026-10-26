@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="css/portal.css">
 <style>
   /* 組織図(2026-10-20)。上から ①会長・社長 ②専務 ③部門長 ④次長 ⑤メンバー。印刷(PDF保存)は A3 横 */
+  /* 見出しの右上の認証取得の表記(印刷にも出す。右端に寄せる。2026-10-26・ユーザー指示) */
+  .oc-iso { margin-left: auto; font-size: 12px; font-weight: 700; color: #1e3a5f; border: 1px solid #1e3a5f; border-radius: 4px; padding: 4px 10px; white-space: nowrap; }
   .oc-scroll { overflow-x: auto; padding-bottom: 12px; }
   /* 線の太さ(--oc-lw)。画面は2px。印刷で縮小(zoom)するときは、縮小後にちょうど2px(整数)になる値を JS が入れる(小数だと線ごとに1px・2pxに丸められて太さがばらついた。2026-10-22) */
   #oc-chart { --oc-lw: 2px; width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; } /* 部門が多い・小区分(本社・平野など)が横に並ぶと、図が広がる。画面は横にスクロール */
@@ -115,8 +117,8 @@
   <div style="max-width:1640px;width:100%;margin:0 auto;padding:18px 24px 28px;display:flex;flex-direction:column;gap:10px;flex:1">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
       <h1 style="margin:0;font-size:19px;font-weight:700">株式会社吉村一建設グループ 組織図</h1>
-      <span class="oc-noprint" style="font-size:12px;color:#8a99a8">社員名簿の情報から自動で作成します。課長以下の役職と兼任は、管理画面の「組織図の役職」で入力します。</span>
-      <button id="oc-print" type="button" class="oc-noprint hv-btn-primary" style="margin-left:auto;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;font-family:inherit;cursor:pointer">PDFで保存(印刷)</button>
+      <span class="oc-iso">ISO 本社・堺ゲストプラザ・倉庫事務所認証取得</span>
+      <button id="oc-print" type="button" class="oc-noprint hv-btn-primary" style="margin-left:12px;border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;font-family:inherit;cursor:pointer">PDFで保存(印刷)</button>
     </div>
     <p id="oc-notice" class="oc-noprint" style="margin:0;font-size:12px;color:#c05a5a"></p>
     <div class="oc-scroll"><div id="oc-chart"></div></div>
