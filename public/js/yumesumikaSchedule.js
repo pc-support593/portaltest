@@ -23,7 +23,7 @@ const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 // 「本社」(honsha)はMS365グループを介さず、指定された特定メンバーを直接扱う
 // (ユーザー指示 2026-10-02。groupMailの代わりにmembers配列を持たせる)
 const SHOWROOM_GROUPS = [
-  { id: 'fukuda', name: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
+  { id: 'fukuda', name: '福田/泉佐野展示場', groupMail: 'yumesumika_1@yumesumika.com' },
   { id: 'nakamozu', name: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
   { id: 'hirano', name: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { id: 'hanahaku', name: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },

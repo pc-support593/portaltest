@@ -64,7 +64,7 @@ async function fetchOrgUsers() {
 // (ユーザー指示。department属性へのフォールバックはしない)
 const YUMESUMIKA_GROUPS = [
   { label: '広報企画室', groupMail: 'yumesumika_marketing@yumesumika.com' }, // 2026-10-21・ユーザー指示で追加。マネージャー(優先見出し)の次=展示場より前
-  { label: '福田展示場', groupMail: 'yumesumika_1@yumesumika.com' },
+  { label: '福田/泉佐野展示場', groupMail: 'yumesumika_1@yumesumika.com' },
   { label: '中百舌鳥展示場', groupMail: 'yumesumika_2@yumesumika.com' },
   { label: '平野展示場', groupMail: 'yumesumika_3@yumesumika.com' },
   { label: '花博展示場', groupMail: 'yumesumika_4@yumesumika.com' },

@@ -120,7 +120,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('LEFT_GROUP_ORDER: 総務部が一番下', o.LEFT_GROUP_ORDER[o.LEFT_GROUP_ORDER.length - 1] === '総務部');
   const sp = o.splitByCompany([u('x@yumesumika.com', 'ゆめ'), u('y@yoshimuraichi.com', '吉村'), u('n-morishita@yoshimuraichi.com', '森下'), u('s-tada@yumesumika.com', '多田')]);
   // ゆめすみかの部門グループに入っている人は、@yoshimuraichi.com でも、左列に固定されている @yumesumika.com でも、右列(グループ未所属はこれまでどおり)
-  const spg = o.splitByCompany([u('k@yoshimuraichi.com', '小谷'), u('s-tada@yumesumika.com', '多田'), u('y@yoshimuraichi.com', '吉村'), u('x@yumesumika.com', 'ゆめ')], { 'k@yoshimuraichi.com': ['設計'], 's-tada@yumesumika.com': ['福田展示場'] });
+  const spg = o.splitByCompany([u('k@yoshimuraichi.com', '小谷'), u('s-tada@yumesumika.com', '多田'), u('y@yoshimuraichi.com', '吉村'), u('x@yumesumika.com', 'ゆめ')], { 'k@yoshimuraichi.com': ['設計'], 's-tada@yumesumika.com': ['福田/泉佐野展示場'] });
   check('splitByCompany: ゆめすみかのグループに入っている人は右列(ドメイン・左列固定より優先)。未所属はドメインどおり', spg.right.map(x => x.name).join() === '小谷,多田,ゆめ' && spg.left.map(x => x.name).join() === '吉村', JSON.stringify(spg));
   check('splitByCompany: ドメインで左右(個別指定が優先)', sp.right.map(x => x.name).join() === 'ゆめ,森下' && sp.left.map(x => x.name).join() === '吉村,多田', JSON.stringify(sp));
 
@@ -159,7 +159,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     ],
     right: [
       { dept: '常務取締役', members: [P('森下 直美', 'k@y.com', '常務取締役', '1')] }, { dept: 'マネージャー', members: [P('大平 国弘', 'l@y.com', 'マネージャー', '2')] },
-      { dept: '福田展示場', members: [P('店 長', 'm@y.com'), P('平 社員', 'n@y.com'), P('三 番', 'o@y.com', '', '3')] }
+      { dept: '福田/泉佐野展示場', members: [P('店 長', 'm@y.com'), P('平 社員', 'n@y.com'), P('三 番', 'o@y.com', '', '3')] }
     ],
     names: { 'k@y.com': '森下 直美' }
   };
@@ -179,7 +179,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: メールの無い手動メンバー(荒井 正義)は氏名のキーで手入力の役職が付く。物流事業係などは工務部ではなく、独立した部門(sides)', ch.sides.find(c => c.name === '物流事業係').sections[0].members[0].title === '主任' && !JSON.stringify(colOf('工務部')).includes('荒井') && ch.sides.map(c => c.name).join() === 'エクステリア事業係,外壁・2×4事業課(㈱来夢エンジニア),物流事業係,フレミング大工');
   check('組織図: 工務部の部長(種類3)は③に載る', colOf('工務部').l3.map(p => p.name).join() === '工務 太郎');
   // 従業員の種類が無ければ、役職が「部長」でも⑤(種類で決める)。「次長(兼任)」など括弧つきの手入力は、兼任の追加行だけ④に載る
-  const ch2 = oc.buildOrgChart({ left: [{ dept: '総務部', members: [P('部長 本人', 'p1@x.com', '部長'), P('代理 人', 'p2@x.com', '部長代理', '3')] }], right: [{ dept: '福田展示場', members: [P('代 理', 'q1@y.com', '店長代理'), P('店 長', 'q2@y.com', '店長'), P('係 長', 'q3@y.com', '係長')] }], names: {} }, []);
+  const ch2 = oc.buildOrgChart({ left: [{ dept: '総務部', members: [P('部長 本人', 'p1@x.com', '部長'), P('代理 人', 'p2@x.com', '部長代理', '3')] }], right: [{ dept: '福田/泉佐野展示場', members: [P('代 理', 'q1@y.com', '店長代理'), P('店 長', 'q2@y.com', '店長'), P('係 長', 'q3@y.com', '係長')] }], names: {} }, []);
   check('組織図: 従業員の種類の記載なしは、役職が「部長」でも⑤(階層は種類の数字で決まる)', ch2.columns.find(c => c.name === '総務部').l3.map(p => p.name).join() === '代理 人' && ch2.columns.find(c => c.name === '総務部').sections[0].members.map(p => p.name).join() === '部長 本人');
   check('組織図: ⑤の順は 店長→係長→店長代理(「店長代理」が「店長」と同じ順位にならない)', ch2.columns.find(c => c.name === '㈱ゆめすみか').sections[0].members.map(m => m.title).join() === '店長,係長,店長代理');
   // 兼任の手入力の行(従業員の種類を持たない)は、役職の文字で③④を判定する。「部長代理」などは⑤
@@ -187,7 +187,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 兼任の追加行は、「部長(兼任)」=③・「次長」=④・「部長代理」=⑤', chAdd.columns.find(c => c.name === '購買部').l3.map(p => p.name).join() === '甲' && chAdd.columns.find(c => c.name === '購買部').l4.map(p => p.name).join() === '丙' && chAdd.columns.find(c => c.name === '購買部').sections[0].members.map(p => p.name).join() === '乙');
 
   // グループに入っていない専務取締役(種類2)・常務取締役(ゆめすみか。種類1)も、会社別の全員の一覧(org.users)から拾う
-  const chU = oc.buildOrgChart({ left: [{ dept: '購買部', members: [P('購買 一', 'z@x.com')] }], right: [{ dept: '福田展示場', members: [P('店 長', 'm@y.com')] }], names: {},
+  const chU = oc.buildOrgChart({ left: [{ dept: '購買部', members: [P('購買 一', 'z@x.com')] }], right: [{ dept: '福田/泉佐野展示場', members: [P('店 長', 'm@y.com')] }], names: {},
     users: { left: [P('東 伸考', 'c@x.com', '専務取締役', '2'), P('購買 一', 'z@x.com')], right: [P('森下 直美', 'k@y.com', '常務取締役', '1'), P('大平 国弘', 'l@y.com', 'マネージャー', '2'), P('店 長', 'm@y.com')] } }, []);
   check('組織図: どのグループにも入っていない専務取締役(種類2)も②に出る', chU.l2.map(p => p.name + ':' + p.title).join() === '東 伸考:専務取締役');
   check('組織図: どのグループにも入っていないゆめすみかの種類1・2も③④に出る', chU.columns.find(c => c.name === '㈱ゆめすみか').l3.map(p => p.name).join() === '森下 直美' && chU.columns.find(c => c.name === '㈱ゆめすみか').l4.map(p => p.name).join() === '大平 国弘' && chU.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '購買 一');
@@ -202,10 +202,10 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('組織図: 工務部に種類が1つだけのときは、従来どおり(4=④次長。③にはしない)', kk2.l3.length === 0 && kk2.l4.map(p => p.name).join() === '次長 のみ');
 
   // 兼任の追加で区分を指定: 「部門名/区分名」の dept は、その区分に載る(指定なしは先頭の区分)
-  const chSec = oc.buildOrgChart({ left: [], right: [{ dept: '福田展示場', members: [P('福田 一', 'f1@y.com')] }, { dept: '設計', members: [P('設計 一', 'd1@y.com')] }], names: { 'x1@x.com': '兼任 甲', 'x2@x.com': '兼任 乙', 'x3@x.com': '兼任 丙' } },
+  const chSec = oc.buildOrgChart({ left: [], right: [{ dept: '福田/泉佐野展示場', members: [P('福田 一', 'f1@y.com')] }, { dept: '設計', members: [P('設計 一', 'd1@y.com')] }], names: { 'x1@x.com': '兼任 甲', 'x2@x.com': '兼任 乙', 'x3@x.com': '兼任 丙' } },
     [{ email: 'x1@x.com', dept: '㈱ゆめすみか/設計', title: '設計(兼)', sort: 0 }, { email: 'x2@x.com', dept: '㈱ゆめすみか', title: '店長(兼)', sort: 0 }, { email: 'x3@x.com', dept: '㈱ゆめすみか/存在しない区分', title: '主任(兼)', sort: 0 }]);
   const ymSec = chSec.columns.find(c => c.name === '㈱ゆめすみか').sections;
-  check('組織図: 兼任の追加で区分を指定すると、その区分(ゆめすみかの設計)に載る・指定なしや存在しない区分は先頭の区分', ymSec.find(s => s.label === '設計').members.map(m => m.name).join() === '兼任 甲,設計 一' && ymSec.find(s => s.label === '福田展示場').members.map(m => m.name).sort().join() === ['福田 一', '兼任 乙', '兼任 丙'].sort().join());
+  check('組織図: 兼任の追加で区分を指定すると、その区分(ゆめすみかの設計)に載る・指定なしや存在しない区分は先頭の区分', ymSec.find(s => s.label === '設計').members.map(m => m.name).join() === '兼任 甲,設計 一' && ymSec.find(s => s.label === '福田/泉佐野展示場').members.map(m => m.name).sort().join() === ['福田 一', '兼任 乙', '兼任 丙'].sort().join());
 
   // 兼任の追加で選ぶ「MS365のグループ」と、組織図の部門・区分の対応(社員名簿のグループがすべて含まれる)
   { // 班(2026-10-26): 「部署グループのアドレスの@より前 + -han」で始まるグループ。親の区分のすぐ右の区分になり、親の一覧からは外れる。従業員の種類は見ない
@@ -240,6 +240,13 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     check('組織図の補足: 行の名前が「工務事務」の補足行は、工務事務の箱に入らず、部門の枠の補足行のまま(人数に足される)', jx.jimu.count === 1 && jx.columns.find(c => c.name === '購買部').count === 4 + 4 && jx.columns.find(c => c.name === '購買部').sections.flatMap(x => x.members).some(m => m.extra === 'count' && m.count === 4), JSON.stringify([jx.jimu.count, jx.columns.find(c => c.name === '購買部').count]));
     const noEx = oc.buildOrgChart({ ...cOrg, extras: undefined, han: undefined }, []);
     check('組織図の補足: 補足が無ければ、補足行のみの部門は空のまま(これまでどおり)。管理画面の役職一覧には補足行を出さない', noEx.sides.find(c => c.name === 'フレミング大工').count === 0 && oc.orgChartPeopleForAdmin(cOrg, []).every(r => !String(r.key).startsWith('extra:')));
+  }
+  { // 区分の名前の変更(福田展示場→福田/泉佐野展示場。2026-10-28): 旧い名前で保存された手入力の行(兼任)も、新しい名前の区分に載る。新しい名前で保存した行も載る
+    const Pa = (name, email) => ({ name, email, title: '', empType: '', phone: '' });
+    const aOrg = { left: [], right: [{ dept: '福田/泉佐野展示場', members: [Pa('福一', 'f1@x.com')] }, { dept: '設計', members: [Pa('設一', 's1@x.com')] }], names: { 'o1@x.com': '旧名の兼任', 'n1@x.com': '新名の兼任' }, users: { left: [], right: [] } };
+    const aCol = oc.buildOrgChart(aOrg, [{ email: 'o1@x.com', dept: '㈱ゆめすみか/福田展示場', title: '店長(兼任)', sort: 0 }, { email: 'n1@x.com', dept: '㈱ゆめすみか/福田/泉佐野展示場', title: '係長(兼任)', sort: 0 }]).columns.find(c => c.name === '㈱ゆめすみか');
+    const fk = aCol.sections.find(x => x.label === '福田/泉佐野展示場');
+    check('組織図: 区分名「福田/泉佐野展示場」(スラッシュを含む)に、新旧どちらの名前で保存した兼任の行も載る(他の区分には載らない)', !!fk && fk.members.map(m => m.name).sort().join() === '新名の兼任,旧名の兼任,福一' && aCol.sections.find(x => x.label === '設計').members.map(m => m.name).join() === '設一', JSON.stringify(aCol.sections.map(x => [x.label, x.members.map(m => m.name)])));
   }
   const ocAll = load(['common.js', 'roomsData.js', 'orgData.js', 'orgChart.js'], ['orgChartGroupChoices', 'LEFT_GROUPS', 'YUMESUMIKA_GROUPS']);
   const gch = ocAll.orgChartGroupChoices();

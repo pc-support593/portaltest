@@ -20,8 +20,8 @@ const ORG_CHART_FRAME = {
     { name: '不動産部', side: 'left', sections: [{ label: '', groups: ['不動産部'] }] },
     {
       name: '㈱ゆめすみか', side: 'right', l3Group: 'ゆめすみか常務取締役', l4Group: 'マネージャー', lowerTier: true, sections: [ // lowerTier: 展示場などの小区分は、他の部門の下の段に、横に並べて置く(他の部門の人の一覧にかぶらず、列の幅も広げない。2026-10-20・ユーザー指示)
-        { label: '福田展示場', groups: ['福田展示場'] }, { label: '中百舌鳥展示場', groups: ['中百舌鳥展示場'] }, { label: '平野展示場', groups: ['平野展示場'] },
-        { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }, { label: '広報企画室', groups: ['広報企画室'] } // 先頭の区分は兼任の既定の置き場(福田展示場)のため、広報企画室は末尾
+        { label: '福田/泉佐野展示場', groups: ['福田/泉佐野展示場'] }, { label: '中百舌鳥展示場', groups: ['中百舌鳥展示場'] }, { label: '平野展示場', groups: ['平野展示場'] },
+        { label: '花博展示場', groups: ['花博展示場'] }, { label: '西宮展示場', groups: ['西宮展示場'] }, { label: '設計', groups: ['設計'] }, { label: '広報企画室', groups: ['広報企画室'] } // 先頭の区分は兼任の既定の置き場(福田/泉佐野展示場)のため、広報企画室は末尾
       ]
     },
     { name: '建築営業部', side: 'left', sections: [{ label: '', groups: ['建築営業部'] }] },
@@ -41,6 +41,10 @@ const ORG_CHART_FRAME = {
 };
 
 // ③(室長・マネージャー・部長・取締役部長)と④(次長)の判定。役職の先頭が一致するか(「次長(兼任)」も次長)
+// 区分の名前を変えたとき、変更前の名前で保存されている手入力の行(兼任など。orgchart_titles の dept)を、新しい名前の区分に載せるための対応表(データは書き換えない)
+// 2026-10-28: 「福田展示場」→「福田/泉佐野展示場」(ユーザー指示)
+const ORG_SECTION_ALIAS = { '福田展示場': '福田/泉佐野展示場' };
+
 const ORG_L3_TITLE = ['取締役部長', '部長', '室長', 'マネージャー'];
 const ORG_L4_TITLE = ['次長'];
 // ⑤の表示順(役職の先頭が一致。上にあるほど上位。ここに無い役職は後ろ、役職なしは最後)
@@ -176,7 +180,8 @@ function buildOrgChart(org, manual) {
     // 手入力の行には従業員の種類が無いので、役職の文字(「次長」「部長」など。括弧の注記つきも可)で③④を判定する(ゆめすみかの列は⑤)
     // dept は「部門名」または「部門名/区分名」(区分=工務部の本社・平野・西宮、ゆめすみかの展示場・設計など。区分を指定しないときは先頭の区分)
     (manual || []).filter(r => r.dept === col.name || r.dept.startsWith(col.name + '/')).forEach(r => {
-      const secLabel = r.dept.length > col.name.length ? r.dept.slice(col.name.length + 1) : '';
+      const secLabel0 = r.dept.length > col.name.length ? r.dept.slice(col.name.length + 1) : '';
+      const secLabel = ORG_SECTION_ALIAS[secLabel0] || secLabel0; // 区分の名前を変えたときの、旧い名前の手入力の行も載せる
       const k = String(r.email).toLowerCase();
       if (seen.has(k)) return;
       seen.add(k);
