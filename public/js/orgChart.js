@@ -508,7 +508,9 @@ async function initOrgChartPage() {
   }
   ocEl('oc-chart').innerHTML = '<p style="margin:0;padding:24px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
-    const [org, manual, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'), fetchOrgHanGroups()]);
+    const [org, manual, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'),
+      // 班の取得は、20秒で切り上げる(MS365が応答しなくても、組織図は班なしで表示する。E007。2026-10-26)
+      withTimeout(fetchOrgHanGroups(), 20000, '班のグループの取得が時間内に終わりませんでした').catch(e => { console.error(e); return { han: [], failed: ['班のグループ(時間切れ)'] }; })]);
     org.han = hanRes.han; // 班(組織図だけ)
     renderOrgChart(buildOrgChart(org, manual));
     const failed = [...(org.failedLeft || []), ...(org.failedRight || []), ...hanRes.failed];
