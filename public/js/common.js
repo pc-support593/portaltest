@@ -8,7 +8,7 @@ function esc(v) {
   ));
 }
 
-/** 文字の中の http:// と https:// のURLを、新しいタブで開くリンクにして返す(HTML文字列)。それ以外の文字は esc でエスケープする(2026-10-28・ユーザー依頼)。
+/** 文字の中の http:// と https:// のURLを、新しいタブで開くリンクにして返す(HTML文字列)。それ以外の文字は esc でエスケープする(2026-10-26・ユーザー依頼)。
     リンクにするのは http・https だけ(javascript: などは対象外)。URLに使える半角の文字だけを拾い(日本語はURLに含めない)、末尾の句読点・閉じ括弧は含めない。
     お知らせ・全社スケジュールの本文、予定の場所に使う。改行は呼び出し側の white-space:pre-wrap で保つ */
 function linkify(text) {
@@ -214,7 +214,7 @@ function searchPortalPages(q) {
 const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
-  { label: '組織図', href: 'organization-chart.html', desktopOnly: true }, // desktopOnly: スマホ幅(☰メニュー・ホームの検索)では出さない(2026-10-29・ユーザー指示。組織図はスマホでは使わない)
+  { label: '組織図', href: 'organization-chart.html', desktopOnly: true }, // desktopOnly: スマホ幅(☰メニュー・ホームの検索)では出さない(2026-10-26・ユーザー指示。組織図はスマホでは使わない)
   { label: '年間カレンダー', href: 'work-calendar.html' },
   { label: 'スケジュール', href: 'schedule.html' },
   // スタッフ予定(2026-10-08・ユーザー指示)。既定の遷移先は吉村一建設。ゆめすみかのアカウントの人は、サインイン後に

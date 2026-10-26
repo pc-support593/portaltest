@@ -42,7 +42,7 @@ const ORG_CHART_FRAME = {
 
 // ③(室長・マネージャー・部長・取締役部長)と④(次長)の判定。役職の先頭が一致するか(「次長(兼任)」も次長)
 // 区分の名前を変えたとき、変更前の名前で保存されている手入力の行(兼任など。orgchart_titles の dept)を、新しい名前の区分に載せるための対応表(データは書き換えない)
-// 2026-10-28: 「福田展示場」→「福田/泉佐野展示場」(ユーザー指示)
+// 2026-10-26: 「福田展示場」→「福田/泉佐野展示場」(ユーザー指示)
 const ORG_SECTION_ALIAS = { '福田展示場': '福田/泉佐野展示場' };
 
 const ORG_L3_TITLE = ['取締役部長', '部長', '室長', 'マネージャー'];
@@ -202,7 +202,7 @@ function buildOrgChart(org, manual) {
   };
   chart.columns = ORG_CHART_FRAME.columns.map(buildCol);
   chart.sides = (ORG_CHART_FRAME.sideDepts || []).map(buildCol); // カスタマーサポート室の左の線にぶら下げる部門
-  // 補足(2026-10-27・ユーザー依頼): 管理画面で入力した「手動の人」「人数だけの行」を、その部門の最後の区分の一番下に足す(組織図だけ。MS365には無い)。
+  // 補足(2026-10-26・ユーザー依頼): 管理画面で入力した「手動の人」「人数だけの行」を、その部門の最後の区分の一番下に足す(組織図だけ。MS365には無い)。
   //   person=役職+氏名(人数1)、count=「フィリピン 3名」のような行(人数は count)。なお、区分が無い部門(人がいない部門)には、区分を作って載せる
   const extrasOf = d => ((org && org.extras) || []).filter(x => x.dept === d).sort((a, b) => (a.sort - b.sort) || (a.id - b.id));
   [...chart.columns, ...chart.sides].forEach(c => {
@@ -230,7 +230,7 @@ function buildOrgChart(org, manual) {
   }));
   const jimuSort = m => { const r = man.get(`${m.key}|`) || (manual || []).find(x => String(x.email).toLowerCase() === m.key); return r ? Number(r.sort) || 0 : 0; };
   chart.jimu.members = chart.jimu.members.map((m, i) => ({ m, i })).sort((a, b) => jimuSort(a.m) - jimuSort(b.m) || a.i - b.i).map(x => x.m);
-  // 人数(2026-10-27・ユーザー指示): 部門=③④⑤の全員(部長・次長も数える)+補足(person=1・count=人数)。兼任(追加行・役職に(兼任)の注記)は数えない。
+  // 人数(2026-10-26・ユーザー指示): 部門=③④⑤の全員(部長・次長も数える)+補足(person=1・count=人数)。兼任(追加行・役職に(兼任)の注記)は数えない。
   //   区分(本社・展示場・班など)は、その区分の人数。工務事務の箱は単独で数える。班は区分として独立に数え、部門の合計には含める。会長・社長・専務は数えない
   const countMembers = list => list.reduce((n, m) => n + (m.extra === 'count' ? m.count : (m.added || ocSplitKenmu(m.title).kenmu) ? 0 : 1), 0);
   [...chart.columns, ...chart.sides].forEach(c => {
@@ -238,7 +238,7 @@ function buildOrgChart(org, manual) {
     c.count = countMembers(c.l3) + countMembers(c.l4) + c.sections.reduce((n, sec) => n + sec.count, 0);
   });
   chart.jimu.count = chart.jimu.members.length;
-  // 全体の合計(会長・社長の枠の外の右上に出す)。会長・社長・専務取締役も人数に数える(2026-10-27・ユーザー指示。部門の人数には入れない)
+  // 全体の合計(会長・社長の枠の外の右上に出す)。会長・社長・専務取締役も人数に数える(2026-10-26・ユーザー指示。部門の人数には入れない)
   chart.total = [...chart.columns, ...chart.sides].reduce((n, c) => n + c.count, 0) + chart.jimu.count + chart.l1.length + chart.l2.length;
   return chart;
 }
@@ -317,7 +317,7 @@ function renderOrgChart(chart) {
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
-    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs, count: col.sections.reduce((n, x) => n + (x.count || 0), 0) }); // 下の段の帯の人数=下の箱(展示場など)に載っている人の合計。上の帯の人数(常務取締役・マネージャーを含む)とは別(2026-10-28・ユーザー指示)
+    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs, count: col.sections.reduce((n, x) => n + (x.count || 0), 0) }); // 下の段の帯の人数=下の箱(展示場など)に載っている人の合計。上の帯の人数(常務取締役・マネージャーを含む)とは別(2026-10-26・ユーザー指示)
     // 部門の箱(見出し→③→④→⑤の一覧)を、上から順に短い線でつなぐ(2026-10-21・ユーザー指示)
     const parts = [`<div class="oc-dept">${esc(col.name)}${ocCnt(col.count)}</div>`];
     if (col.l3.length) parts.push(box(col.l3, 'oc-l3'));

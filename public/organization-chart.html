@@ -16,18 +16,18 @@
   /* 見出しの右上の認証取得の表記(印刷にも出す。右端に寄せる。2026-10-26・ユーザー指示) */
   .oc-iso { margin-left: auto; font-size: 12px; font-weight: 700; color: #1e3a5f; border: 1px solid #1e3a5f; border-radius: 4px; padding: 4px 10px; white-space: nowrap; }
   .oc-scroll { overflow-x: auto; padding-bottom: 12px; }
-  /* 人数(数字だけ。2026-10-27・ユーザー指示): 部門の青い帯の右、区分名の右、会長・社長の枠の右上 */
+  /* 人数(数字だけ。2026-10-26・ユーザー指示): 部門の青い帯の右、区分名の右、会長・社長の枠の右上 */
   .oc-dept, .oc-tier-title { position: relative; }
   .oc-cnt { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 400; color: #dbe8f7; }
   .oc-cnt-s { margin-left: 6px; font-size: 10px; font-weight: 400; color: #8a99a8; }
   .oc-l1 { position: relative; }
-  .oc-total { position: absolute; left: 100%; top: 0; margin-left: 6px; font-size: 12px; font-weight: 700; color: #4a5b6c; white-space: nowrap; } /* 会長・社長の枠の外、右上に出す(2026-10-27・ユーザー指示) */
+  .oc-total { position: absolute; left: 100%; top: 0; margin-left: 6px; font-size: 12px; font-weight: 700; color: #4a5b6c; white-space: nowrap; } /* 会長・社長の枠の外、右上に出す(2026-10-26・ユーザー指示) */
   .oc-extra { grid-column: 1 / -1; text-align: center; font-size: 12px; font-weight: 700; color: #1c2b3a; }
   /* 線の太さ(--oc-lw)。画面は2px。印刷で縮小(zoom)するときは、縮小後にちょうど2px(整数)になる値を JS が入れる(小数だと線ごとに1px・2pxに丸められて太さがばらついた。2026-10-22) */
   #oc-chart { --oc-lw: 2px; width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; } /* 部門が多い・小区分(本社・平野など)が横に並ぶと、図が広がる。画面は横にスクロール */
   .oc-top { display: flex; flex-direction: column; align-items: center; }
   .oc-box { border: 1px solid #b9c7d6; border-radius: 6px; background: #ffffff; padding: 6px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
-  .oc-l1 { background: #e9f1fa; border-color: #9fbbdc; } /* 会長・社長の枠は、専務取締役(.oc-l2)と同じ色(2026-10-27・ユーザー指示) */
+  .oc-l1 { background: #e9f1fa; border-color: #9fbbdc; } /* 会長・社長の枠は、専務取締役(.oc-l2)と同じ色(2026-10-26・ユーザー指示) */
   .oc-l2 { background: #e9f1fa; border-color: #9fbbdc; }
   .oc-l3 { background: #f4f8fc; border-color: #9fbbdc; }
   .oc-l4 { background: #ffffff; border-color: #c4d2e1; }
@@ -92,7 +92,7 @@
   /* 印刷(PDF)でも、背景色で引いている線と箱の色を消さない(2026-10-22・ユーザー指摘。線が出なかった) */
   #oc-chart, #oc-chart *, #oc-chart *::before, #oc-chart *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @media print {
-    /* 印刷では、見出し「株式会社吉村一建設グループ 組織図」(文字の大きさ36)を、ページの中央に寄せる。右上のISOの表記はそのまま右端(2026-10-28・ユーザー指示) */
+    /* 印刷では、見出し「株式会社吉村一建設グループ 組織図」(文字の大きさ36)を、ページの中央に寄せる。右上のISOの表記はそのまま右端(2026-10-26・ユーザー指示) */
     .oc-head { position: relative; min-height: 52px; }
     .oc-h1 { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
     header, .oc-noprint { display: none !important; }

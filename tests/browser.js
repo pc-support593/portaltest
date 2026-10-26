@@ -103,12 +103,12 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     // ---- 組織図(枠組み): メニューにあり、部門の列・階層の枠が描ける(devモードは社員名簿の取得ができないため、疑似データを渡して描く) ----
     await br.open(`${sb.base}/index.html`, 1280);
     check('トップのメニューに「組織図」がある', await br.evaluate("!!document.querySelector('header a[href=\"organization-chart.html\"]')"));
-    // スマホ幅(390px)では、☰メニューにも検索にも「組織図」を出さない(2026-10-29・ユーザー指示)。PC幅には出る
+    // スマホ幅(390px)では、☰メニューにも検索にも「組織図」を出さない(2026-10-26・ユーザー指示)。PC幅には出る
     await br.open(`${sb.base}/index.html`, 390);
     check('スマホ幅(390px): ☰メニューに「組織図」が無い(他の項目はある)。ホームの検索にも出ない', await br.evaluate("(() => { const links = [...document.querySelectorAll('.portal-mobile-menu a')].map(a => a.textContent); return links.length >= 4 && links.includes('社員名簿') && !links.includes('組織図') && !searchPortalPages('組織図').some(p => p.url === 'organization-chart.html') && searchPortalPages('組織図').some(p => p.url === 'organization.html'); })()"));
     await br.open(`${sb.base}/index.html`, 1280);
     check('PC幅(1280px): ホームの検索には「組織図」が出る', await br.evaluate("searchPortalPages('組織図').some(p => p.url === 'organization-chart.html')"));
-    // お知らせ・全社スケジュールの本文のURLは、新しいタブで開くリンクになる(2026-10-28・ユーザー依頼)。本文のHTMLはリンクにしない
+    // お知らせ・全社スケジュールの本文のURLは、新しいタブで開くリンクになる(2026-10-26・ユーザー依頼)。本文のHTMLはリンクにしない
     check('トップのお知らせ等の本文: URLは新しいタブで開くリンクになり、<script>などはリンクにならずエスケープされる', await br.evaluate("(() => { openModal({ tag: 'お知らせ', tagColor: '#2e6fc0', tagBg: '#e8f0fa', date: '', title: 't', body: '資料 https://example.com/a?x=1&y=2 です <b>x</b>', owner: '総務部', attachments: [] }); const a = document.querySelector('#modal-root a[href^=\"https://example.com/a\"], a[href^=\"https://example.com/a\"]'); const root = a && a.closest('p'); return !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && !!root && root.textContent.includes('<b>x</b>') && !root.querySelector('b'); })()"));
     await br.open(`${sb.base}/organization-chart.html`, 1280);
     await br.evaluate(`(() => {
@@ -133,9 +133,9 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('組織図: 工務事務が1人だけのときは1列(枠が小さい)', await br.evaluate("(() => { const P = (n, e, t) => ({ name: n, email: e, title: t || '', empType: '', phone: '' }); renderOrgChart(buildOrgChart({ left: [{ dept: 'カスタマーサポート室', members: [P('CS 一', 'c1@x.com'), P('事 一', 'j1@x.com', '工務事務')] }], right: [], names: {} }, [])); const t = document.querySelector('.oc-jimu'); return t.querySelectorAll('.oc-jm-n').length === 1 && t.getBoundingClientRect().width < 260; })()"));
     check('組織図: 画面の幅(1280px)でもページが横にはみ出さない(図の中だけスクロール)', await br.evaluate(noOverflow));
     check('組織図: 印刷用の設定(A3横)がある', await br.evaluate("[...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => r.cssText.includes('A3') || r.cssText.includes('a3')); } catch { return false; } })"));
-    // ゆめすみか: 上の帯=常務取締役・マネージャーを含む全体の人数、下の段の帯=下の箱(展示場など)に載っている人の合計(2026-10-28・ユーザー指示)
+    // ゆめすみか: 上の帯=常務取締役・マネージャーを含む全体の人数、下の段の帯=下の箱(展示場など)に載っている人の合計(2026-10-26・ユーザー指示)
     check('組織図: ゆめすみかの上の帯は常務・マネージャーを含む人数、下の段の帯は下の箱の人の合計', await br.evaluate("(() => { const P = (n, e, t) => ({ name: n, email: e, title: '', empType: t || '', phone: '' }); const jo = P('常務', 'j1@y.com', '1'), ma = P('店長長', 'm1@y.com', '2'); renderOrgChart(buildOrgChart({ left: [], right: [{ dept: '福田/泉佐野展示場', members: [P('福一', 'f1@y.com'), P('福二', 'f2@y.com')] }, { dept: '設計', members: [P('設一', 's1@y.com')] }], names: {}, users: { left: [], right: [jo, ma] } }, [])); const up = [...document.querySelectorAll('.oc-dept')].find(e => e.textContent.includes('ゆめすみか')).querySelector('.oc-cnt').textContent; const low = document.querySelector('.oc-tier[data-kind=lower] .oc-tier-title .oc-cnt').textContent; return up === '5' && low === '3'; })()"));
-    // 見出し「株式会社吉村一建設グループ 組織図」: 文字の大きさ36px。印刷では、ページの中央に寄せる(画面は左寄せのまま)(2026-10-28・ユーザー指示)
+    // 見出し「株式会社吉村一建設グループ 組織図」: 文字の大きさ36px。印刷では、ページの中央に寄せる(画面は左寄せのまま)(2026-10-26・ユーザー指示)
     check('組織図: 見出しは文字の大きさ36px。画面では左寄せのまま、印刷(print)ではページの中央に寄る(ISOの表記と重ならない)', await (async () => {
       const screenOk = await br.evaluate("(() => { const h = document.querySelector('.oc-h1'); return getComputedStyle(h).fontSize === '36px' && getComputedStyle(h).position !== 'absolute' && getComputedStyle(h).textAlign !== 'center'; })()");
       await br.send('Emulation.setEmulatedMedia', { media: 'print' });
@@ -143,7 +143,7 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       await br.send('Emulation.setEmulatedMedia', { media: '' });
       return screenOk && printOk;
     })());
-    // 人数・補足行(2026-10-27・ユーザー依頼): 部門の帯の右・区分名の右・会長社長の枠の右上に数字。補足行は枠の一番下
+    // 人数・補足行(2026-10-26・ユーザー依頼): 部門の帯の右・区分名の右・会長社長の枠の右上に数字。補足行は枠の一番下
     check('組織図: 部門の帯の右に人数(数字だけ)、会長・社長の枠の右上に合計。補足行(フィリピン 3名)は枠の一番下で、人数に足される', await br.evaluate("(() => { let n = 0; const P = (name, title, t) => ({ name, email: 'cn' + (++n) + '@x.com', title: title || '', empType: t || '', phone: '' }); const org = { left: [{ dept: '会長', members: [P('会長', '会長', '1')] }, { dept: '購買部', members: [P('部長', '部長', '3'), P('甲'), P('乙')] }], right: [], names: {}, users: { left: [], right: [] }, extras: [{ id: 1, dept: 'フレミング大工', kind: 'person', title: 'リーダー', name: '岸上 大介', count: 0, sort: 1 }, { id: 2, dept: 'フレミング大工', kind: 'count', title: 'フィリピン', count: 3, sort: 2 }, { id: 3, dept: '設計企画部', kind: 'count', title: 'フィリピンCADセンター', count: 3, sort: 1 }] }; renderOrgChart(buildOrgChart(org, [])); const cnt = nm => { const c = [...document.querySelectorAll('.oc-dept')].find(e => e.textContent.startsWith(nm)); return c && c.querySelector('.oc-cnt') && c.querySelector('.oc-cnt').textContent; }; const fl = [...document.querySelectorAll('.oc-tier-title')].find(e => e.textContent.startsWith('フレミング大工')); const flRows = fl.parentElement.querySelectorAll('.oc-section > div'); const last = flRows[flRows.length - 1]; return cnt('購買部') === '3' && cnt('設計企画部') === '3' && fl.querySelector('.oc-cnt').textContent === '4' && last.classList.contains('oc-extra') && last.textContent === 'フィリピン 3名' && document.querySelector('.oc-l1 .oc-total').textContent === '11'; })()"));
     // 見出しの右上に認証取得の表記(印刷にも出る)。以前の説明文(「社員名簿の情報から自動で作成します…」)は無い(2026-10-26・ユーザー指示)
     check('組織図: 見出しの右上に「ISO 本社・堺ゲストプラザ・倉庫事務所認証取得」があり、印刷にも出る(非表示の印を付けない)。以前の説明文は無い', await br.evaluate("(() => { const e = document.querySelector('.oc-iso'); if (!e) return false; const r = e.getBoundingClientRect(); return e.textContent === 'ISO 本社・堺ゲストプラザ・倉庫事務所認証取得' && !e.closest('.oc-noprint') && r.right <= innerWidth && r.right > innerWidth / 2 && !document.body.textContent.includes('社員名簿の情報から自動で作成します'); })()"));
@@ -165,9 +165,9 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('週の予定: 見出しが「今週の予定」', /^今週の予定/.test(week.title || ''), week.title);
 
     // ---- スタッフ予定: タブ(吉村一建設は2行固定) ----
-    // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-28・ユーザー指示)
+    // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-26・ユーザー指示)
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
-    check('予定の編集画面: 内容のURLがリンクとして出る(新しいタブ)。内容を書き換えるとリンクも変わる。URLが無ければ出ない。予定のカードには内容を出さない', await br.evaluate("(() => { openEditForm({ id: 'x1', date: '2026-10-28', start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '資料 https://example.com/a?x=1&y=2 です' }); const links = () => [...document.querySelectorAll('#f-content-links a')]; const a = links()[0]; const first = !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && links().length === 1; const ta = document.getElementById('f-content'); ta.value = 'x https://b.example/p https://c.example/q'; ta.dispatchEvent(new Event('input')); const two = links().length === 2; ta.value = 'URLなし'; ta.dispatchEvent(new Event('input')); const none = links().length === 0; return first && two && none && !document.querySelector('#personal-events a[target]'); })()"));
+    check('予定の編集画面: 内容のURLがリンクとして出る(新しいタブ)。内容を書き換えるとリンクも変わる。URLが無ければ出ない。予定のカードには内容を出さない', await br.evaluate("(() => { openEditForm({ id: 'x1', date: '2026-10-26', start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '資料 https://example.com/a?x=1&y=2 です' }); const links = () => [...document.querySelectorAll('#f-content-links a')]; const a = links()[0]; const first = !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && links().length === 1; const ta = document.getElementById('f-content'); ta.value = 'x https://b.example/p https://c.example/q'; ta.dispatchEvent(new Event('input')); const two = links().length === 2; ta.value = 'URLなし'; ta.dispatchEvent(new Event('input')); const none = links().length === 0; return first && two && none && !document.querySelector('#personal-events a[target]'); })()"));
     await br.open(`${sb.base}/yoshimuraichi-schedule.html`, 1280, 900, "document.querySelectorAll('#group-tabs > div').length > 0");
     const tabRows = JSON.parse(await br.evaluate("JSON.stringify([...document.querySelectorAll('#group-tabs > div')].map(r => [...r.querySelectorAll('button')].map(b => b.textContent.trim())))"));
     check('吉村一建設スタッフ予定: タブは2行', tabRows.length === 2, JSON.stringify(tabRows));

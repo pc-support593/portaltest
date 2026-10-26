@@ -186,7 +186,7 @@ const files = {
   check('組織図の役職: 役職を空にすると行が削除される', !(await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '') && (await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '不動産部'));
   check('組織図の役職: 返す項目は email・dept・title・sort だけ', Object.keys((await getT())[0]).sort().join() === 'dept,email,sort,title');
 
-  // 組織図の補足(orgchart_extras。2026-10-27): 人数だけの行・手動の人。一覧ごと置き換える
+  // 組織図の補足(orgchart_extras。2026-10-26): 人数だけの行・手動の人。一覧ごと置き換える
   const putX = items => json('PUT', '/api/admin/orgchart-extras', { items });
   const getX = async () => (await json('GET', '/api/orgchart-extras')).data;
   const okX = await putX([{ dept: 'フレミング大工', kind: 'person', title: 'リーダー', name: '岸上　大介', sort: 1 }, { dept: 'フレミング大工', kind: 'count', title: 'フィリピン', count: 3, sort: 3 }, { dept: '外壁・2×4事業課(㈱来夢エンジニア)', kind: 'count', title: 'フィリピン', count: 5 }]);

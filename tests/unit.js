@@ -60,7 +60,7 @@ check('検索: 有効な環境では出勤状況が出る', c.searchPortalPages(
 
 // 並び順
 check('rank: 2以降は数字、1・空・非数字は順位なし', c.employeeTypeRank('2') === 2 && c.employeeTypeRank('10') === 10 && c.employeeTypeRank('1') === Infinity && c.employeeTypeRank('') === Infinity && c.employeeTypeRank('部長') === Infinity);
-// URLのリンク化(2026-10-28・ユーザー依頼): http・httpsだけ。新しいタブ・noopener。他の文字は必ずエスケープ。日本語・末尾の句読点・閉じ括弧はURLに含めない
+// URLのリンク化(2026-10-26・ユーザー依頼): http・httpsだけ。新しいタブ・noopener。他の文字は必ずエスケープ。日本語・末尾の句読点・閉じ括弧はURLに含めない
 const NL = String.fromCharCode(10);
 check('linkify: https のURLを、新しいタブで開くリンクにする(rel=noopener noreferrer)', c.linkify('資料: https://example.com/a?x=1&y=2 です') === '資料: <a href="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener noreferrer" style="color:#1e5fa8;text-decoration:underline;word-break:break-all">https://example.com/a?x=1&amp;y=2</a> です', c.linkify('資料: https://example.com/a?x=1&y=2 です'));
 check('linkify: URLの直後の日本語・句読点・閉じ括弧はリンクに含めない', c.linkify('(https://a.example/x)です。').includes('>https://a.example/x</a>)です。') && c.linkify('https://a.example/x。次').includes('>https://a.example/x</a>。次') && c.linkify('https://a.example/x、次').includes('>https://a.example/x</a>、次'));
@@ -221,7 +221,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     const hc0 = oc.buildOrgChart({ ...hOrg, han: undefined }, []).columns.find(c => c.name === '工務部');
     check('組織図の班: 班が無ければ、これまでどおり(班の区分なし・種類3は③)', hc0.sections.map(x => x.label).join() === '本社,平野,西宮' && hc0.l3.map(m => m.name).join() === '乙');
   }
-  { // 人数(2026-10-27): 部門=③④⑤の全員(部長・次長も)+補足(person=1・count=人数)。兼任は数えない。工務事務は単独。班は区分として独立(部門の合計には含める)。会長・社長・専務は数えない
+  { // 人数(2026-10-26): 部門=③④⑤の全員(部長・次長も)+補足(person=1・count=人数)。兼任は数えない。工務事務は単独。班は区分として独立(部門の合計には含める)。会長・社長・専務は数えない
     const Pn = (name, email, empType, title) => ({ name, email, title: title || '', empType: empType || '', phone: '' });
     const cOrg = { left: [
       { dept: '会長', members: [Pn('会長', 'ch@x.com', '1', '会長')] },
@@ -241,7 +241,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     const noEx = oc.buildOrgChart({ ...cOrg, extras: undefined, han: undefined }, []);
     check('組織図の補足: 補足が無ければ、補足行のみの部門は空のまま(これまでどおり)。管理画面の役職一覧には補足行を出さない', noEx.sides.find(c => c.name === 'フレミング大工').count === 0 && oc.orgChartPeopleForAdmin(cOrg, []).every(r => !String(r.key).startsWith('extra:')));
   }
-  { // 区分の名前の変更(福田展示場→福田/泉佐野展示場。2026-10-28): 旧い名前で保存された手入力の行(兼任)も、新しい名前の区分に載る。新しい名前で保存した行も載る
+  { // 区分の名前の変更(福田展示場→福田/泉佐野展示場。2026-10-26): 旧い名前で保存された手入力の行(兼任)も、新しい名前の区分に載る。新しい名前で保存した行も載る
     const Pa = (name, email) => ({ name, email, title: '', empType: '', phone: '' });
     const aOrg = { left: [], right: [{ dept: '福田/泉佐野展示場', members: [Pa('福一', 'f1@x.com')] }, { dept: '設計', members: [Pa('設一', 's1@x.com')] }], names: { 'o1@x.com': '旧名の兼任', 'n1@x.com': '新名の兼任' }, users: { left: [], right: [] } };
     const aCol = oc.buildOrgChart(aOrg, [{ email: 'o1@x.com', dept: '㈱ゆめすみか/福田展示場', title: '店長(兼任)', sort: 0 }, { email: 'n1@x.com', dept: '㈱ゆめすみか/福田/泉佐野展示場', title: '係長(兼任)', sort: 0 }]).columns.find(c => c.name === '㈱ゆめすみか');

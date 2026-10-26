@@ -7,7 +7,7 @@
 'use strict';
 
 const pad = n => String(n).padStart(2, '0');
-// 予定の取得で、日本時間・本文は文字形式で受け取る。本文はHTMLが標準のため、指定しないと、本文(内容)が編集画面に出ない(2026-10-28・ユーザー報告)
+// 予定の取得で、日本時間・本文は文字形式で受け取る。本文はHTMLが標準のため、指定しないと、本文(内容)が編集画面に出ない(2026-10-26・ユーザー報告)
 const GRAPH_PREFER_TEXT_BODY = 'outlook.timezone="Tokyo Standard Time", outlook.body-content-type="text"';
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
