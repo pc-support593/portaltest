@@ -27,7 +27,7 @@ async function renderOrgExtrasTab() {
   const inputStyle = 'padding:6px 8px;font-size:12px';
   const rowHtml = r => `
     <div data-xrow style="display:flex;align-items:center;gap:10px;padding:10px 24px;border-bottom:1px solid #f2f5f9;flex-wrap:wrap">
-      <select class="in-input" data-x="dept" style="${inputStyle};width:230px">${depts.map(d => `<option value="${esc(d)}"${d === r.dept ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select>
+      <select class="in-input" data-x="dept" style="${inputStyle};width:230px">${(depts.includes(r.dept) ? depts : [...depts, r.dept]).map(d => `<option value="${esc(d)}"${d === r.dept ? ' selected' : ''}>${esc(d)}${depts.includes(d) ? '' : '(組織図の枠にない部門)'}</option>`).join('')}</select>
       <select class="in-input" data-x="kind" style="${inputStyle};width:130px">
         <option value="count"${r.kind === 'count' ? ' selected' : ''}>人数だけの行</option>
         <option value="person"${r.kind === 'person' ? ' selected' : ''}>手動の人</option>

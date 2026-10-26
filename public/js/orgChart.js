@@ -215,6 +215,7 @@ function buildOrgChart(org, manual) {
   const seenJimu = new Set();
   [...chart.columns, ...chart.sides].forEach(c => c.sections.forEach(sec => {
     sec.members = sec.members.filter(m => {
+      if (m.extra) return true; // 補足行(管理画面で入力)は、工務事務の振り分けの対象にしない
       const jt = jimuTitleRest(m.title, jf.title);
       if (jt === null) return true;
       m.jimuSub = jt; // 「工務事務 主任」の「主任」(なければ空)。箱の中で氏名の横に出す
@@ -532,14 +533,15 @@ async function initOrgChartPage() {
   }
   ocEl('oc-chart').innerHTML = '<p style="margin:0;padding:24px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
+    let extrasFailed = false;
     const [org, manual, extras, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'),
-      api('/api/orgchart-extras').catch(e => { console.error(e); return []; }), // 補足(手動の人・人数だけの行)。失敗しても組織図は出す
+      api('/api/orgchart-extras').catch(e => { console.error(e); extrasFailed = true; return []; }), // 補足(手動の人・人数だけの行)。失敗しても組織図は出す(画面に注意文を出す)
       // 班の取得は、20秒で切り上げる(MS365が応答しなくても、組織図は班なしで表示する。E007。2026-10-26)
       withTimeout(fetchOrgHanGroups(), 20000, '班のグループの取得が時間内に終わりませんでした').catch(e => { console.error(e); return { han: [], failed: ['班のグループ(時間切れ)'] }; })]);
     org.han = hanRes.han; // 班(組織図だけ)
     org.extras = extras;
     renderOrgChart(buildOrgChart(org, manual));
-    const failed = [...(org.failedLeft || []), ...(org.failedRight || []), ...hanRes.failed];
+    const failed = [...(org.failedLeft || []), ...(org.failedRight || []), ...hanRes.failed, ...(extrasFailed ? ['組織図の補足(人数だけの行・手動の人。人数が実際より少ない可能性があります)'] : [])];
     ocEl('oc-notice').textContent = failed.length ? `次のグループを取得できませんでした(該当する方が表示されていない可能性があります): ${failed.join('、')}` : '';
   } catch (e) {
     console.error(e);

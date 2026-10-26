@@ -228,6 +228,8 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     check('組織図の人数: 班は区分として独立して数え(1班=1)、部門の合計には含める(工務部=本社2+班1=3。工務事務は別)。工務事務は単独(1)', col('工務部').sections.find(s => s.label === '本社').count === 2 && col('工務部').sections.find(s => s.label === '1班').count === 1 && col('工務部').count === 3 && cc.jimu.count === 1, JSON.stringify([col('工務部').count, cc.jimu.count]));
     check('組織図の人数: 補足は部門の人数に足す(フレミング大工=リーダー2+フィリピン3=5。設計企画部=0+3=3)。補足行は一番下・手動の人は役職+氏名', side('フレミング大工').count === 5 && col('設計企画部').count === 3 && side('フレミング大工').sections[0].members.map(m => m.extra === 'count' ? m.title + m.count : m.title + m.name).join() === 'リーダー岸上大介,リーダー近藤正明,フィリピン3', JSON.stringify(side('フレミング大工').sections[0].members));
     check('組織図の人数: 全体の合計=全部門+工務事務+補足(会長・専務は含めない)', cc.total === cc.columns.reduce((n, c) => n + c.count, 0) + cc.sides.reduce((n, c) => n + c.count, 0) + cc.jimu.count && cc.total === 3 + 3 + 3 + 5 + 1, String(cc.total));
+    const jx = oc.buildOrgChart({ ...cOrg, extras: [{ id: 9, dept: '購買部', kind: 'count', title: '工務事務', count: 4, sort: 1 }] }, []);
+    check('組織図の補足: 行の名前が「工務事務」の補足行は、工務事務の箱に入らず、部門の枠の補足行のまま(人数に足される)', jx.jimu.count === 1 && jx.columns.find(c => c.name === '購買部').count === 4 + 4 && jx.columns.find(c => c.name === '購買部').sections.flatMap(x => x.members).some(m => m.extra === 'count' && m.count === 4), JSON.stringify([jx.jimu.count, jx.columns.find(c => c.name === '購買部').count]));
     const noEx = oc.buildOrgChart({ ...cOrg, extras: undefined, han: undefined }, []);
     check('組織図の補足: 補足が無ければ、補足行のみの部門は空のまま(これまでどおり)。管理画面の役職一覧には補足行を出さない', noEx.sides.find(c => c.name === 'フレミング大工').count === 0 && oc.orgChartPeopleForAdmin(cOrg, []).every(r => !String(r.key).startsWith('extra:')));
   }

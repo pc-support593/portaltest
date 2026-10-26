@@ -600,7 +600,7 @@ app.put('/api/admin/orgchart-extras', (req, res) => {
     rows.forEach(r => ins.run(r.dept, r.kind, r.title, r.name, r.count, r.sort));
     db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    try { db.exec('ROLLBACK'); } catch { /* ROLLBACK の失敗で、元の例外を隠さない */ }
     throw e;
   }
   res.json({ ok: true, count: rows.length });
