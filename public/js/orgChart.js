@@ -233,7 +233,8 @@ function buildOrgChart(org, manual) {
     c.count = countMembers(c.l3) + countMembers(c.l4) + c.sections.reduce((n, sec) => n + sec.count, 0);
   });
   chart.jimu.count = chart.jimu.members.length;
-  chart.total = [...chart.columns, ...chart.sides].reduce((n, c) => n + c.count, 0) + chart.jimu.count; // 全体の合計(会長・社長の枠の右上に出す)
+  // 全体の合計(会長・社長の枠の外の右上に出す)。会長・社長・専務取締役も人数に数える(2026-10-27・ユーザー指示。部門の人数には入れない)
+  chart.total = [...chart.columns, ...chart.sides].reduce((n, c) => n + c.count, 0) + chart.jimu.count + chart.l1.length + chart.l2.length;
   return chart;
 }
 
