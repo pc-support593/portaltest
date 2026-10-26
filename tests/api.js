@@ -186,6 +186,20 @@ const files = {
   check('組織図の役職: 役職を空にすると行が削除される', !(await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '') && (await getT()).some(r => r.email === 'k-test@yoshimuraichi.com' && r.dept === '不動産部'));
   check('組織図の役職: 返す項目は email・dept・title・sort だけ', Object.keys((await getT())[0]).sort().join() === 'dept,email,sort,title');
 
+  // 組織図の補足(orgchart_extras。2026-10-27): 人数だけの行・手動の人。一覧ごと置き換える
+  const putX = items => json('PUT', '/api/admin/orgchart-extras', { items });
+  const getX = async () => (await json('GET', '/api/orgchart-extras')).data;
+  const okX = await putX([{ dept: 'フレミング大工', kind: 'person', title: 'リーダー', name: '岸上　大介', sort: 1 }, { dept: 'フレミング大工', kind: 'count', title: 'フィリピン', count: 3, sort: 3 }, { dept: '外壁・2×4事業課(㈱来夢エンジニア)', kind: 'count', title: 'フィリピン', count: 5 }]);
+  const gx = await getX();
+  check('組織図の補足: 登録でき、取得できる(人数だけの行・手動の人。部門名の㈱はそのまま)', okX.status === 200 && gx.length === 3 && gx.some(r => r.dept === '外壁・2×4事業課(㈱来夢エンジニア)' && r.kind === 'count' && r.count === 5) && gx.some(r => r.kind === 'person' && r.name === '岸上 大介' && r.count === 0), JSON.stringify(gx));
+  check('組織図の補足: 返す項目は id・dept・kind・title・name・count・sort だけ', Object.keys(gx[0]).sort().join() === 'count,dept,id,kind,name,sort,title');
+  await putX([{ dept: '設計企画部', kind: 'count', title: 'フィリピンCADセンター', count: 3 }]);
+  check('組織図の補足: 保存は一覧ごとの置き換え(前の行は残らない)', (await getX()).length === 1 && (await getX())[0].dept === '設計企画部');
+  check('組織図の補足: 不正な入力は拒否(人数の範囲・氏名なし・行の名前なし・種類・長さ・制御文字・201行)', (await putX([{ dept: '設計企画部', kind: 'count', title: 'x', count: 10000 }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'count', title: 'x', count: -1 }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'person', title: 'リーダー', name: '' }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'count', title: '', count: 1 }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'other', title: 'x' }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'count', title: 'あ'.repeat(31), count: 1 }])).status === 400 && (await putX([{ dept: '', kind: 'count', title: 'x', count: 1 }])).status === 400 && (await putX([{ dept: '設計企画部', kind: 'count', title: 'x\u0001', count: 1 }])).status === 400 && (await putX(Array.from({ length: 201 }, () => ({ dept: '設計企画部', kind: 'count', title: 'x', count: 1 })))).status === 400);
+  check('組織図の補足: 不正な入力で拒否されたとき、前の内容は残る(途中までの置き換えをしない)', (await getX()).length === 1 && (await getX())[0].title === 'フィリピンCADセンター');
+  await putX([]);
+  check('組織図の補足: 空の一覧で全て削除できる', (await getX()).length === 0);
+
   // 年間カレンダー: typeに shift_holiday を指定できる(team空・A、他の種類との重複チェックの対象外)
   const csvOk = ['date,calendar_group,team,type,label', '2027-05-01,sunday_off,,shift_holiday,創立記念日', '2027-05-02,sunday_off,A,shift_holiday,特別休', '2027-05-02,sunday_off,A,shift_work,x'].join('\n');
   const impOk = await json('POST', '/api/admin/work-calendar/import', { csv: csvOk });

@@ -105,6 +105,19 @@ function migrate(db) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (email, dept)
     );
+    -- 組織図の補足(2026-10-27・ユーザー依頼)。管理画面で入力する「手動で載せる人」と「人数だけの行」。組織図ページだけが使う(社員名簿・出勤状況には出ない)。
+    -- dept: 組織図の部門名(ORG_CHART_FRAME の部門名。例: フレミング大工)。kind: 'person'(役職+氏名。人数は1) | 'count'(「フィリピン 3名」のような行。人数は count)
+    -- 部門の枠の一番下に、sort の順(同じなら id 順)で並べる。部門の人数(見出しの数字)には、person は1・count は count を足す
+    CREATE TABLE IF NOT EXISTS orgchart_extras (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dept TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',        -- person: 役職(例: リーダー) / count: 行の名前(例: フィリピン)。30字まで
+      name TEXT NOT NULL DEFAULT '',         -- person: 氏名(30字まで) / count: 空
+      count INTEGER NOT NULL DEFAULT 0,      -- count: 人数(0〜9999) / person: 0
+      sort INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS attachment_texts (
       attachment_id TEXT PRIMARY KEY,        -- attachments.id と同じUUID
       text TEXT NOT NULL DEFAULT '',         -- NFKC正規化済み・最大30万字。status が ok 以外は空

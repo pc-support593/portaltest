@@ -16,6 +16,13 @@
   /* 見出しの右上の認証取得の表記(印刷にも出す。右端に寄せる。2026-10-26・ユーザー指示) */
   .oc-iso { margin-left: auto; font-size: 12px; font-weight: 700; color: #1e3a5f; border: 1px solid #1e3a5f; border-radius: 4px; padding: 4px 10px; white-space: nowrap; }
   .oc-scroll { overflow-x: auto; padding-bottom: 12px; }
+  /* 人数(数字だけ。2026-10-27・ユーザー指示): 部門の青い帯の右、区分名の右、会長・社長の枠の右上 */
+  .oc-dept, .oc-tier-title { position: relative; }
+  .oc-cnt { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 400; color: #dbe8f7; }
+  .oc-cnt-s { margin-left: 6px; font-size: 10px; font-weight: 400; color: #8a99a8; }
+  .oc-l1 { position: relative; padding-right: 34px; } /* 右上の合計の数字と、名前が重ならないように */
+  .oc-total { position: absolute; right: 6px; top: 2px; font-size: 11px; font-weight: 400; color: #cfe0f5; }
+  .oc-extra { grid-column: 1 / -1; text-align: center; font-size: 12px; font-weight: 700; color: #1c2b3a; }
   /* 線の太さ(--oc-lw)。画面は2px。印刷で縮小(zoom)するときは、縮小後にちょうど2px(整数)になる値を JS が入れる(小数だと線ごとに1px・2pxに丸められて太さがばらついた。2026-10-22) */
   #oc-chart { --oc-lw: 2px; width: max-content; min-width: 100%; display: flex; flex-direction: column; align-items: center; } /* 部門が多い・小区分(本社・平野など)が横に並ぶと、図が広がる。画面は横にスクロール */
   .oc-top { display: flex; flex-direction: column; align-items: center; }

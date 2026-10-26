@@ -197,6 +197,18 @@ function buildOrgChart(org, manual) {
   };
   chart.columns = ORG_CHART_FRAME.columns.map(buildCol);
   chart.sides = (ORG_CHART_FRAME.sideDepts || []).map(buildCol); // カスタマーサポート室の左の線にぶら下げる部門
+  // 補足(2026-10-27・ユーザー依頼): 管理画面で入力した「手動の人」「人数だけの行」を、その部門の最後の区分の一番下に足す(組織図だけ。MS365には無い)。
+  //   person=役職+氏名(人数1)、count=「フィリピン 3名」のような行(人数は count)。なお、区分が無い部門(人がいない部門)には、区分を作って載せる
+  const extrasOf = d => ((org && org.extras) || []).filter(x => x.dept === d).sort((a, b) => (a.sort - b.sort) || (a.id - b.id));
+  [...chart.columns, ...chart.sides].forEach(c => {
+    const ex = extrasOf(c.name);
+    if (!ex.length) return;
+    if (!c.sections.length) c.sections.push({ label: '', members: [] });
+    const last = c.sections[c.sections.length - 1];
+    ex.forEach(x => last.members.push(x.kind === 'count'
+      ? { name: '', title: x.title, key: 'extra:' + x.id, extra: 'count', count: Number(x.count) || 0 }
+      : { name: x.name, title: x.title, key: 'extra:' + x.id, extra: 'person' }));
+  });
   // 工務事務: 役職が「工務事務」の人を、本来の部門の箱(⑤の一覧)から外して、1つの箱にまとめる(同じ人は1回だけ)。並びは、手入力の表示順の小さい順→元の並び
   const jf = ORG_CHART_FRAME.jimu;
   chart.jimu = { name: jf.name, parents: jf.parents, members: [] };
@@ -212,6 +224,15 @@ function buildOrgChart(org, manual) {
   }));
   const jimuSort = m => { const r = man.get(`${m.key}|`) || (manual || []).find(x => String(x.email).toLowerCase() === m.key); return r ? Number(r.sort) || 0 : 0; };
   chart.jimu.members = chart.jimu.members.map((m, i) => ({ m, i })).sort((a, b) => jimuSort(a.m) - jimuSort(b.m) || a.i - b.i).map(x => x.m);
+  // 人数(2026-10-27・ユーザー指示): 部門=③④⑤の全員(部長・次長も数える)+補足(person=1・count=人数)。兼任(追加行・役職に(兼任)の注記)は数えない。
+  //   区分(本社・展示場・班など)は、その区分の人数。工務事務の箱は単独で数える。班は区分として独立に数え、部門の合計には含める。会長・社長・専務は数えない
+  const countMembers = list => list.reduce((n, m) => n + (m.extra === 'count' ? m.count : (m.added || ocSplitKenmu(m.title).kenmu) ? 0 : 1), 0);
+  [...chart.columns, ...chart.sides].forEach(c => {
+    c.sections.forEach(sec => { sec.count = countMembers(sec.members); });
+    c.count = countMembers(c.l3) + countMembers(c.l4) + c.sections.reduce((n, sec) => n + sec.count, 0);
+  });
+  chart.jimu.count = chart.jimu.members.length;
+  chart.total = [...chart.columns, ...chart.sides].reduce((n, c) => n + c.count, 0) + chart.jimu.count; // 全体の合計(会長・社長の枠の右上に出す)
   return chart;
 }
 
@@ -233,7 +254,7 @@ function orgChartPeopleForAdmin(org, manual) {
   const rows = [];
   chart.jimu.members.forEach(m => rows.push({ dept: chart.jimu.name, section: '', key: m.key, name: m.name, title: m.title, added: false })); // 工務事務の人も、役職を直せるように一覧に出す
   [...chart.columns, ...chart.sides].forEach(col => {
-    col.sections.forEach(sec => sec.members.forEach(m => rows.push({ dept: col.name, section: sec.label, key: m.key, name: m.name, title: m.title, added: !!m.added })));
+    col.sections.forEach(sec => sec.members.filter(m => !m.extra).forEach(m => rows.push({ dept: col.name, section: sec.label, key: m.key, name: m.name, title: m.title, added: !!m.added })));
   });
   return rows;
 }
@@ -248,17 +269,20 @@ function ocSplitKenmu(title) {
   return m ? { title: m[1], kenmu: true } : { title: t, kenmu: false };
 }
 
+function ocCnt(n) { return `<span class="oc-cnt">${Number(n) || 0}</span>`; } // 見出しの帯の右の数字(人数。数字だけ)
+
 function ocPersonHtml(p, cls) {
+  if (p.extra === 'count') return `<div class="oc-extra">${esc(p.title)} ${Number(p.count) || 0}名</div>`; // 「フィリピン 3名」(管理画面で入力した人数だけの行)
   const k = ocSplitKenmu(p.title);
   const mark = (p.added || k.kenmu) ? '<span class="oc-kenmu">(兼任)</span>' : '';
   return `<div class="${cls}"><span class="oc-title">${esc(k.title)}</span><span class="oc-name">${esc(p.name)}${mark}</span></div>`;
 }
 
 function renderOrgChart(chart) {
-  const box = (items, cls) => items.length ? `<div class="oc-box ${cls}">${items.map(p => ocPersonHtml(p, 'oc-p')).join('')}</div>` : '';
+  const box = (items, cls, extraHtml) => items.length ? `<div class="oc-box ${cls}">${items.map(p => ocPersonHtml(p, 'oc-p')).join('')}${extraHtml || ''}</div>` : '';
   const topHtml = `
     <div class="oc-top">
-      ${box(chart.l1, 'oc-l1')}
+      ${box(chart.l1, 'oc-l1', `<span class="oc-total" title="全体の合計人数">${Number(chart.total) || 0}</span>`)}
       ${chart.l1.length && chart.l2.length ? '<div class="oc-vline"></div>' : ''}
       ${box(chart.l2, 'oc-l2')}
       ${chart.l2.length ? '<div class="oc-vline"></div>' : ''}
@@ -266,7 +290,7 @@ function renderOrgChart(chart) {
   const membersHtml = secs => `<div class="oc-members">
         ${secs.map(s => `
         <div class="oc-section">
-          ${s.label ? `<div class="oc-section-label">${esc(s.label)}</div>` : ''}
+          ${s.label ? `<div class="oc-section-label">${esc(s.label)}${s.count != null ? `<span class="oc-cnt-s">${s.count}</span>` : ''}</div>` : ''}
           ${s.members.map(m => ocPersonHtml(m, 'oc-m' + (m.added ? ' oc-added' : ''))).join('')}
         </div>`).join('')}
       </div>`;
@@ -276,19 +300,19 @@ function renderOrgChart(chart) {
   const jimu = chart.jimu;
   if (jimu && jimu.members.length) {
     const parents = (jimu.parents || []).map(n => chart.columns.findIndex(c => c.name === n)).filter(i => i >= 0);
-    tiers.push({ kind: 'jimu', anchor: parents[0] || 0, parents, name: jimu.name, members: jimu.members });
+    tiers.push({ kind: 'jimu', anchor: parents[0] || 0, parents, name: jimu.name, members: jimu.members, count: jimu.count });
   }
-  const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length));
+  const sidesList = (chart.sides || []).filter(d => d.l3.length || d.l4.length || d.sections.some(s => s.members.length)); // 補足行だけの部門(フレミング大工)も含む
   if (sidesList.length) {
     // 各部門は独立した枠(見出し+人の一覧)にし、間をあけて横に並べる(2026-10-20・ユーザー指示)。③④の人(役職つき)は、一覧の先頭に出す
-    sidesList.forEach(d => tiers.push({ kind: 'side', anchor: 0, name: d.name, secs: [{ label: '', members: [...d.l3, ...d.l4, ...d.sections.flatMap(s => s.members)] }] }));
+    sidesList.forEach(d => tiers.push({ kind: 'side', anchor: 0, name: d.name, count: d.count, secs: [{ label: '', members: [...d.l3, ...d.l4, ...d.sections.flatMap(s => s.members)] }] }));
   }
   const colsHtml = chart.columns.map((col, idx) => {
     const secs = col.sections.filter(s => s.members.length);
     const lower = (ORG_CHART_FRAME.columns.find(c => c.name === col.name) || {}).lowerTier;
-    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs });
+    if (lower && secs.length) tiers.push({ kind: 'lower', anchor: idx, name: col.name, secs, count: col.count });
     // 部門の箱(見出し→③→④→⑤の一覧)を、上から順に短い線でつなぐ(2026-10-21・ユーザー指示)
-    const parts = [`<div class="oc-dept">${esc(col.name)}</div>`];
+    const parts = [`<div class="oc-dept">${esc(col.name)}${ocCnt(col.count)}</div>`];
     if (col.l3.length) parts.push(box(col.l3, 'oc-l3'));
     if (col.l4.length) parts.push(box(col.l4, 'oc-l4'));
     if (!(lower && secs.length) && secs.length) parts.push(membersHtml(secs));
@@ -301,12 +325,12 @@ function renderOrgChart(chart) {
   }).join('');
   // 工務事務の人は、人数に応じて枠の大きさを変え、最大2列に並べる(1人=1列・2人以上=2列。左の列に上から半分(端数は左)、残りを右の列に。2026-10-21・ユーザー指示)
   // 下の段の見出し: ㈱ゆめすみか(展示場の段)は、左に「注文住宅営業担当」を添えて中央揃え。事業係などの名前は、「(」の前で改行する(2026-10-22・ユーザー指示)
-  const tierTitleHtml = t => t.kind === 'lower'
+  const tierTitleHtml = t => (t.kind === 'lower'
     ? `<span class="oc-tier-note">注文住宅営業担当</span>${esc(t.name)}`
-    : esc(t.name).replace(/([(（])/, '<br>$1');
+    : esc(t.name).replace(/([(（])/, '<br>$1')) + (t.count != null ? ocCnt(t.count) : '');
   const jimuHtml = t => {
     const cols = Math.min(2, t.members.length), rows = Math.max(1, Math.ceil(t.members.length / cols));
-    return `<div class="oc-tier-title">${esc(t.name)}</div>
+    return `<div class="oc-tier-title">${esc(t.name)}${ocCnt(t.count)}</div>
       <div class="oc-jimu-grid" style="grid-template-rows:repeat(${rows},auto);grid-template-columns:repeat(${cols * 2},max-content)">${t.members.map((m, i) => { const r = (i % rows) + 1, c = Math.floor(i / rows); // 人ごとに「役職の列」と「名前の列」の2マス(役職のない人も、名前は名前の列に出す。2026-10-22・ユーザー指示)
         const k = ocSplitKenmu(m.jimuSub); // 兼任の表示は他の箱と同じ(役職には付けず、名前の後ろに「(兼任)」)
         return `<span class="oc-jm-t" style="grid-row:${r};grid-column:${c * 2 + 1}">${esc(k.title)}</span><span class="oc-jm-n" style="grid-row:${r};grid-column:${c * 2 + 2}">${esc(m.name)}${(m.added || k.kenmu) ? '<span class="oc-kenmu">(兼任)</span>' : ''}</span>`; }).join('')}</div>`;
@@ -508,10 +532,12 @@ async function initOrgChartPage() {
   }
   ocEl('oc-chart').innerHTML = '<p style="margin:0;padding:24px 0;font-size:13px;color:#8a99a8">読み込み中…</p>';
   try {
-    const [org, manual, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'),
+    const [org, manual, extras, hanRes] = await Promise.all([loadOrgData(), api('/api/orgchart-titles'),
+      api('/api/orgchart-extras').catch(e => { console.error(e); return []; }), // 補足(手動の人・人数だけの行)。失敗しても組織図は出す
       // 班の取得は、20秒で切り上げる(MS365が応答しなくても、組織図は班なしで表示する。E007。2026-10-26)
       withTimeout(fetchOrgHanGroups(), 20000, '班のグループの取得が時間内に終わりませんでした').catch(e => { console.error(e); return { han: [], failed: ['班のグループ(時間切れ)'] }; })]);
     org.han = hanRes.han; // 班(組織図だけ)
+    org.extras = extras;
     renderOrgChart(buildOrgChart(org, manual));
     const failed = [...(org.failedLeft || []), ...(org.failedRight || []), ...hanRes.failed];
     ocEl('oc-notice').textContent = failed.length ? `次のグループを取得できませんでした(該当する方が表示されていない可能性があります): ${failed.join('、')}` : '';

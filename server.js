@@ -566,6 +566,46 @@ app.put('/api/admin/orgchart-titles', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- 組織図の補足(2026-10-27・ユーザー依頼): 部門の枠の一番下に出す「手動の人」「人数だけの行」。組織図ページだけが使う ----
+// 保存は一覧ごと置き換える(管理画面で並びごと編集するため)。入力は型・長さ・範囲をここで検証する
+app.get('/api/orgchart-extras', (req, res) => {
+  me(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(db.prepare('SELECT id, dept, kind, title, name, count, sort FROM orgchart_extras ORDER BY dept, sort, id').all());
+});
+app.put('/api/admin/orgchart-extras', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const items = req.body && req.body.items;
+  if (!Array.isArray(items) || items.length > 200) return res.status(400).json({ error: '入力が不正です(200行まで)' });
+  const rows = [];
+  for (const it of items) {
+    const o = it || {};
+    const dept = String(o.dept || '').trim(); // 部門名は正規化しない(㈱ を壊さない)
+    const kind = String(o.kind || '');
+    const title = String(o.title || '').normalize('NFKC').trim();
+    const name = String(o.name || '').normalize('NFKC').trim();
+    const sort = Math.max(0, Math.min(9999, Math.round(Number(o.sort) || 0)));
+    const countRaw = Math.round(Number(o.count) || 0);
+    if (!dept || dept.length > 60 || hasControlChar(dept)) return res.status(400).json({ error: '部門名が不正です' });
+    if (kind !== 'person' && kind !== 'count') return res.status(400).json({ error: '種類が不正です' });
+    if (title.length > 30 || hasControlChar(title) || name.length > 30 || hasControlChar(name)) return res.status(400).json({ error: '役職・氏名・行の名前は30文字までです' });
+    if (kind === 'person' && !name) return res.status(400).json({ error: '氏名を入力してください' });
+    if (kind === 'count' && (!title || countRaw < 0 || countRaw > 9999)) return res.status(400).json({ error: '行の名前と人数(0〜9999)を入力してください' });
+    rows.push({ dept, kind, title, name: kind === 'person' ? name : '', count: kind === 'count' ? countRaw : 0, sort });
+  }
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM orgchart_extras').run();
+    const ins = db.prepare("INSERT INTO orgchart_extras (dept, kind, title, name, count, sort, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))");
+    rows.forEach(r => ins.run(r.dept, r.kind, r.title, r.name, r.count, r.sort));
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  res.json({ ok: true, count: rows.length });
+});
+
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
 // パスの形が重なってしまうため(例: GET/POST /api/admin/shift-swaps, DELETE /api/admin/shift-swaps/:id)、
 // 汎用ルートより前に登録して先にマッチさせる(でなければ kind='shift-swaps' が KINDS になく 404 になる)
