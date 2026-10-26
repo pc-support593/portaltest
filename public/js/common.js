@@ -153,7 +153,7 @@ const PORTAL_PAGES = [
   { title: '吉村一建設スタッフ予定', url: 'yoshimuraichi-schedule.html', keywords: ['吉村一建設', 'スタッフ', '予定', '部署', '会議室'] },
   { title: 'ゆめすみかスタッフ予定', url: 'yumesumika-schedule.html', keywords: ['ゆめすみか', 'スタッフ', '予定', '展示場', 'タイムライン'] },
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
-  { title: '組織図', url: 'organization-chart.html', keywords: ['組織図', '組織', '役職', '部長', '課長', '係長', '主任', '部門', '会長', '社長', '専務'] },
+  { title: '組織図', url: 'organization-chart.html', desktopOnly: true, keywords: ['組織図', '組織', '役職', '部長', '課長', '係長', '主任', '部門', '会長', '社長', '専務'] },
   { title: '出勤状況', url: 'attendance.html', feature: 'attendance', keywords: ['出勤', '退勤', '打刻', '出勤状況', '誰が出勤', 'jinjer', 'ジンジャー'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
   // 「本日のお休み」(today-off.html)は一時停止中のため検索対象から外している(2026-10-07。再開時は ENABLE_DAYOFFS=true とあわせて戻す):
@@ -201,7 +201,8 @@ function searchPortalPages(q) {
   const query = String(q || '').trim().toLowerCase();
   if (!query) return [];
   const features = (typeof Auth !== 'undefined' && Auth.config && Auth.config.features) || {};
-  return PORTAL_PAGES.filter(p => !p.feature || features[p.feature]).filter(p => // feature付きのページは、そのサーバーで有効なときだけ(整理案F)
+  const mobile = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(max-width: 760px)').matches; // スマホ幅では、desktopOnly のページ(組織図)を検索結果に出さない
+  return PORTAL_PAGES.filter(p => !(p.desktopOnly && mobile)).filter(p => !p.feature || features[p.feature]).filter(p => // feature付きのページは、そのサーバーで有効なときだけ(整理案F)
     p.title.toLowerCase().includes(query) || p.keywords.some(k => k.toLowerCase().includes(query))
   );
 }
@@ -213,7 +214,7 @@ function searchPortalPages(q) {
 const PORTAL_NAV = [
   { label: 'ホーム', href: 'index.html' },
   { label: '社員名簿', href: 'organization.html' },
-  { label: '組織図', href: 'organization-chart.html' }, // 2026-10-20・ユーザー依頼(テスト環境の試作)
+  { label: '組織図', href: 'organization-chart.html', desktopOnly: true }, // desktopOnly: スマホ幅(☰メニュー・ホームの検索)では出さない(2026-10-29・ユーザー指示。組織図はスマホでは使わない)
   { label: '年間カレンダー', href: 'work-calendar.html' },
   { label: 'スケジュール', href: 'schedule.html' },
   // スタッフ予定(2026-10-08・ユーザー指示)。既定の遷移先は吉村一建設。ゆめすみかのアカウントの人は、サインイン後に
@@ -322,7 +323,7 @@ function setupMobileMenu(header) {
   const current = location.pathname.split('/').pop() || 'index.html';
   const menu = document.createElement('div');
   menu.className = 'portal-mobile-menu';
-  menu.innerHTML = PORTAL_NAV.map(item => {
+  menu.innerHTML = PORTAL_NAV.filter(item => !item.desktopOnly).map(item => {
     const active = item.href === current || (item.also || []).includes(current);
     return '<a href="' + item.href + '"' + (item.external ? ' target="_blank" rel="noopener"' : '') +
       (item.id === 'staff-nav-link' ? ' data-staff-nav="1"' : '') +
