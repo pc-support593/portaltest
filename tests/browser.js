@@ -103,6 +103,8 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     // ---- 組織図(枠組み): メニューにあり、部門の列・階層の枠が描ける(devモードは社員名簿の取得ができないため、疑似データを渡して描く) ----
     await br.open(`${sb.base}/index.html`, 1280);
     check('トップのメニューに「組織図」がある', await br.evaluate("!!document.querySelector('header a[href=\"organization-chart.html\"]')"));
+    // お知らせ・全社スケジュールの本文のURLは、新しいタブで開くリンクになる(2026-10-28・ユーザー依頼)。本文のHTMLはリンクにしない
+    check('トップのお知らせ等の本文: URLは新しいタブで開くリンクになり、<script>などはリンクにならずエスケープされる', await br.evaluate("(() => { openModal({ tag: 'お知らせ', tagColor: '#2e6fc0', tagBg: '#e8f0fa', date: '', title: 't', body: '資料 https://example.com/a?x=1&y=2 です <b>x</b>', owner: '総務部', attachments: [] }); const a = document.querySelector('#modal-root a[href^=\"https://example.com/a\"], a[href^=\"https://example.com/a\"]'); const root = a && a.closest('p'); return !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && !!root && root.textContent.includes('<b>x</b>') && !root.querySelector('b'); })()"));
     await br.open(`${sb.base}/organization-chart.html`, 1280);
     await br.evaluate(`(() => {
       const P = (name, email, title, empType) => ({ name, email, title: title || '', empType: empType || '', phone: '' });

@@ -8,6 +8,39 @@ function esc(v) {
   ));
 }
 
+/** 文字の中の http:// と https:// のURLを、新しいタブで開くリンクにして返す(HTML文字列)。それ以外の文字は esc でエスケープする(2026-10-28・ユーザー依頼)。
+    リンクにするのは http・https だけ(javascript: などは対象外)。URLに使える半角の文字だけを拾い(日本語はURLに含めない)、末尾の句読点・閉じ括弧は含めない。
+    お知らせ・全社スケジュールの本文、予定の場所に使う。改行は呼び出し側の white-space:pre-wrap で保つ */
+function linkify(text) {
+  const s = String(text == null ? '' : text);
+  const re = /https?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(s))) {
+    let url = m[0], trail = '';
+    const tail = url.match(/[)\]'.,;:!?*]+$/);
+    if (tail) { trail = tail[0]; url = url.slice(0, -trail.length); }
+    out += esc(s.slice(last, m.index)) + `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="color:#1e5fa8;text-decoration:underline;word-break:break-all">${esc(url)}</a>` + esc(trail);
+    last = m.index + m[0].length;
+  }
+  return out + esc(s.slice(last));
+}
+
+/** 文字の中のURL(http・https)の一覧(重複なし・最大 max 件)。予定の本文の会議リンクなどを、カードに出すために使う */
+function extractUrls(text, max) {
+  const found = [];
+  String(text == null ? '' : text).replace(/https?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+/g, u => {
+    const url = u.replace(/[)\]'.,;:!?*]+$/, '');
+    if (!found.includes(url)) found.push(url);
+    return u;
+  });
+  return found.slice(0, max || 3);
+}
+
+/** 予定カードに出す、本文のURLの行(1行に収め、長いURLは「…」で省略。クリックでフルのURLを新しいタブで開く)。URLが無ければ空文字 */
+function eventLinksHtml(urls) {
+  return (urls || []).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:#1e5fa8;text-decoration:underline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%">${esc(u)}</a>`).join('');
+}
+
 /** fetch ラッパー。失敗時は Error(message = サーバーのerror文言) を投げる。
     entraモードではポータルAPI用アクセストークンを自動付与(/api/config は認証不要のため除外) */
 async function api(path, options) {

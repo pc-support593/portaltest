@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
+const c = load(['common.js'], ['linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -60,6 +60,14 @@ check('検索: 有効な環境では出勤状況が出る', c.searchPortalPages(
 
 // 並び順
 check('rank: 2以降は数字、1・空・非数字は順位なし', c.employeeTypeRank('2') === 2 && c.employeeTypeRank('10') === 10 && c.employeeTypeRank('1') === Infinity && c.employeeTypeRank('') === Infinity && c.employeeTypeRank('部長') === Infinity);
+// URLのリンク化(2026-10-28・ユーザー依頼): http・httpsだけ。新しいタブ・noopener。他の文字は必ずエスケープ。日本語・末尾の句読点・閉じ括弧はURLに含めない
+const NL = String.fromCharCode(10);
+check('linkify: https のURLを、新しいタブで開くリンクにする(rel=noopener noreferrer)', c.linkify('資料: https://example.com/a?x=1&y=2 です') === '資料: <a href="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener noreferrer" style="color:#1e5fa8;text-decoration:underline;word-break:break-all">https://example.com/a?x=1&amp;y=2</a> です', c.linkify('資料: https://example.com/a?x=1&y=2 です'));
+check('linkify: URLの直後の日本語・句読点・閉じ括弧はリンクに含めない', c.linkify('(https://a.example/x)です。').includes('>https://a.example/x</a>)です。') && c.linkify('https://a.example/x。次').includes('>https://a.example/x</a>。次') && c.linkify('https://a.example/x、次').includes('>https://a.example/x</a>、次'));
+check('linkify: 他のHTML・javascript: はリンクにせず、エスケープする', c.linkify('<script>alert(1)</script> javascript:alert(1) <a href="x">') === '&lt;script&gt;alert(1)&lt;/script&gt; javascript:alert(1) &lt;a href=&quot;x&quot;&gt;' && !c.linkify('"><img src=x onerror=alert(1)> https://a.example/"><b>').includes('<img') && !c.linkify('https://a.example/"onmouseover="x').includes('onmouseover="x"'));
+check('linkify: 空・null・URLなしの文字はそのまま(エスケープのみ)。改行は保つ', c.linkify('') === '' && c.linkify(null) === '' && c.linkify('a' + NL + 'b<') === 'a' + NL + 'b&lt;');
+check('extractUrls: 本文のURLを重複なし・最大件数で取り出す(Teams会議のURLを含む)', c.extractUrls('Teams: https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=%7b%7d' + NL + 'また https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=%7b%7d と https://b.example/p. https://c.example/q https://d.example/r', 3).join('|') === 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=%7b%7d|https://b.example/p|https://c.example/q' && c.extractUrls('', 3).length === 0 && c.extractUrls(null).length === 0);
+check('eventLinksHtml: 予定カードのURLの行は、新しいタブ・1行に収める・エスケープ済み。URLが無ければ空', c.eventLinksHtml(['https://a.example/x?y=1&z=2']).includes('target="_blank"') && c.eventLinksHtml(['https://a.example/x?y=1&z=2']).includes('text-overflow:ellipsis') && c.eventLinksHtml(['https://a.example/x?y=1&z=2']).includes('y=1&amp;z=2') && c.eventLinksHtml([]) === '' && c.eventLinksHtml(undefined) === '');
 check('sortKey: 最初の「-」より後ろ', c.sortKeyFromEmail('t-tomofuji@yoshimuraichi.com') === 'tomofuji' && c.sortKeyFromEmail('naofumi_kotani@x.com') === 'naofumi_kotani');
 const gojuon = ['kotani', 'chiba', 'higashi'].sort(c.compareRomajiGojuon);
 check('五十音順: こ < ち < ひ(アルファベット順にならない)', gojuon.join() === 'kotani,chiba,higashi', gojuon.join());

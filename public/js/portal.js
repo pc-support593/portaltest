@@ -41,13 +41,14 @@ async function fetchTodayEvents() {
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
     `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer&$orderby=start/dateTime';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,body&$orderby=start/dateTime';
 
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
       // ローカル時刻(日本時間)で受け取る。yoshimuraichi.com は国内のみのため固定でよい
-      Prefer: 'outlook.timezone="Tokyo Standard Time"'
+      // 本文は文字形式で受け取る(HTMLのままだと、本文のURLを取り出せない)
+      Prefer: 'outlook.timezone="Tokyo Standard Time", outlook.body-content-type="text"'
     }
   });
   if (!res.ok) throw new Error(`予定表の取得に失敗しました(HTTP ${res.status})`);
@@ -60,6 +61,7 @@ async function fetchTodayEvents() {
     time: ev.isAllDay ? '終日' : `${ev.start.dateTime.slice(11, 16)}–${ev.end.dateTime.slice(11, 16)}`,
     title: ev.subject || '(件名なし)',
     place: (ev.location && ev.location.displayName) || '',
+    links: extractUrls(ev.body && ev.body.contentType === 'text' ? ev.body.content : '', 3), // 本文の会議リンクなど
     ...EVENT_COLOR_CYCLE[i % EVENT_COLOR_CYCLE.length]
   }));
 }
@@ -102,7 +104,7 @@ function renderModal() {
         <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="padding:20px 26px;overflow-y:auto">
-        <p style="margin:0;font-size:14px;line-height:1.9;white-space:pre-wrap">${esc(m.body)}</p>
+        <p style="margin:0;font-size:14px;line-height:1.9;white-space:pre-wrap">${linkify(m.body)}</p>
       </div>
       ${(m.attachments || []).length ? `
       <div style="padding:12px 26px;border-top:1px solid #e4ebf2;background:#fafcfe;flex-shrink:0;max-height:40%;overflow-y:auto">
@@ -302,10 +304,12 @@ function renderTodayEvents(events) {
         <span style="font-size:13px;font-weight:700;color:${e.timeColor};white-space:nowrap">${esc(e.time)}</span>
         <span style="font-size:14px;font-weight:700">${esc(e.title)}</span>
       </div>
-      ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${esc(e.place)}</span>` : ''}
+      ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${linkify(e.place)}</span>` : ''}
+      ${eventLinksHtml(e.links)}
     </div>`).join('');
-  // 自分が主催の予定は、クリックでスケジュール画面の変更フォームを開く
-  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', () => {
+  // 自分が主催の予定は、クリックでスケジュール画面の変更フォームを開く(リンクのクリックでは開かない)
+  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', ev0 => {
+    if (ev0.target.closest('a')) return;
     const ev = events[Number(card.dataset.editEvent)];
     location.href = `schedule.html?edit=${encodeURIComponent(ev.id)}`;
   }));

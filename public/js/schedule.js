@@ -7,6 +7,8 @@
 'use strict';
 
 const pad = n => String(n).padStart(2, '0');
+// 予定の取得で、日本時間・本文は文字形式で受け取る。本文はHTMLが標準のため、指定しないと、本文(内容)が編集画面に出ない(2026-10-28・ユーザー報告)
+const GRAPH_PREFER_TEXT_BODY = 'outlook.timezone="Tokyo Standard Time", outlook.body-content-type="text"';
 const WDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // isoDate は roomsData.js で定義(共有)
@@ -110,7 +112,7 @@ async function fetchPersonalEvents(date) {
     '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body&$orderby=start/dateTime';
 
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' }
+    headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY }
   });
   if (!res.ok) throw new Error(`予定表の取得に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
@@ -138,6 +140,7 @@ function mapGraphEvent(ev, i) {
       type: a.type
     })),
     bodyText: (ev.body && ev.body.contentType === 'text' && ev.body.content) || '',
+    links: extractUrls(ev.body && ev.body.contentType === 'text' ? ev.body.content : '', 3), // 本文の会議リンクなど
     ...PERSONAL_COLOR_CYCLE[i % PERSONAL_COLOR_CYCLE.length]
   });
 }
@@ -154,9 +157,11 @@ function renderPersonalEvents(events) {
         <span style="font-size:13px;font-weight:700;color:${e.timeColor};white-space:nowrap">${esc(e.time)}</span>
         <span style="font-size:14px;font-weight:700">${esc(e.title)}</span>
       </div>
-      ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${esc(e.place)}</span>` : ''}
+      ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${linkify(e.place)}</span>` : ''}
+      ${eventLinksHtml(e.links)}
     </div>`).join('');
-  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', () => {
+  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', ev0 => {
+    if (ev0.target.closest('a')) return; // リンクのクリックでは変更フォームを開かない
     openEditForm(state.personalEvents[Number(card.dataset.editEvent)]);
   }));
 }
@@ -215,7 +220,7 @@ async function fetchWeekEvents(sunday) {
     '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body&$orderby=start/dateTime&$top=100';
   const out = [];
   while (url) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY } });
     if (!res.ok) throw new Error(`週の予定の取得に失敗しました(HTTP ${res.status})`);
     const data = await res.json();
     out.push(...(data.value || []));
@@ -579,6 +584,7 @@ function openEditForm(ev) {
     // 変更前の会議室・時間帯(重複の事前チェックで「自分自身の既存予約」を重複扱いしないために使う)
     orig: { room: matchedRoom ? matchedRoom.id : null, date: ev.date, start: ev.start, end: ev.end },
     date: ev.date, start: ev.start, end: ev.end, title: ev.title, content,
+    origBody: encodeEventBody(content, guests), // 変更前の本文(内容を変えていなければ、保存のとき本文には触れない)
     place: matchedRoom ? '' : ev.place, members, guests, error: '',
     resourceType: matchedType,
     site: matchedRoom ? matchedRoom.site : '',
@@ -867,7 +873,8 @@ async function submitCreateForm() {
       body.locations = [];
     }
     const bodyText = encodeEventBody(f.content, f.guests);
-    if (bodyText || f.eventId) body.body = { contentType: 'text', content: bodyText };
+    // 変更のときは、内容(と外部参加者)を変えたときだけ本文を送る(変えていないのに送ると、書式つきの本文や会議案内が、文字だけに置き換わる・消える)
+    if (f.eventId ? bodyText !== f.origBody : bodyText) body.body = { contentType: 'text', content: bodyText };
 
     const url = f.eventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.eventId}`
