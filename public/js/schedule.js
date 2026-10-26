@@ -878,7 +878,8 @@ async function submitCreateForm() {
     }
     const bodyText = encodeEventBody(f.content, f.guests);
     // 変更のときは、内容(と外部参加者)を変えたときだけ本文を送る(変えていないのに送ると、書式つきの本文や会議案内が、文字だけに置き換わる・消える)
-    if (f.eventId ? bodyText !== f.origBody : bodyText) body.body = { contentType: 'text', content: bodyText };
+    const norm = x => String(x).split(String.fromCharCode(13, 10)).join(String.fromCharCode(10)); // 改行コード(CRLFとLF)の違いだけでは、変更とみなさない
+    if (f.eventId ? norm(bodyText) !== norm(f.origBody) : bodyText) body.body = { contentType: 'text', content: bodyText };
 
     const url = f.eventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.eventId}`
