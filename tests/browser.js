@@ -150,6 +150,9 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('週の予定: 見出しが「今週の予定」', /^今週の予定/.test(week.title || ''), week.title);
 
     // ---- スタッフ予定: タブ(吉村一建設は2行固定) ----
+    // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-28・ユーザー指示)
+    await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
+    check('予定の編集画面: 内容のURLがリンクとして出る(新しいタブ)。内容を書き換えるとリンクも変わる。URLが無ければ出ない。予定のカードには内容を出さない', await br.evaluate("(() => { openEditForm({ id: 'x1', date: '2026-10-28', start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '資料 https://example.com/a?x=1&y=2 です' }); const links = () => [...document.querySelectorAll('#f-content-links a')]; const a = links()[0]; const first = !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && links().length === 1; const ta = document.getElementById('f-content'); ta.value = 'x https://b.example/p https://c.example/q'; ta.dispatchEvent(new Event('input')); const two = links().length === 2; ta.value = 'URLなし'; ta.dispatchEvent(new Event('input')); const none = links().length === 0; return first && two && none && !document.querySelector('#personal-events a[target]'); })()"));
     await br.open(`${sb.base}/yoshimuraichi-schedule.html`, 1280, 900, "document.querySelectorAll('#group-tabs > div').length > 0");
     const tabRows = JSON.parse(await br.evaluate("JSON.stringify([...document.querySelectorAll('#group-tabs > div')].map(r => [...r.querySelectorAll('button')].map(b => b.textContent.trim())))"));
     check('吉村一建設スタッフ予定: タブは2行', tabRows.length === 2, JSON.stringify(tabRows));

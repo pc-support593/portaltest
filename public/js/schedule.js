@@ -140,7 +140,6 @@ function mapGraphEvent(ev, i) {
       type: a.type
     })),
     bodyText: (ev.body && ev.body.contentType === 'text' && ev.body.content) || '',
-    links: extractUrls(ev.body && ev.body.contentType === 'text' ? ev.body.content : '', 3), // 本文の会議リンクなど
     ...PERSONAL_COLOR_CYCLE[i % PERSONAL_COLOR_CYCLE.length]
   });
 }
@@ -158,10 +157,8 @@ function renderPersonalEvents(events) {
         <span style="font-size:14px;font-weight:700">${esc(e.title)}</span>
       </div>
       ${e.place ? `<span style="font-size:12px;color:#6b7d8f">${linkify(e.place)}</span>` : ''}
-      ${eventLinksHtml(e.links)}
     </div>`).join('');
-  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', ev0 => {
-    if (ev0.target.closest('a')) return; // リンクのクリックでは変更フォームを開かない
+  el.querySelectorAll('[data-edit-event]').forEach(card => card.addEventListener('click', () => {
     openEditForm(state.personalEvents[Number(card.dataset.editEvent)]);
   }));
 }
@@ -558,6 +555,12 @@ function openCreateForm() {
 }
 
 /** 個人のスケジュール一覧のクリックから、既存の予定を変更モードで開く */
+/** 「内容(任意)」の下に出す、内容に書かれたURLのリンク(入力の欄はURLをリンクにできないため、別に並べる。クリックで新しいタブ。URLが無ければ空) */
+function contentLinksHtml(content) {
+  const urls = extractUrls(content, 10);
+  return urls.length ? `<span style="font-size:11px;color:#8a99a8">内容のリンク(クリックで新しいタブで開きます)</span>${eventLinksHtml(urls)}` : '';
+}
+
 function openEditForm(ev) {
   // 会議室・社用車(resource出席者)を、メールアドレスの一致で3マスタから逆引きする
   const roomEmails = new Set(RESOURCE_TYPES.flatMap(t => t.rooms.map(r => r.email.toLowerCase())));
@@ -672,6 +675,7 @@ function renderModal() {
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">内容(任意)</span>
           <textarea id="f-content" class="in-input" rows="3" placeholder="打合せの目的・議題など" style="resize:vertical">${esc(f.content)}</textarea>
         </label>
+        <div id="f-content-links" style="display:flex;flex-direction:column;gap:2px;margin-top:-6px">${contentLinksHtml(f.content)}</div>
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">日付</span>
           <input id="f-date" type="date" class="in-input" value="${esc(f.date)}">
@@ -731,7 +735,7 @@ function renderModal() {
   root.querySelector('#form-box').addEventListener('click', e => e.stopPropagation());
   root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeForm));
   root.querySelector('#f-title').addEventListener('input', e => { f.title = e.target.value; });
-  root.querySelector('#f-content').addEventListener('input', e => { f.content = e.target.value; });
+  root.querySelector('#f-content').addEventListener('input', e => { f.content = e.target.value; root.querySelector('#f-content-links').innerHTML = contentLinksHtml(f.content); });
   root.querySelector('#f-date').addEventListener('change', e => {
     f.date = e.target.value;
     if (f.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
