@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
+const c = load(['common.js'], ['tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -34,6 +34,7 @@ check('fullNameOf: 姓 名(半角スペース1つ)', c.fullNameOf('本田', '悠
 check('fullNameOf: 姓か名が空なら表示名', c.fullNameOf('本田', '', '本田 悠(吉村一建設)') === '本田 悠');
 check('fullNameOf: 前後の空白を除く', c.fullNameOf(' 本田 ', ' 悠 ', 'x') === '本田 悠');
 check('surname: 全角スペース区切り', c.surname('本田　悠') === '本田');
+check('tileLabelHtml: 「(」(全角・半角)があればその直前で改行し、2行目に「(」から出す。無い・先頭・空・HTMLは改行しない/エスケープ', c.tileLabelHtml('経費精算システム（Web入力）') === '経費精算システム<br>（Web入力）' && c.tileLabelHtml('勤怠(jinjer)') === '勤怠<br>(jinjer)' && c.tileLabelHtml('就業規則') === '就業規則' && c.tileLabelHtml('(旧)規程') === '(旧)規程' && c.tileLabelHtml('（旧）規程') === '（旧）規程' && c.tileLabelHtml('') === '' && c.tileLabelHtml(null) === '' && c.tileLabelHtml('<b>x(<i>)') === '&lt;b&gt;x<br>(&lt;i&gt;)');
 check('esc: HTMLエスケープ', c.esc('<a href="x">&') === '&lt;a href=&quot;x&quot;&gt;&amp;');
 check('phoneListOf: 携帯+事業所(空は除く)', JSON.stringify(c.phoneListOf({ mobilePhone: '090', businessPhones: ['03', ''] })) === '["090","03"]');
 

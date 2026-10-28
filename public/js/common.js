@@ -8,6 +8,15 @@ function esc(v) {
   ));
 }
 
+/** 業務システムリンク・社内規程のタイルの名称を、HTML文字列にして返す。「(」(全角)か「(」(半角)があれば、その直前で改行して2行目に「(…)」を出す(2026-10-28・ユーザー依頼)。
+    「(」が先頭にある名称・「(」が無い名称は改行しない。文字は esc でエスケープする */
+function tileLabelHtml(label) {
+  const s = String(label ?? '');
+  const i = s.search(/[(（]/);
+  if (i <= 0) return esc(s);
+  return `${esc(s.slice(0, i))}<br>${esc(s.slice(i))}`;
+}
+
 /** 文字の中の http:// と https:// のURLを、新しいタブで開くリンクにして返す(HTML文字列)。それ以外の文字は esc でエスケープする(2026-10-26・ユーザー依頼)。
     リンクにするのは http・https だけ(javascript: などは対象外)。URLに使える半角の文字だけを拾い(日本語はURLに含めない)、末尾の句読点・閉じ括弧は含めない。
     お知らせ・全社スケジュールの本文、予定の場所に使う。改行は呼び出し側の white-space:pre-wrap で保つ */

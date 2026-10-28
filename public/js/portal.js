@@ -249,7 +249,7 @@ function renderTileGrid(elId, items, kind, savedIds) {
     return `
     <a href="${esc(l.url || '#')}"${external ? ' target="_blank" rel="noopener"' : ''} data-tile-id="${esc(String(l.id))}" draggable="true" title="ドラッグして並べ替え" class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
       <span style="width:38px;height:38px;border-radius:10px;background:${LINK_COLORS[colorIdx % LINK_COLORS.length]};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">${esc(l.char)}</span>
-      <span style="font-size:13px;font-weight:500">${esc(l.label)}</span>
+      <span style="font-size:13px;font-weight:500;text-align:center">${tileLabelHtml(l.label)}</span>
     </a>`;
   }).join('');
   if (kind) setupTileDnD(el, kind);
