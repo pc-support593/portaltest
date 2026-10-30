@@ -164,6 +164,21 @@ function fmtMD(iso) {
   return m ? `${Number(m[2])}/${Number(m[3])}` : String(iso || '');
 }
 
+/** メンバー検索の入力を、空白(半角・全角)で語に分ける。`"` は検索式を壊すため除く(2026-10-30・ユーザー依頼: 姓・名でも検索) */
+function memberSearchTerms(q) {
+  return String(q || '').replace(/"/g, ' ').split(/[\s\u3000]+/).filter(Boolean);
+}
+/** Graph の $search の式: 最初の語を、表示名・姓・名・メールのどれかに当てる(OR)。残りの語は、結果に対して memberMatchesTerms で絞る
+    (Graph の $search は、括弧でのグループ化がはっきりしないため、ANDは画面側で行う) */
+function memberSearchExpr(term) {
+  return ['displayName', 'surname', 'givenName', 'mail'].map(p => `"${p}:${term}"`).join(' OR ');
+}
+/** Graph のユーザー1件が、すべての語に当たるか(表示名・姓・名・「姓名」・メールの、どこかに含まれる。大文字小文字は区別しない) */
+function memberMatchesTerms(u, terms) {
+  const hay = [u.displayName, u.surname, u.givenName, `${u.surname || ''}${u.givenName || ''}`, u.mail, u.userPrincipalName].join(' ').toLowerCase();
+  return terms.every(t => hay.includes(t.toLowerCase()));
+}
+
 /** 社内メンバー検索(会議室予約・個人スケジュールの参加者選択で共用)。
     devモードはダミー名簿(/api/users)、entraモードは Graph /users(委任: User.Read.All。
     2026-08-22に User.ReadBasic.All から引き上げ済み。部署(department)まで取得できる) */
@@ -171,21 +186,24 @@ async function searchMembers(q) {
   if (Auth.mode !== 'entra') return api(`/api/users?q=${encodeURIComponent(q)}`);
 
   const token = await Auth.getGraphToken(['User.Read.All']);
-  // $search はプロパティ単位でクォートし OR で連結する(Graphの仕様。ConsistencyLevel: eventual が必須)
-  const search = `"displayName:${q}" OR "mail:${q}"`;
+  const terms = memberSearchTerms(q);
+  if (!terms.length) return [];
+  // $search はプロパティ単位でクォートし OR で連結する(Graphの仕様。ConsistencyLevel: eventual が必須)。
+  // 表示名・姓・名・メールのどれかに、最初の語が当たる人を探し、2語目以降は画面側で絞る(「山田 太郎」でも「山田」でも「太郎」でも見つかる)
+  const search = memberSearchExpr(terms[0]);
   // 社内ポータル対象の2ドメイン(yoshimuraichi.com/yumesumika.com)以外のアカウント(他ドメイン・外部ゲスト等)は除外する
   // (ユーザー指示 2026-09-07)。endsWith を使う$filterは advanced query 扱いのため $count=true が必須
   const domainFilter = "(endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   const url = 'https://graph.microsoft.com/v1.0/users' +
     `?$search=${encodeURIComponent(search)}&$filter=${encodeURIComponent(domainFilter)}` +
-    '&$count=true&$select=displayName,surname,givenName,mail,userPrincipalName,department,employeeHireDate&$top=5';
+    `&$count=true&$select=displayName,surname,givenName,mail,userPrincipalName,department,employeeHireDate&$top=${terms.length > 1 ? 25 : 5}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
   });
   if (!res.ok) throw new Error(`メンバー検索に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
-  return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate)).map(u => ({ // 入社日前の人は出さない
-    name: fullNameOf(u.surname, u.givenName, u.displayName) || '(名前未設定)', // 「姓 名」(空なら表示名)。検索は従来どおり表示名・メールで行う
+  return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate) && memberMatchesTerms(u, terms)).slice(0, 5).map(u => ({ // 入社日前の人は出さない。2語目以降にも当たる人だけ
+    name: fullNameOf(u.surname, u.givenName, u.displayName) || '(名前未設定)', // 「姓 名」(空なら表示名)。検索は、表示名・姓・名・メールで行う
     dept: u.department || '',
     email: u.mail || u.userPrincipalName || ''
   }));

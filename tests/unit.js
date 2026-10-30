@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['kindOfCategories', 'categoriesWithKind', 'meetingKindFieldHtml', 'tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
+const c = load(['common.js'], ['memberSearchTerms', 'memberSearchExpr', 'memberMatchesTerms', 'kindOfCategories', 'categoriesWithKind', 'meetingKindFieldHtml', 'tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -65,6 +65,9 @@ check('Excel出力: 予定が入力の順(時間順で渡した順)に、3行目
 check('Excel出力: 文字はエスケープし、=で始まる件名も数式にならない(inlineStr)', xsheet.includes('山田様 &lt;打合せ&gt; &amp; &quot;確認&quot;') && !xsheet.includes('<f>') && xsheet.includes('=SUM(A1)') && xsheet.includes('t="inlineStr"'));
 check('Excel出力: 行ごとに色の塗りつぶし(同じ色は共有)・文字色は明るい色=黒/暗い色=白・長い件名は行を高くする', (xstyle.match(/patternType="solid"/g) || []).length === 2 && xstyle.includes('rgb="FFF5B301"') && xstyle.includes('rgb="FF2F6F8F"') && xl.xlsxTextColor('#f5b301') === 'black' && xl.xlsxTextColor('#2f6f8f') === 'white' && xl.xlsxTextColor('zzz') === 'black' && xl.xlsxLineCount('あ'.repeat(40), 39.5) > 3 && xl.xlsxLineCount('短い', 39.5) === 1 && Number(/<row r="5" ht="([0-9.]+)"/.exec(xsheet)[1]) > 100);
 check('Excel出力: 予定が0件でも作れる(見出しだけ)', unzipStored(Buffer.from(xl.buildDayXlsx('x', []))).crcOk);
+check('メンバー検索: 入力を空白(半角・全角)で語に分ける。ダブルクォートは除く', JSON.stringify(c.memberSearchTerms(' 山田　太郎  x ')) === JSON.stringify(['山田', '太郎', 'x']) && c.memberSearchTerms('').length === 0 && c.memberSearchTerms(null).length === 0 && JSON.stringify(c.memberSearchTerms('a"b')) === JSON.stringify(['a', 'b']));
+check('メンバー検索: 検索式は、表示名・姓・名・メールのどれかに最初の語を当てる(OR)', c.memberSearchExpr('山田') === '"displayName:山田" OR "surname:山田" OR "givenName:山田" OR "mail:山田"');
+check('メンバー検索: 全ての語が、表示名・姓・名・姓名・メールのどこかに当たる人だけを残す(大文字小文字は区別しない)', (() => { const u = { displayName: '山田 太郎', surname: '山田', givenName: '太郎', mail: 'T-Yamada@yoshimuraichi.com' }; return c.memberMatchesTerms(u, ['山田']) && c.memberMatchesTerms(u, ['太郎']) && c.memberMatchesTerms(u, ['山田', '太郎']) && c.memberMatchesTerms(u, ['山田太郎']) && c.memberMatchesTerms(u, ['yamada']) && !c.memberMatchesTerms(u, ['山田', '花子']) && !c.memberMatchesTerms({ displayName: '山田 花子', surname: '山田', givenName: '花子', mail: 'h@x' }, ['山田', '太郎']) && c.memberMatchesTerms({ displayName: 'x' }, []); })());
 check('tileLabelHtml: 「(」(全角・半角)があればその直前で改行し、2行目に「(」から出す。無い・先頭・空・HTMLは改行しない/エスケープ', c.tileLabelHtml('経費精算システム（Web入力）') === '経費精算システム<br>（Web入力）' && c.tileLabelHtml('勤怠(jinjer)') === '勤怠<br>(jinjer)' && c.tileLabelHtml('就業規則') === '就業規則' && c.tileLabelHtml('(旧)規程') === '(旧)規程' && c.tileLabelHtml('（旧）規程') === '（旧）規程' && c.tileLabelHtml('') === '' && c.tileLabelHtml(null) === '' && c.tileLabelHtml('<b>x(<i>)') === '&lt;b&gt;x<br>(&lt;i&gt;)');
 check('esc: HTMLエスケープ', c.esc('<a href="x">&') === '&lt;a href=&quot;x&quot;&gt;&amp;');
 check('phoneListOf: 携帯+事業所(空は除く)', JSON.stringify(c.phoneListOf({ mobilePhone: '090', businessPhones: ['03', ''] })) === '["090","03"]');
