@@ -273,7 +273,7 @@ function renderCalendar() {
         <span style="font-size:15px;font-weight:700;min-width:118px;text-align:center;white-space:nowrap">${y}年 ${m + 1}月</span>
         <button id="next-month" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
         <button id="this-month" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;margin-left:6px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今月</button>
-        <button id="export-csv" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">CSV出力</button>
+        <button id="export-excel" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">Excel出力</button>
       </span>
     </div>
     ${weekBanner}
@@ -296,7 +296,7 @@ function renderCalendar() {
     state.day = null; state.week = null;
     navigate();
   });
-  el.querySelector('#export-csv').addEventListener('click', exportCsv);
+  el.querySelector('#export-excel').addEventListener('click', () => { exportDayExcel().catch(err => alert(`Excel出力に失敗しました(${err.message || err})`)); });
   const exitBtn = el.querySelector('#exit-week');
   if (exitBtn) exitBtn.addEventListener('click', () => { state.week = null; render(); });
   el.querySelectorAll('[data-week]').forEach(b => b.addEventListener('click', () => {
@@ -317,30 +317,31 @@ function renderCalendar() {
   }));
 }
 
-// ---- CSV出力(表示中の拠点・会議室の当月分) ----
+// ---- Excel出力(表示中の拠点・会議室の、今日の予定。2026-10-30・ユーザー依頼。旧「CSV出力」) ----
+// 会議室名・件名・時間・区分を縦に、時間順に出す。各行には、カレンダーと同じ色(主催=黄・参加=青緑・それ以外=会議室の色)を塗る。
+// 区分は、自分が作成した予約だけ分かる(他の人の予約の分類項目は、会議室の予定表からは読めない)。自動辞退になった予約は、会議室を取れていないため出さない。
 
-function exportCsv() {
+async function exportDayExcel() {
   const site = V_SITES.find(s => s.id === state.site);
   const rooms = state.room === '__all' ? vSiteRooms(state.site) : [vRoomById(state.room)];
-  const { y, m } = state.ym;
-  const last = new Date(y, m + 1, 0).getDate();
-  const rows = [[V_SITE_LABEL, V_ITEM_LABEL, '日付', '曜日', '開始', '終了', '件名', '予約者']];
-  for (let d = 1; d <= last; d++) {
-    const date = new Date(y, m, d);
-    rooms.forEach(r => viewBookingsFor(r.id, date, state.bookings).forEach(b => {
-      rows.push([site.name, r.name, isoDate(date), WDAYS[date.getDay()], b.start, b.end, b.title, b.owner]);
-    }));
-  }
-  // BOM付きUTF-8(Excel対応)。=+-@ 始まりのセルは ' を前置(Excel数式インジェクション対策)
-  const cell = c => {
-    let v = String(c);
-    if (/^[=+\-@]/.test(v)) v = "'" + v;
-    return `"${v.replace(/"/g, '""')}"`;
-  };
-  const csv = '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n');
+  const today = new Date();
+  await loadMeetingKinds(); // 区分の名前(登録済みのもの)で、分類項目から区分を決める
+  const items = [];
+  rooms.forEach(r => viewBookingsFor(r.id, today, state.bookings).forEach(b => {
+    if (b.declined) return;
+    items.push({
+      room: r.name, title: b.title, start: b.start, end: b.end,
+      time: `${b.start}–${b.end}`,
+      kind: kindOfCategories(b.categories, MEETING_KINDS),
+      color: barColor(b, r.color)
+    });
+  }));
+  items.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.room.localeCompare(b.room, 'ja'));
+  const dateLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WDAYS[today.getDay()]})`;
+  const bytes = buildDayXlsx(dateLabel, items);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `${V_ITEM_LABEL}予約_${site.name}_${y}${pad(m + 1)}.csv`;
+  a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = `${V_ITEM_LABEL}予約_${site.name}_${isoDate(today).replace(/-/g, '')}.xlsx`;
   a.click();
   URL.revokeObjectURL(a.href);
 }

@@ -9,7 +9,7 @@ const { check, done } = makeChecker('unit');
 /** 画面のJS(グローバル関数をそのまま定義する形式)を、最小限のダミー環境で読み込み、指定した名前を取り出す */
 function load(files, names) {
   const ctx = vm.createContext({
-    console, setTimeout, clearTimeout, Promise, Date, Intl,
+    console, setTimeout, clearTimeout, Promise, Date, Intl, TextEncoder,
     window: { addEventListener() {} },
     document: { addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
     state: { date: new Date(2026, 9, 17) }, Auth: { init: () => new Promise(() => {}) }, // ページ起動処理(Auth.init)は進めない
@@ -37,6 +37,34 @@ check('surname: 全角スペース区切り', c.surname('本田　悠') === '本
 check('打ち合わせの区分: 分類項目から登録済みの区分を1つ取り出す(無ければ空)', c.kindOfCategories(['赤', '初回', '再提案'], ['初回', '再提案']) === '初回' && c.kindOfCategories(['赤'], ['初回']) === '' && c.kindOfCategories(null, ['初回']) === '' && c.kindOfCategories(['初回'], []) === '');
 check('打ち合わせの区分: 保存する分類項目は、登録済みの区分だけを入れ替え、ほかの分類項目は残す', JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回', '再提案'], '再提案')) === JSON.stringify(['赤', '再提案']) && JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回'], '')) === JSON.stringify(['赤']) && JSON.stringify(c.categoriesWithKind(undefined, ['初回'], '初回')) === JSON.stringify(['初回']) && JSON.stringify(c.categoriesWithKind(['古い区分'], ['初回'], '初回')) === JSON.stringify(['古い区分', '初回']));
 check('打ち合わせの区分: プルダウンは「選択しない」を先頭に持ち、選択中の値は一覧に無くても残す。値はエスケープする', c.meetingKindFieldHtml('f-kind', '').includes('id="f-kind"') && c.meetingKindFieldHtml('f-kind', '').includes('選択しない') && c.meetingKindFieldHtml('f-kind', '旧<b>').includes('旧&lt;b&gt;') && !c.meetingKindFieldHtml('f-kind', '旧<b>').includes('<b>') && c.meetingKindFieldHtml('f-kind', '旧').includes('value="旧" selected'));
+// Excel出力(xlsxExport.js。2026-10-30): .xlsx(圧縮なしのZIP)を作り、読み戻して中身を確認する
+const xl = load(['xlsxExport.js'], ['xlsxCrc32', 'buildDayXlsx', 'xlsxTextColor', 'xlsxLineCount']);
+function unzipStored(buf) { // 圧縮なし(method 0)のZIPを読み戻す: { 名前: Buffer } とCRCの一致を返す
+  const files = {}; let crcOk = true; let pos = 0;
+  while (buf.readUInt32LE(pos) === 0x04034b50) {
+    const crc = buf.readUInt32LE(pos + 14), size = buf.readUInt32LE(pos + 18), nlen = buf.readUInt16LE(pos + 26), elen = buf.readUInt16LE(pos + 28), method = buf.readUInt16LE(pos + 8);
+    const name = buf.slice(pos + 30, pos + 30 + nlen).toString('utf8');
+    const data = buf.slice(pos + 30 + nlen + elen, pos + 30 + nlen + elen + size);
+    if (method !== 0 || xl.xlsxCrc32(data) !== crc) crcOk = false;
+    files[name] = data; pos += 30 + nlen + elen + size;
+  }
+  const eocd = buf.readUInt32LE(buf.length - 22) === 0x06054b50 && buf.readUInt16LE(buf.length - 12) === Object.keys(files).length;
+  return { files, crcOk, eocd };
+}
+const xrows = [
+  { room: '会議室A', title: '山田様 <打合せ> & "確認"', time: '10:00–11:00', kind: '初回', color: '#f5b301' },
+  { room: '会議室B', title: '=SUM(A1)', time: '13:00–14:00', kind: '', color: '#2f6f8f' },
+  { room: '会議室A', title: 'あ'.repeat(40), time: '15:00–16:00', kind: '', color: '#f5b301' }
+];
+const xz = unzipStored(Buffer.from(xl.buildDayXlsx('2026年10月30日(金)', xrows)));
+const xsheet = (xz.files['xl/worksheets/sheet1.xml'] || Buffer.alloc(0)).toString('utf8');
+const xstyle = (xz.files['xl/styles.xml'] || Buffer.alloc(0)).toString('utf8');
+check('Excel出力: ZIPが正しい(必要な6ファイル・CRC一致・終端あり)', xz.crcOk && xz.eocd && ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml'].every(n => xz.files[n]), Object.keys(xz.files).join());
+check('Excel出力: 見出し(会議室名・件名・時間・区分)と日付(D1・E1)、A3縦・テンプレートの列幅', ['会議室名', '件名', '時間', '区分'].every(h => xsheet.includes('>' + h + '<')) && xsheet.includes('r="D1"') && xsheet.includes('2026年10月30日(金)') && xsheet.includes('paperSize="8" orientation="portrait"') && xsheet.includes('width="38.5"') && xsheet.includes('width="44.75"'));
+check('Excel出力: 予定が入力の順(時間順で渡した順)に、3行目から縦に並ぶ', xsheet.indexOf('r="A3"') > 0 && xsheet.indexOf('r="A3"') < xsheet.indexOf('r="A4"') && xsheet.indexOf('r="A4"') < xsheet.indexOf('r="A5"') && xsheet.includes('r="C3"') && xsheet.includes('10:00–11:00') && xsheet.includes('A1:E5'));
+check('Excel出力: 文字はエスケープし、=で始まる件名も数式にならない(inlineStr)', xsheet.includes('山田様 &lt;打合せ&gt; &amp; &quot;確認&quot;') && !xsheet.includes('<f>') && xsheet.includes('=SUM(A1)') && xsheet.includes('t="inlineStr"'));
+check('Excel出力: 行ごとに色の塗りつぶし(同じ色は共有)・文字色は明るい色=黒/暗い色=白・長い件名は行を高くする', (xstyle.match(/patternType="solid"/g) || []).length === 2 && xstyle.includes('rgb="FFF5B301"') && xstyle.includes('rgb="FF2F6F8F"') && xl.xlsxTextColor('#f5b301') === 'black' && xl.xlsxTextColor('#2f6f8f') === 'white' && xl.xlsxTextColor('zzz') === 'black' && xl.xlsxLineCount('あ'.repeat(40), 39.5) > 3 && xl.xlsxLineCount('短い', 39.5) === 1 && Number(/<row r="5" ht="([0-9.]+)"/.exec(xsheet)[1]) > 100);
+check('Excel出力: 予定が0件でも作れる(見出しだけ)', unzipStored(Buffer.from(xl.buildDayXlsx('x', []))).crcOk);
 check('tileLabelHtml: 「(」(全角・半角)があればその直前で改行し、2行目に「(」から出す。無い・先頭・空・HTMLは改行しない/エスケープ', c.tileLabelHtml('経費精算システム（Web入力）') === '経費精算システム<br>（Web入力）' && c.tileLabelHtml('勤怠(jinjer)') === '勤怠<br>(jinjer)' && c.tileLabelHtml('就業規則') === '就業規則' && c.tileLabelHtml('(旧)規程') === '(旧)規程' && c.tileLabelHtml('（旧）規程') === '（旧）規程' && c.tileLabelHtml('') === '' && c.tileLabelHtml(null) === '' && c.tileLabelHtml('<b>x(<i>)') === '&lt;b&gt;x<br>(&lt;i&gt;)');
 check('esc: HTMLエスケープ', c.esc('<a href="x">&') === '&lt;a href=&quot;x&quot;&gt;&amp;');
 check('phoneListOf: 携帯+事業所(空は除く)', JSON.stringify(c.phoneListOf({ mobilePhone: '090', businessPhones: ['03', ''] })) === '["090","03"]');
