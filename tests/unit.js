@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
+const c = load(['common.js'], ['kindOfCategories', 'categoriesWithKind', 'meetingKindFieldHtml', 'tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -34,6 +34,9 @@ check('fullNameOf: 姓 名(半角スペース1つ)', c.fullNameOf('本田', '悠
 check('fullNameOf: 姓か名が空なら表示名', c.fullNameOf('本田', '', '本田 悠(吉村一建設)') === '本田 悠');
 check('fullNameOf: 前後の空白を除く', c.fullNameOf(' 本田 ', ' 悠 ', 'x') === '本田 悠');
 check('surname: 全角スペース区切り', c.surname('本田　悠') === '本田');
+check('打ち合わせの区分: 分類項目から登録済みの区分を1つ取り出す(無ければ空)', c.kindOfCategories(['赤', '初回', '再提案'], ['初回', '再提案']) === '初回' && c.kindOfCategories(['赤'], ['初回']) === '' && c.kindOfCategories(null, ['初回']) === '' && c.kindOfCategories(['初回'], []) === '');
+check('打ち合わせの区分: 保存する分類項目は、登録済みの区分だけを入れ替え、ほかの分類項目は残す', JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回', '再提案'], '再提案')) === JSON.stringify(['赤', '再提案']) && JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回'], '')) === JSON.stringify(['赤']) && JSON.stringify(c.categoriesWithKind(undefined, ['初回'], '初回')) === JSON.stringify(['初回']) && JSON.stringify(c.categoriesWithKind(['古い区分'], ['初回'], '初回')) === JSON.stringify(['古い区分', '初回']));
+check('打ち合わせの区分: プルダウンは「選択しない」を先頭に持ち、選択中の値は一覧に無くても残す。値はエスケープする', c.meetingKindFieldHtml('f-kind', '').includes('id="f-kind"') && c.meetingKindFieldHtml('f-kind', '').includes('選択しない') && c.meetingKindFieldHtml('f-kind', '旧<b>').includes('旧&lt;b&gt;') && !c.meetingKindFieldHtml('f-kind', '旧<b>').includes('<b>') && c.meetingKindFieldHtml('f-kind', '旧').includes('value="旧" selected'));
 check('tileLabelHtml: 「(」(全角・半角)があればその直前で改行し、2行目に「(」から出す。無い・先頭・空・HTMLは改行しない/エスケープ', c.tileLabelHtml('経費精算システム（Web入力）') === '経費精算システム<br>（Web入力）' && c.tileLabelHtml('勤怠(jinjer)') === '勤怠<br>(jinjer)' && c.tileLabelHtml('就業規則') === '就業規則' && c.tileLabelHtml('(旧)規程') === '(旧)規程' && c.tileLabelHtml('（旧）規程') === '（旧）規程' && c.tileLabelHtml('') === '' && c.tileLabelHtml(null) === '' && c.tileLabelHtml('<b>x(<i>)') === '&lt;b&gt;x<br>(&lt;i&gt;)');
 check('esc: HTMLエスケープ', c.esc('<a href="x">&') === '&lt;a href=&quot;x&quot;&gt;&amp;');
 check('phoneListOf: 携帯+事業所(空は除く)', JSON.stringify(c.phoneListOf({ mobilePhone: '090', businessPhones: ['03', ''] })) === '["090","03"]');

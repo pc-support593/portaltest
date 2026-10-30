@@ -17,6 +17,45 @@ function tileLabelHtml(label) {
   return `${esc(s.slice(0, i))}<br>${esc(s.slice(i))}`;
 }
 
+// ---- 打ち合わせの区分(2026-10-30・ユーザー依頼)。管理画面「打ち合わせの区分」で登録した選択肢を、予定の画面のプルダウンに出し、
+//      選んだ区分を Outlook(Exchange)の予定の分類項目(categories)に、名前のまま保存する。ゆめすみか展示場の会議室を選んだ予定・会議室予約で出す ----
+let MEETING_KINDS = []; // 登録済みの区分の名前(表示順)
+let meetingKindsPromise = null;
+const MEETING_KIND_RESOURCE_TYPES = ['yumesumika']; // この会議室・車の種類を選んだときだけ、プルダウンを出す(予定の画面。会議室予約の画面はゆめすみか展示場のページだけ)
+/** 区分の一覧を取得して MEETING_KINDS に入れる(1回だけ)。失敗しても画面を止めず、空のまま(=プルダウンを出さない) */
+function loadMeetingKinds() {
+  if (!meetingKindsPromise) {
+    meetingKindsPromise = api('/api/meeting-kinds')
+      .then(rows => { MEETING_KINDS = (rows || []).map(r => r.label); })
+      .catch(() => { meetingKindsPromise = null; });
+  }
+  return meetingKindsPromise;
+}
+/** 予定の分類項目のうち、登録済みの区分に当たる最初の1つ(なければ空) */
+function kindOfCategories(categories, kinds) {
+  return (categories || []).find(c => kinds.includes(c)) || '';
+}
+/** 保存する分類項目: もとの分類項目から、登録済みの区分を除き(ほかの分類項目は残す)、選んだ区分を足す */
+function categoriesWithKind(existing, kinds, kind) {
+  const keep = (existing || []).filter(c => !kinds.includes(c));
+  return kind ? [...keep, kind] : keep;
+}
+/** プルダウンを出すか: 区分が登録されていて、(対象の会議室を選んでいる、または既に区分が付いている) */
+function meetingKindVisible(resourceType, currentKind) {
+  return MEETING_KINDS.length > 0 && (MEETING_KIND_RESOURCE_TYPES.includes(resourceType) || !!currentKind);
+}
+/** 「区分」のプルダウン(HTML文字列)。selected が登録済みの区分に無くても、その値は選択肢に残す */
+function meetingKindFieldHtml(id, selected) {
+  const opts = MEETING_KINDS.includes(selected) || !selected ? MEETING_KINDS : [...MEETING_KINDS, selected];
+  return `<label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">区分(任意)</span>
+          <select id="${id}" class="in-input">
+            <option value="">選択しない</option>
+            ${opts.map(k => `<option value="${esc(k)}" ${k === selected ? 'selected' : ''}>${esc(k)}</option>`).join('')}
+          </select>
+        </label>`;
+}
+
 /** 文字の中の http:// と https:// のURLを、新しいタブで開くリンクにして返す(HTML文字列)。それ以外の文字は esc でエスケープする(2026-10-26・ユーザー依頼)。
     リンクにするのは http・https だけ(javascript: などは対象外)。URLに使える半角の文字だけを拾い(日本語はURLに含めない)、末尾の句読点・閉じ括弧は含めない。
     お知らせ・全社スケジュールの本文、予定の場所に使う。改行は呼び出し側の white-space:pre-wrap で保つ */

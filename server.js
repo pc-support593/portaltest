@@ -606,6 +606,42 @@ app.put('/api/admin/orgchart-extras', (req, res) => {
   res.json({ ok: true, count: rows.length });
 });
 
+// ---- 打ち合わせの区分(2026-10-30・ユーザー依頼): 予定の作成・変更画面のプルダウンの選択肢。選んだ区分は、画面側でOutlookの分類項目に保存する ----
+// 一覧ごと置き換える(管理画面で並びごと編集するため)。ラベルは Outlook の分類項目名になる(30字まで・重複なし・制御文字なし・セミコロンなし)
+app.get('/api/meeting-kinds', (req, res) => {
+  me(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(db.prepare('SELECT id, label, sort FROM meeting_kinds ORDER BY sort, id').all());
+});
+app.put('/api/admin/meeting-kinds', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const items = req.body && req.body.items;
+  if (!Array.isArray(items) || items.length > 30) return res.status(400).json({ error: '入力が不正です(30件まで)' });
+  const rows = [];
+  const seen = new Set();
+  for (const it of items) {
+    const o = it || {};
+    const label = String(o.label || '').normalize('NFKC').trim();
+    const sort = Math.max(0, Math.min(9999, Math.round(Number(o.sort) || 0)));
+    if (!label) return res.status(400).json({ error: '区分の名前を入力してください' });
+    if (label.length > 30 || hasControlChar(label) || label.includes(';')) return res.status(400).json({ error: '区分の名前は30文字までです(;と制御文字は使えません)' });
+    if (seen.has(label)) return res.status(400).json({ error: `区分の名前が重複しています(${label})` });
+    seen.add(label);
+    rows.push({ label, sort });
+  }
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM meeting_kinds').run();
+    const ins = db.prepare("INSERT INTO meeting_kinds (label, sort, updated_at) VALUES (?, ?, datetime('now'))");
+    rows.forEach(r => ins.run(r.label, r.sort));
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* ROLLBACK の失敗で、元の例外を隠さない */ }
+    throw e;
+  }
+  res.json({ ok: true, count: rows.length });
+});
+
 // 班の臨時交代の管理API。/api/admin/:kind という1セグメントの汎用CRUDルートと
 // パスの形が重なってしまうため(例: GET/POST /api/admin/shift-swaps, DELETE /api/admin/shift-swaps/:id)、
 // 汎用ルートより前に登録して先にマッチさせる(でなければ kind='shift-swaps' が KINDS になく 404 になる)

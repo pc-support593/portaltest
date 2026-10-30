@@ -200,6 +200,20 @@ const files = {
   await putX([]);
   check('組織図の補足: 空の一覧で全て削除できる', (await getX()).length === 0);
 
+  // 打ち合わせの区分(meeting_kinds。2026-10-30): 予定の画面のプルダウンの選択肢。一覧ごと置き換える。初めて作るときだけ「初回」が入る
+  const putK = items => json('PUT', '/api/admin/meeting-kinds', { items });
+  const getK = async () => (await json('GET', '/api/meeting-kinds')).data;
+  const k0 = await getK();
+  check('打ち合わせの区分: 初めて作ったときは「初回」だけが入っている。返す項目は id・label・sort だけ', k0.length === 1 && k0[0].label === '初回' && Object.keys(k0[0]).sort().join() === 'id,label,sort', JSON.stringify(k0));
+  const okK = await putK([{ label: '再提案', sort: 2 }, { label: '初回', sort: 1 }, { label: '　契約　', sort: 3 }]);
+  const k1 = await getK();
+  check('打ち合わせの区分: 登録でき、表示順(小さい順)で返る。前後の空白は除く', okK.status === 200 && k1.map(r => r.label).join() === '初回,再提案,契約', JSON.stringify(k1));
+  check('打ち合わせの区分: 不正な入力は拒否(空・31字・重複・セミコロン・制御文字・31件)', (await putK([{ label: '' }])).status === 400 && (await putK([{ label: 'あ'.repeat(31) }])).status === 400 && (await putK([{ label: '初回' }, { label: '初回' }])).status === 400 && (await putK([{ label: 'a;b' }])).status === 400 && (await putK([{ label: 'a' + String.fromCharCode(1) }])).status === 400 && (await putK(Array.from({ length: 31 }, (_, i) => ({ label: 'k' + i })))).status === 400);
+  check('打ち合わせの区分: 不正な入力で拒否されたとき、前の内容は残る', (await getK()).map(r => r.label).join() === '初回,再提案,契約');
+  await putK([]);
+  check('打ち合わせの区分: 空の一覧で全て削除できる(再起動しても「初回」は復活しない設計)', (await getK()).length === 0);
+  await putK([{ label: '初回', sort: 1 }]);
+
   // 年間カレンダー: typeに shift_holiday を指定できる(team空・A、他の種類との重複チェックの対象外)
   const csvOk = ['date,calendar_group,team,type,label', '2027-05-01,sunday_off,,shift_holiday,創立記念日', '2027-05-02,sunday_off,A,shift_holiday,特別休', '2027-05-02,sunday_off,A,shift_work,x'].join('\n');
   const impOk = await json('POST', '/api/admin/work-calendar/import', { csv: csvOk });

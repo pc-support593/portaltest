@@ -109,7 +109,7 @@ async function fetchPersonalEvents(date) {
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
     `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body&$orderby=start/dateTime';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime';
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY }
@@ -140,6 +140,7 @@ function mapGraphEvent(ev, i) {
       type: a.type
     })),
     bodyText: (ev.body && ev.body.contentType === 'text' && ev.body.content) || '',
+    categories: ev.categories || [], // Outlookの分類項目(打ち合わせの区分の読み込み・保存で使う)
     ...PERSONAL_COLOR_CYCLE[i % PERSONAL_COLOR_CYCLE.length]
   });
 }
@@ -214,7 +215,7 @@ async function fetchWeekEvents(sunday) {
   let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(isoDate(sunday) + 'T00:00:00')}` +
     `&endDateTime=${encodeURIComponent(isoDate(next) + 'T00:00:00')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body&$orderby=start/dateTime&$top=100';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime&$top=100';
   const out = [];
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY } });
@@ -548,10 +549,28 @@ function openCreateForm() {
     date: isoDate(d),
     start: '10:00', end: '11:00', title: '', content: '', place: '', members: [], guests: '', error: '',
     resourceType: '', site: '', room: '', // 会議室・社用車は空き一覧のチップから選ぶ(自動選択しない)
-    roomBusy: null
+    roomBusy: null,
+    kind: '', origKind: '', origCategories: [] // 打ち合わせの区分(Outlookの分類項目)
   };
   memberCandidates = [];
   renderModal();
+  refreshKindsInForm();
+}
+
+/** 区分の一覧を読み込み、開いているフォームに反映する(初めての読み込みで一覧が変わったときだけ描き直す)。変更のときは、保存済みの分類項目から、選択中の区分を決める */
+function refreshKindsInForm() {
+  const before = MEETING_KINDS.length;
+  loadMeetingKinds().then(() => {
+    const f = formState;
+    if (!f) return;
+    let changed = MEETING_KINDS.length !== before;
+    if (f.origKind === null) { // 変更で開いた直後(一覧の読み込み前)。保存済みの分類項目から区分を決める
+      f.origKind = kindOfCategories(f.origCategories, MEETING_KINDS);
+      f.kind = f.origKind;
+      changed = true;
+    }
+    if (changed) renderModal();
+  });
 }
 
 /** 個人のスケジュール一覧のクリックから、既存の予定を変更モードで開く */
@@ -592,10 +611,12 @@ function openEditForm(ev) {
     resourceType: matchedType,
     site: matchedRoom ? matchedRoom.site : '',
     room: matchedRoom ? matchedRoom.id : '',
-    roomBusy: null
+    roomBusy: null,
+    origCategories: ev.categories || [], origKind: null, kind: '' // 区分は、一覧の読み込み後に分類項目から決める(refreshKindsInForm)
   };
   memberCandidates = [];
   renderModal();
+  refreshKindsInForm();
   if (formState.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
 }
 
@@ -704,6 +725,7 @@ function renderModal() {
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">場所(任意・自由入力)</span>
           <input id="f-place" class="in-input" value="${esc(f.place)}" placeholder="例: オンライン">
         </label>` : ''}
+        ${meetingKindVisible(f.resourceType, f.kind) ? meetingKindFieldHtml('f-kind', f.kind) : ''}
         <div style="display:flex;flex-direction:column;gap:5px;position:relative">
           <span style="display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">社内メンバー(任意)</span>
@@ -757,6 +779,8 @@ function renderModal() {
   const deleteBtn = root.querySelector('#f-delete');
   if (deleteBtn) deleteBtn.addEventListener('click', deleteEvent);
 
+  const kindSel = root.querySelector('#f-kind');
+  if (kindSel) kindSel.addEventListener('change', e => { f.kind = e.target.value; });
   root.querySelector('#f-resource-type').addEventListener('change', e => {
     f.resourceType = e.target.value;
     const newMaster = resourceMaster(f.resourceType);
@@ -880,6 +904,9 @@ async function submitCreateForm() {
     // 変更のときは、内容(と外部参加者)を変えたときだけ本文を送る(変えていないのに送ると、書式つきの本文や会議案内が、文字だけに置き換わる・消える)
     const norm = x => String(x).split(String.fromCharCode(13, 10)).join(String.fromCharCode(10)); // 改行コード(CRLFとLF)の違いだけでは、変更とみなさない
     if (f.eventId ? norm(bodyText) !== norm(f.origBody) : bodyText) body.body = { contentType: 'text', content: bodyText };
+
+    // 打ち合わせの区分: 作成は選んだときだけ、変更は区分を変えたときだけ、分類項目を送る(ほかの分類項目は残す)
+    if (f.eventId ? (f.origKind !== null && f.kind !== f.origKind) : !!f.kind) body.categories = categoriesWithKind(f.origCategories, MEETING_KINDS, f.kind);
 
     const url = f.eventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.eventId}`

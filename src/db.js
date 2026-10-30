@@ -19,6 +19,8 @@ function open() {
 }
 
 function migrate(db) {
+  // 打ち合わせの区分は、初めてテーブルを作るときだけ「初回」を入れる(管理画面で消したあとに復活させない)
+  const kindsExisted = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meeting_kinds'").get();
   db.exec(`
     CREATE TABLE IF NOT EXISTS news (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +120,14 @@ function migrate(db) {
       sort INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    -- 打ち合わせの区分(2026-10-30・ユーザー依頼)。予定の作成・変更画面のプルダウンの選択肢。管理画面で登録する。選んだ区分は、Outlook(Exchange)の予定の分類項目(categories)に、label の文字のまま保存する
+    -- label: 30字まで・重複なし(Outlook の分類項目名になる)。sort: 表示順(小さい順)
+    CREATE TABLE IF NOT EXISTS meeting_kinds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT NOT NULL UNIQUE,
+      sort INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS attachment_texts (
       attachment_id TEXT PRIMARY KEY,        -- attachments.id と同じUUID
       text TEXT NOT NULL DEFAULT '',         -- NFKC正規化済み・最大30万字。status が ok 以外は空
@@ -197,6 +207,7 @@ function migrate(db) {
       ok_date     TEXT NOT NULL DEFAULT ''    -- 最後に成功した対象日(朝の自動実行の済み判定用)
     );
   `);
+  if (!kindsExisted) db.prepare("INSERT OR IGNORE INTO meeting_kinds (label, sort) VALUES ('初回', 1)").run();
   // 既存DB向けの後方互換マイグレーション
   try { db.exec("ALTER TABLE bookings ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }
   try { db.exec("ALTER TABLE bookings ADD COLUMN content TEXT NOT NULL DEFAULT ''"); } catch { /* 追加済み */ }

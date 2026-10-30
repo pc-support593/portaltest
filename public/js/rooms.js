@@ -463,9 +463,24 @@ function plusOneHour(hhmm) {
 }
 
 function openForm(form) {
+  // 打ち合わせの区分(Outlookの分類項目)。新規は未選択。変更(origKind=null)は、一覧の読み込み後に保存済みの分類項目から決める
+  if (!form.origCategories) form.origCategories = [];
+  if (form.origKind === undefined) { form.origKind = ''; form.kind = ''; }
   state.form = form;
   candidates = [];
   renderModals();
+  const before = MEETING_KINDS.length;
+  loadMeetingKinds().then(() => {
+    const f = state.form;
+    if (f !== form) return; // 読み込み中に、フォームが閉じた・開き直された
+    let changed = MEETING_KINDS.length !== before;
+    if (f.origKind === null) {
+      f.origKind = kindOfCategories(f.origCategories, MEETING_KINDS);
+      f.kind = f.origKind;
+      changed = true;
+    }
+    if (changed) renderModals();
+  });
 }
 
 /** 自分の予約を変更モードで開く(カレンダーチップ・日別ポップアップ共通) */
@@ -478,7 +493,8 @@ function openEditBooking(id) {
     editId: bk.id, site: room ? room.site : state.site, room: bk.room, date: bk.date,
     start: bk.start, end: bk.end, title: bk.title, content: bk.content || '',
     members: (bk.members || []).slice(), guests: bk.guests || '',
-    source: bk.source || 'legacy', myEventId: bk.myEventId || null
+    source: bk.source || 'legacy', myEventId: bk.myEventId || null,
+    origCategories: bk.categories || [], origKind: null, kind: ''
   });
 }
 
@@ -567,6 +583,7 @@ function renderFormModal() {
             <select id="form-end" class="in-input">${selOpts(f.end)}</select>
           </label>
         </div>
+        ${meetingKindVisible(VIEW, f.kind) ? meetingKindFieldHtml('form-kind', f.kind) : ''}
         <div style="display:flex;flex-direction:column;gap:5px;position:relative">
           <span style="display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">社内メンバー</span>
@@ -656,6 +673,7 @@ function bindFormEvents(root) {
     renderModals();
   }));
 
+  on('form-kind', 'change', e => { f.kind = e.target.value; });
   on('form-submit', 'click', submitForm);
   on('form-delete', 'click', async () => {
     if (f.source === 'graph') {
@@ -767,6 +785,9 @@ async function submitRealForm(f) {
     body.locations = [loc];
     const bodyText = encodeEventBody(f.content, f.guests);
     if (bodyText || f.myEventId) body.body = { contentType: 'text', content: bodyText };
+
+    // 打ち合わせの区分: 新規は選んだときだけ、変更は区分を変えたときだけ、分類項目を送る(ほかの分類項目は残す)
+    if (f.myEventId ? (f.origKind !== null && f.kind !== f.origKind) : !!f.kind) body.categories = categoriesWithKind(f.origCategories, MEETING_KINDS, f.kind);
 
     const url = f.myEventId
       ? `https://graph.microsoft.com/v1.0/me/events/${f.myEventId}`
@@ -912,7 +933,7 @@ async function fetchMyRoomEvents(from, to, token) {
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(from + 'T00:00:00')}` +
     `&endDateTime=${encodeURIComponent(to + 'T23:59:59')}` +
-    '&$select=id,iCalUId,subject,start,end,attendees,body,isAllDay,type,isOrganizer&$orderby=start/dateTime&$top=200';
+    '&$select=id,iCalUId,subject,start,end,attendees,body,isAllDay,type,isOrganizer,categories&$orderby=start/dateTime&$top=200';
   const events = await graphGetAll(url, token);
   const map = new Map();
   events.forEach(ev => {
@@ -928,7 +949,7 @@ async function fetchMyRoomEvents(from, to, token) {
       id: ev.id, roomId: room.id, isOrganizer: !!ev.isOrganizer, type: ev.type,
       date, start, end, title: ev.subject || '(件名なし)',
       members: attendeesToMembers(ev.attendees, myEmail),
-      content: decoded.content, guests: decoded.guests,
+      content: decoded.content, guests: decoded.guests, categories: ev.categories || [],
       roomResponse: (roomAttendee.status && roomAttendee.status.response) || 'none'
     });
   });
@@ -965,6 +986,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
           members: (mineEv && mineEv.members) || [],
           content: (mineEv && mineEv.content) || '',
           guests: (mineEv && mineEv.guests) || '',
+          categories: (mineEv && mineEv.categories) || [],
           myEventId: (mineEv && mineEv.id) || null,
           editable: !!(mineEv && mineEv.id && mineEv.isOrganizer && ev.type === 'singleInstance')
         };
@@ -988,7 +1010,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
       id: `pending:${mineEv.id}`, source: 'graph',
       room: mineEv.roomId, date: mineEv.date, start: mineEv.start, end: mineEv.end,
       title: mineEv.title, owner: (ME && ME.name) || '', owner_email: (ME && ME.email) || '',
-      members: mineEv.members, content: mineEv.content, guests: mineEv.guests, myEventId: mineEv.id,
+      members: mineEv.members, content: mineEv.content, guests: mineEv.guests, categories: mineEv.categories, myEventId: mineEv.id,
       editable: mineEv.isOrganizer && mineEv.type === 'singleInstance',
       pending: true, declined: mineEv.roomResponse === 'declined'
     });
