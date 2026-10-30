@@ -273,7 +273,7 @@ function renderCalendar() {
         <span style="font-size:15px;font-weight:700;min-width:118px;text-align:center;white-space:nowrap">${y}年 ${m + 1}月</span>
         <button id="next-month" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
         <button id="this-month" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;margin-left:6px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今月</button>
-        <button id="export-excel" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">Excel出力</button>
+        <button id="export-excel" class="hv-btn-plain" title="表示中の拠点・会議室の、今日の予定をExcelで出力します(時間順)。区分は、自分の予定表にある予約だけ入ります" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">Excel出力</button>
       </span>
     </div>
     ${weekBanner}
@@ -296,7 +296,15 @@ function renderCalendar() {
     state.day = null; state.week = null;
     navigate();
   });
-  el.querySelector('#export-excel').addEventListener('click', () => { exportDayExcel().catch(err => alert(`Excel出力に失敗しました(${err.message || err})`)); });
+  el.querySelector('#export-excel').addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = '作成中…';
+    exportDayExcel()
+      .catch(err => alert(`Excel出力に失敗しました(${err.message || err})`))
+      .finally(() => { btn.disabled = false; btn.textContent = label; });
+  });
   const exitBtn = el.querySelector('#exit-week');
   if (exitBtn) exitBtn.addEventListener('click', () => { state.week = null; render(); });
   el.querySelectorAll('[data-week]').forEach(b => b.addEventListener('click', () => {
@@ -319,15 +327,27 @@ function renderCalendar() {
 
 // ---- Excel出力(表示中の拠点・会議室の、今日の予定。2026-10-30・ユーザー依頼。旧「CSV出力」) ----
 // 会議室名・件名・時間・区分を縦に、時間順に出す。各行には、カレンダーと同じ色(主催=黄・参加=青緑・それ以外=会議室の色)を塗る。
-// 区分は、自分が作成した予約だけ分かる(他の人の予約の分類項目は、会議室の予定表からは読めない)。自動辞退になった予約は、会議室を取れていないため出さない。
+// 区分は、自分の予定表にある予約だけ分かる(他の人の予約の分類項目は、会議室の予定表からは読めない)。自動辞退になった予約は、会議室を取れていないため出さない。
+// 表示中の月に関係なく、今日の予定をその場で取り直す(別の月を表示中・読み込み中でも、漏らさない)。取得できなかった会議室があるときは、確認してから出す。
 
 async function exportDayExcel() {
   const site = V_SITES.find(s => s.id === state.site);
   const rooms = state.room === '__all' ? vSiteRooms(state.site) : [vRoomById(state.room)];
   const today = new Date();
-  await loadMeetingKinds(); // 区分の名前(登録済みのもの)で、分類項目から区分を決める
+  let source = state.bookings;
+  if (useRealRooms()) {
+    const iso = isoDate(today);
+    const { rows, errors } = await withTimeout(fetchRealRoomBookings(rooms, iso, iso), 20000, '今日の予定の取得に時間がかかっています。しばらくしてからもう一度お試しください');
+    if (errors.length && !confirm(`取得できなかった${V_ITEM_LABEL}があります(${errors.join('、')})。
+この${V_ITEM_LABEL}の予定は出力されません。このまま出力しますか?`)) return;
+    source = state.legacy.concat(rows);
+  }
+  // 区分の名前(登録済みのもの)で、分類項目から区分を決める。取得できなかったときは、区分を空にして出す(予定の出力は止めない)
+  let kindsOk = true;
+  try { await withTimeout(loadMeetingKinds(), 8000, '区分の取得に時間がかかっています'); } catch { kindsOk = false; }
+  if (!kindsOk && !MEETING_KINDS.length) alert('区分を取得できなかったため、区分の列は空で出力します。');
   const items = [];
-  rooms.forEach(r => viewBookingsFor(r.id, today, state.bookings).forEach(b => {
+  rooms.forEach(r => viewBookingsFor(r.id, today, source).forEach(b => {
     if (b.declined) return;
     items.push({
       room: r.name, title: b.title, start: b.start, end: b.end,
