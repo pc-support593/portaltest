@@ -807,16 +807,16 @@ function renderModal() {
   root.querySelector('#f-member-input').addEventListener('input', e => {
     const q = e.target.value.trim();
     clearTimeout(memberSearchTimer);
-    if (!q) { memberCandidates = []; renderMemberCandidates(); return; }
+    if (!q) { memberSearchSeq++; memberCandidates = []; renderMemberCandidates(); return; } // 空にしたら、走っている検索の応答も捨てる
     memberSearchTimer = setTimeout(async () => {
+      const mySeq = ++memberSearchSeq;
       try {
-        const mySeq = ++memberSearchSeq;
         const found = (await searchMembers(q))
           .filter(c => !f.members.some(m => m.email === c.email));
         if (mySeq !== memberSearchSeq) return; // 入力中に別の検索が走った場合、古い結果は捨てる
         memberCandidates = found;
         renderMemberCandidates();
-      } catch { memberCandidates = []; renderMemberCandidates(); /* 検索失敗時は候補を出さない */ }
+      } catch { if (mySeq === memberSearchSeq) { memberCandidates = []; renderMemberCandidates(); } /* 検索失敗時は候補を出さない(新しい検索があれば、そちらを優先) */ }
     }, 180);
   });
   root.querySelectorAll('[data-rm-member]').forEach(b => b.addEventListener('click', () => {

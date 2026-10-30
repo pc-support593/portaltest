@@ -546,7 +546,7 @@ function initHeaderSearch() {
   input.addEventListener('input', () => {
     clearTimeout(debounceTimer);
     const query = input.value.trim();
-    if (!query) { renderSearchResults([], [], ''); return; }
+    if (!query) { seq++; renderSearchResults([], [], ''); return; } // 空にしたら、走っている検索の応答も捨てる
     debounceTimer = setTimeout(async () => {
       const mySeq = ++seq;
       const pages = searchPortalPages(query);

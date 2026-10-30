@@ -680,16 +680,16 @@ function bindFormEvents(root) {
   on('member-input', 'input', e => {
     const q = e.target.value.trim();
     clearTimeout(searchTimer);
-    if (!q) { candidates = []; renderCandidates(); return; }
+    if (!q) { searchSeq++; candidates = []; renderCandidates(); return; } // 空にしたら、走っている検索の応答も捨てる
     searchTimer = setTimeout(async () => {
+      const mySeq = ++searchSeq;
       try {
-        const mySeq = ++searchSeq;
         const found = (await searchMembers(q))
           .filter(c => !f.members.some(m => m.email === c.email) && c.email !== ME.email);
         if (mySeq !== searchSeq) return; // 入力中に別の検索が走った場合、古い結果は捨てる
         candidates = found;
         renderCandidates();
-      } catch { candidates = []; renderCandidates(); /* 検索失敗時は候補を出さない */ }
+      } catch { if (mySeq === searchSeq) { candidates = []; renderCandidates(); } /* 検索失敗時は候補を出さない(新しい検索があれば、そちらを優先) */ }
     }, 180);
   });
 
