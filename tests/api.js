@@ -208,7 +208,7 @@ const files = {
   const okK = await putK([{ label: '再提案', sort: 2 }, { label: '初回', sort: 1 }, { label: '　契約　', sort: 3 }]);
   const k1 = await getK();
   check('打ち合わせの区分: 登録でき、表示順(小さい順)で返る。前後の空白は除く', okK.status === 200 && k1.map(r => r.label).join() === '初回,再提案,契約', JSON.stringify(k1));
-  check('打ち合わせの区分: 不正な入力は拒否(空・31字・重複・セミコロン・制御文字・31件)', (await putK([{ label: '' }])).status === 400 && (await putK([{ label: 'あ'.repeat(31) }])).status === 400 && (await putK([{ label: '初回' }, { label: '初回' }])).status === 400 && (await putK([{ label: 'a;b' }])).status === 400 && (await putK([{ label: 'a' + String.fromCharCode(1) }])).status === 400 && (await putK(Array.from({ length: 31 }, (_, i) => ({ label: 'k' + i })))).status === 400);
+  check('打ち合わせの区分: 不正な入力は拒否(空・31字・重複(大文字小文字違いも)・セミコロン・制御文字・31件)', (await putK([{ label: '' }])).status === 400 && (await putK([{ label: 'あ'.repeat(31) }])).status === 400 && (await putK([{ label: '初回' }, { label: '初回' }])).status === 400 && (await putK([{ label: 'a;b' }])).status === 400 && (await putK([{ label: 'Ab' }, { label: 'aB' }])).status === 400 && (await putK([{ label: 'a' + String.fromCharCode(1) }])).status === 400 && (await putK(Array.from({ length: 31 }, (_, i) => ({ label: 'k' + i })))).status === 400);
   check('打ち合わせの区分: 不正な入力で拒否されたとき、前の内容は残る', (await getK()).map(r => r.label).join() === '初回,再提案,契約');
   await putK([]);
   check('打ち合わせの区分: 空の一覧で全て削除できる(再起動しても「初回」は復活しない設計)', (await getK()).length === 0);

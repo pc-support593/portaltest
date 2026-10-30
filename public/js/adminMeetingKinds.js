@@ -54,7 +54,9 @@ async function renderMeetingKindsTab() {
     resultEl.textContent = '保存中…'; resultEl.style.color = '#8a99a8';
     try {
       await api('/api/admin/meeting-kinds', { method: 'PUT', body: { items } });
-      resultEl.textContent = '✓ 保存しました'; resultEl.style.color = '#2e7d52';
+      await renderMeetingKindsTab(); // サーバーで整えた(全角→半角・前後の空白)内容で、画面を描き直す
+      const done = document.getElementById('k-result');
+      if (done) { done.textContent = '✓ 保存しました'; done.style.color = '#2e7d52'; }
     } catch (e) {
       resultEl.textContent = `✗ ${e.message}`; resultEl.style.color = '#c05a5a';
     }

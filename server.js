@@ -625,8 +625,8 @@ app.put('/api/admin/meeting-kinds', (req, res) => {
     const sort = Math.max(0, Math.min(9999, Math.round(Number(o.sort) || 0)));
     if (!label) return res.status(400).json({ error: '区分の名前を入力してください' });
     if (label.length > 30 || hasControlChar(label) || label.includes(';')) return res.status(400).json({ error: '区分の名前は30文字までです(;と制御文字は使えません)' });
-    if (seen.has(label)) return res.status(400).json({ error: `区分の名前が重複しています(${label})` });
-    seen.add(label);
+    if (seen.has(label.toLowerCase())) return res.status(400).json({ error: `区分の名前が重複しています(${label})` }); // Outlookの分類項目名は大文字小文字を区別しないため、同じ扱いにする
+    seen.add(label.toLowerCase());
     rows.push({ label, sort });
   }
   db.exec('BEGIN');
