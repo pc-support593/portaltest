@@ -520,6 +520,7 @@ function plusOneHour(hhmm) {
 
 let formState = null;
 let memberCandidates = []; // 社内メンバー検索の候補
+let memberSearchSeq = 0; // 検索の通し番号(古い応答を捨てる)
 
 // ---- 予定作成フォームで選べるリソース種別(2026-08-22追加) ----
 // 「ゆめすみか展示場」「吉村一建設会議室」「社用車」のいずれかを選び、その配下の
@@ -809,10 +810,13 @@ function renderModal() {
     if (!q) { memberCandidates = []; renderMemberCandidates(); return; }
     memberSearchTimer = setTimeout(async () => {
       try {
-        memberCandidates = (await searchMembers(q))
+        const mySeq = ++memberSearchSeq;
+        const found = (await searchMembers(q))
           .filter(c => !f.members.some(m => m.email === c.email));
+        if (mySeq !== memberSearchSeq) return; // 入力中に別の検索が走った場合、古い結果は捨てる
+        memberCandidates = found;
         renderMemberCandidates();
-      } catch { /* 検索失敗時は候補を出さない */ }
+      } catch { memberCandidates = []; renderMemberCandidates(); /* 検索失敗時は候補を出さない */ }
     }, 180);
   });
   root.querySelectorAll('[data-rm-member]').forEach(b => b.addEventListener('click', () => {

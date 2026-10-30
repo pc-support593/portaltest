@@ -164,16 +164,27 @@ function fmtMD(iso) {
   return m ? `${Number(m[2])}/${Number(m[3])}` : String(iso || '');
 }
 
-/** メンバー検索の入力を、空白(半角・全角)で語に分ける。`"` は検索式を壊すため除く(2026-10-30・ユーザー依頼: 姓・名でも検索) */
+/** メンバー検索の入力を、空白(半角・全角)で語に分ける。`"` と `\` は、検索式を壊すため除く(2026-10-30・ユーザー依頼: 姓・名でも検索) */
+const MEMBER_SEARCH_FETCH = 10; // Graphから取る件数(入社日前の人を除くため、表示件数より多めに取る)
+const MEMBER_SEARCH_SHOW = 5; // 候補に出す件数
 function memberSearchTerms(q) {
-  return String(q || '').replace(/"/g, ' ').split(/[\s\u3000]+/).filter(Boolean);
+  return String(q || '').replace(/["\\]/g, ' ').split(/[\s\u3000]+/).filter(Boolean);
 }
-/** Graph の $search の式: 最初の語を、表示名・姓・名・メールのどれかに当てる(OR)。残りの語は、結果に対して memberMatchesTerms で絞る
-    (Graph の $search は、括弧でのグループ化がはっきりしないため、ANDは画面側で行う) */
-function memberSearchExpr(term) {
-  return ['displayName', 'surname', 'givenName', 'mail'].map(p => `"${p}:${term}"`).join(' OR ');
+/** Graph の $search の式(括弧でのまとめ・AND・OR は、公式ドキュメントで対応が確認できる)。
+    語ごとに、表示名・姓・名・メールのどれかに当てる(OR)。すべての語に当たる人(AND)。
+    表示名だけが語の単位(トークン)の検索で、姓・名・メールは「前方一致」(そのプロパティが語で始まる)。
+    そのため、空白なしの日本語(例: 山田太郎)は、1語だけのとき、姓と名の境目を変えて試す(姓が「山」+名が「田太郎」/姓が「山田」+名が「太郎」…)。 */
+function memberSearchExpr(terms) {
+  const group = t => '(' + ['displayName', 'surname', 'givenName', 'mail'].map(p => `"${p}:${t}"`).join(' OR ') + ')';
+  const parts = terms.map(group);
+  if (terms.length === 1 && [...terms[0]].some(ch => ch.charCodeAt(0) > 127)) { // 日本語などを含む1語
+    const chars = [...terms[0]];
+    for (let k = 1; k < chars.length && k <= 4; k++) parts.push(`("surname:${chars.slice(0, k).join('')}" AND "givenName:${chars.slice(k).join('')}")`);
+    return '(' + parts.join(' OR ') + ')';
+  }
+  return parts.join(' AND ');
 }
-/** Graph のユーザー1件が、すべての語に当たるか(表示名・姓・名・「姓名」・メールの、どこかに含まれる。大文字小文字は区別しない) */
+/** Graph のユーザー1件が、すべての語に当たるか(表示名・姓・名・「姓名」・メールの、どこかに含まれる。大文字小文字は区別しない)。Graph の結果への念押しの絞り込み */
 function memberMatchesTerms(u, terms) {
   const hay = [u.displayName, u.surname, u.givenName, `${u.surname || ''}${u.givenName || ''}`, u.mail, u.userPrincipalName].join(' ').toLowerCase();
   return terms.every(t => hay.includes(t.toLowerCase()));
@@ -189,20 +200,20 @@ async function searchMembers(q) {
   const terms = memberSearchTerms(q);
   if (!terms.length) return [];
   // $search はプロパティ単位でクォートし OR で連結する(Graphの仕様。ConsistencyLevel: eventual が必須)。
-  // 表示名・姓・名・メールのどれかに、最初の語が当たる人を探し、2語目以降は画面側で絞る(「山田 太郎」でも「山田」でも「太郎」でも見つかる)
-  const search = memberSearchExpr(terms[0]);
+  // 表示名・姓・名・メールのどれかに、すべての語が当たる人を探す(「山田 太郎」でも「山田」でも「太郎」でも「山田太郎」でも見つかる)
+  const search = memberSearchExpr(terms);
   // 社内ポータル対象の2ドメイン(yoshimuraichi.com/yumesumika.com)以外のアカウント(他ドメイン・外部ゲスト等)は除外する
   // (ユーザー指示 2026-09-07)。endsWith を使う$filterは advanced query 扱いのため $count=true が必須
   const domainFilter = "(endsWith(mail,'@yoshimuraichi.com') or endsWith(mail,'@yumesumika.com'))";
   const url = 'https://graph.microsoft.com/v1.0/users' +
     `?$search=${encodeURIComponent(search)}&$filter=${encodeURIComponent(domainFilter)}` +
-    `&$count=true&$select=displayName,surname,givenName,mail,userPrincipalName,department,employeeHireDate&$top=${terms.length > 1 ? 25 : 5}`;
-  const res = await fetch(url, {
+    `&$count=true&$select=displayName,surname,givenName,mail,userPrincipalName,department,employeeHireDate&$top=${MEMBER_SEARCH_FETCH}`;
+  const res = await withTimeout(fetch(url, {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' }
-  });
+  }), 8000, 'メンバー検索に時間がかかっています');
   if (!res.ok) throw new Error(`メンバー検索に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
-  return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate) && memberMatchesTerms(u, terms)).slice(0, 5).map(u => ({ // 入社日前の人は出さない。2語目以降にも当たる人だけ
+  return (data.value || []).filter(u => !isBeforeHireDate(u.employeeHireDate) && memberMatchesTerms(u, terms)).slice(0, MEMBER_SEARCH_SHOW).map(u => ({ // 入社日前の人は出さない。すべての語に当たる人だけ
     name: fullNameOf(u.surname, u.givenName, u.displayName) || '(名前未設定)', // 「姓 名」(空なら表示名)。検索は、表示名・姓・名・メールで行う
     dept: u.department || '',
     email: u.mail || u.userPrincipalName || ''
