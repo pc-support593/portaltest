@@ -8,10 +8,11 @@ const { check, done } = makeChecker('jinjer');
 (async () => {
   // 模擬サーバー: /v2/token は常に成功。/data は、mode に応じて 429 を返す
   const log = []; // { path, at }
-  let remain429 = 0, retryAfter = null, mode400 = null; // mode400: 400で返すエラーコード(null=返さない)
+  let remain429 = 0, retryAfter = null, mode400 = null, plain400 = false; // mode400: 400で返すエラーコード(null=返さない)。plain400: JSONでない本文で返す
   const server = http.createServer((req, res) => {
     log.push({ path: req.url, at: Date.now() });
     if (req.url.startsWith('/v2/token')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: { access_token: 'dummy-token' } })); }
+    if (mode400 && plain400 && req.url.startsWith('/v2/employees/attendances')) { res.statusCode = 400; return res.end('Bad Request <html>'); }
     if (mode400 && req.url.startsWith('/v2/employees/attendances')) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ results: 'failure', errors: [{ code: mode400, reason: 'Invalid query parameter.' }] })); }
     if (remain429 > 0) {
       remain429--;
@@ -94,12 +95,20 @@ const { check, done } = makeChecker('jinjer');
     mode400 = 'E400QP0017';
     let e400 = null; try { await client.authedFetch('/v2/employees/attendances?month=2026-11&page=1'); } catch (e) { e400 = e; }
     check('400のときは、エラーコードだけを取り出す(本文は持たない)', !!e400 && e400.status === 400 && e400.code === 'E400QP0017' && !String(e400.message).includes('Invalid'), e400 && e400.message);
-    mem.exec('DELETE FROM attendance_today');
-    ins.run('2026-10-31', '9', 'z@x.com', 'Z', '09:00', '', ''); // 前日の行が消えないことではなく、取り込み失敗でも今日の行に触らないことの確認用
+    mem.exec('DELETE FROM attendance_today; DELETE FROM attendance_sync');
+    const todayJst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // 日本時間の今日(sync が対象にする日)
+    ins.run(todayJst, '9', 'z@x.com', 'Z', '09:00', '', '');
+    mem.prepare('INSERT INTO attendance_sync (id, target_date, ok, message, run_at, ok_date) VALUES (1, ?, 1, ?, ?, ?)').run(todayJst, '', 'earlier', todayJst); // 事前に成功していた記録
     const w = await att.sync(mem);
     check('月の切り替え待ち: 取り込みは失敗扱い(ok=false)で、切り替え待ちの文を返す', w.ok === false && w.message === 'jinjerの月の切り替え待ちです。9時以降に更新されます', JSON.stringify(w));
     const gw = att.getToday(mem, new Date());
     check('月の切り替え待ち: 画面用の状態に waiting=true と文が入る', gw.sync && gw.sync.ok === false && gw.sync.waiting === true && gw.sync.message === w.message, JSON.stringify(gw.sync));
+    const kept = mem.prepare('SELECT COUNT(*) AS n FROM attendance_today WHERE date = ?').get(todayJst).n;
+    const okDate = mem.prepare('SELECT ok_date FROM attendance_sync WHERE id = 1').get().ok_date;
+    check('月の切り替え待ちでも、取り込み済みの今日の行と、前回成功した日(ok_date)は残る', kept === 1 && okDate === todayJst, `kept=${kept} ok_date=${okDate}`);
+    plain400 = true; let ep = null; try { await client.authedFetch('/v2/employees/attendances?month=2026-11&page=1'); } catch (e) { ep = e; }
+    check('JSONでない400の本文でも、通常の400エラーになる(コードなし・例外で落ちない)', !!ep && ep.status === 400 && ep.code === undefined, ep && ep.message);
+    plain400 = false;
     mode400 = 'E400QP9999';
     const w2 = await att.sync(mem);
     const gw2 = att.getToday(mem, new Date());

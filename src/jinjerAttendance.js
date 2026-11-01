@@ -19,6 +19,7 @@ const EMP_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 // jinjerは「今月」をUTCで判定するため、日本時間の毎月1日 9:00 より前は、新しい月が「未来」として400(E400QP0017)で拒否される(2026-11-01に確認)。
 // これは失敗ではなく切り替え待ちなので、画面にはエラーではなく、この文を出す(2026-11-01・ユーザー依頼)
 const MONTH_WAIT_CODE = 'E400QP0017';
+// 注意: この文言は、画面の「切り替え待ち」の判定(getToday の waiting)にも使う(DBに種類の列を持たないため)。文言を変えると、変更前に保存された行は waiting=false になり、赤い失敗表示に戻る(その月の切り替え待ちの間だけ)
 const MONTH_WAIT_MESSAGE = 'jinjerの月の切り替え待ちです。9時以降に更新されます';
 
 const empCache = new Map(); // employee_id → { email, name, at }
