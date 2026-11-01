@@ -47,11 +47,12 @@ function render(data) {
   if (!data.configured) status = 'jinjerのAPIキーが未設定のため、取り込みは行われていません(サーバーの設定が必要です)。';
   else if (!st) status = 'まだ取り込みが実行されていません。「最新の情報に更新」を押してください。';
   else if (st.ok) status = `最終取り込み: ${formatTime(st.runAt)}`;
+  else if (st.waiting) status = st.message; // jinjerの月の切り替え待ち(失敗ではない。毎月1日の9時前)
   else status = `最終取り込みに失敗しました(${formatTime(st.runAt)}): ${st.message || '原因不明'}` +
     (st.lastSuccessDate === data.date ? '。表示は本日の前回成功分です。' : '。表示が最新でない可能性があります。');
   const statusEl = el('dayoff-status');
   statusEl.textContent = status;
-  statusEl.style.color = (st && !st.ok) || !data.configured ? '#c05a5a' : '#6b7d8f';
+  statusEl.style.color = (st && !st.ok && !st.waiting) || !data.configured ? '#c05a5a' : '#6b7d8f';
 
   const list = el('dayoff-list');
   // 朝6:00前や取り込み失敗が続いたときに「お休みなし」と誤解させない(本日分が未取込なら0件表示にしない)

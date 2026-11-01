@@ -59,6 +59,11 @@ async function jinjerFetch(path, { headers = {}, signal } = {}) {
     // 応答本文にはキー等を含めない(ステータスのみ記録)
     const err = new Error(`jinjer APIエラー (HTTP ${res.status}) ${path.split('?')[0]}`);
     err.status = res.status;
+    if (res.status === 400) { // エラーコード(例: E400QP0017=月が未来)だけを取り出す。本文そのものは記録しない
+      const b = await res.json().catch(() => null);
+      const code = b && Array.isArray(b.errors) && b.errors[0] && b.errors[0].code;
+      if (typeof code === 'string') err.code = code.slice(0, 20);
+    }
     if (res.status === 429) {
       const raw = res.headers.get('Retry-After'); // 無いときは null(Number(null) は 0 になるため、先に有無を見る)
       const ra = raw == null || raw === '' ? NaN : Number(raw);

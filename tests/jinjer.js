@@ -8,10 +8,11 @@ const { check, done } = makeChecker('jinjer');
 (async () => {
   // 模擬サーバー: /v2/token は常に成功。/data は、mode に応じて 429 を返す
   const log = []; // { path, at }
-  let remain429 = 0, retryAfter = null;
+  let remain429 = 0, retryAfter = null, mode400 = null; // mode400: 400で返すエラーコード(null=返さない)
   const server = http.createServer((req, res) => {
     log.push({ path: req.url, at: Date.now() });
     if (req.url.startsWith('/v2/token')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: { access_token: 'dummy-token' } })); }
+    if (mode400 && req.url.startsWith('/v2/employees/attendances')) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ results: 'failure', errors: [{ code: mode400, reason: 'Invalid query parameter.' }] })); }
     if (remain429 > 0) {
       remain429--;
       res.statusCode = 429;
@@ -89,6 +90,21 @@ const { check, done } = makeChecker('jinjer');
     check('17:31になれば、取り込みを待たずに退勤済みで返す', g2.items.find(i => i.name === 'A').left_at === '17:30');
     check('isFutureTime: 読めない値・空は未来扱いしない', att.isFutureTime('', { hour: 13, minute: 45 }) === false && att.isFutureTime('abc', { hour: 13, minute: 45 }) === false && att.isFutureTime('25:00', { hour: 13, minute: 45 }) === false && att.isFutureTime('17:75', { hour: 13, minute: 45 }) === false);
     check('他の日の行は出さない(翌日の日付では空)', att.getToday(mem, new Date('2026-10-20T04:45:00Z')).items.length === 0);
+    // 7) 月の切り替え待ち(2026-11-01): jinjerが「月が未来」(E400QP0017)で400を返したら、失敗ではなく切り替え待ちとして記録・表示する
+    mode400 = 'E400QP0017';
+    let e400 = null; try { await client.authedFetch('/v2/employees/attendances?month=2026-11&page=1'); } catch (e) { e400 = e; }
+    check('400のときは、エラーコードだけを取り出す(本文は持たない)', !!e400 && e400.status === 400 && e400.code === 'E400QP0017' && !String(e400.message).includes('Invalid'), e400 && e400.message);
+    mem.exec('DELETE FROM attendance_today');
+    ins.run('2026-10-31', '9', 'z@x.com', 'Z', '09:00', '', ''); // 前日の行が消えないことではなく、取り込み失敗でも今日の行に触らないことの確認用
+    const w = await att.sync(mem);
+    check('月の切り替え待ち: 取り込みは失敗扱い(ok=false)で、切り替え待ちの文を返す', w.ok === false && w.message === 'jinjerの月の切り替え待ちです。9時以降に更新されます', JSON.stringify(w));
+    const gw = att.getToday(mem, new Date());
+    check('月の切り替え待ち: 画面用の状態に waiting=true と文が入る', gw.sync && gw.sync.ok === false && gw.sync.waiting === true && gw.sync.message === w.message, JSON.stringify(gw.sync));
+    mode400 = 'E400QP9999';
+    const w2 = await att.sync(mem);
+    const gw2 = att.getToday(mem, new Date());
+    check('ほかの400は、切り替え待ちにしない(エラーとして出す。waiting=false)', w2.ok === false && w2.message.includes('HTTP 400') && gw2.sync.waiting === false, JSON.stringify(w2));
+    mode400 = null;
   } finally {
     console.warn = warn;
     server.close();

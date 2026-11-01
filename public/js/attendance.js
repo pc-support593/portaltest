@@ -126,13 +126,14 @@ function render(data) {
   if (!data.configured) status = 'jinjerのAPIキーが未設定のため、取り込みは行われていません(サーバーの設定が必要です)。';
   else if (!st) status = 'まだ取り込みが実行されていません(サーバーが10分おきに自動で取り込みます。しばらくしてから開き直してください)。';
   else if (st.ok) status = `最終取り込み: ${formatTime(st.runAt)}`;
+  else if (st.waiting) status = st.message; // jinjerの月の切り替え待ち(失敗ではない。毎月1日の9時前)
   else status = `最終取り込みに失敗しました(${formatTime(st.runAt)}): ${st.message || '原因不明'}` +
     (st.lastSuccessDate === data.date ? '。表示は本日の前回成功分です。' : '。表示が最新でない可能性があります。');
   const orgNotice = orgFailed ? '部門情報を取得できなかったため、部門分けせずに表示しています。'
     : (org && [...org.failedLeft, ...org.failedRight].length) ? `次のグループを取得できませんでした(該当する方が「その他」に出ている可能性があります): ${[...org.failedLeft, ...org.failedRight].join('、')}` : '';
   const statusEl = el('att-status');
   statusEl.textContent = [status, orgNotice].filter(Boolean).join(' ');
-  statusEl.style.color = (st && !st.ok) || !data.configured || orgNotice ? '#c05a5a' : '#6b7d8f';
+  statusEl.style.color = (st && !st.ok && !st.waiting) || !data.configured || orgNotice ? '#c05a5a' : '#6b7d8f';
 
   const loaded = st && st.lastSuccessDate === data.date;
   const working = data.items.filter(i => !i.left_at).length;

@@ -16,6 +16,11 @@ const AUTO_INTERVAL_MS = 10 * 60 * 1000; // 自動取り込みの間隔(2026-10-
 const AUTO_START_HOUR_JST = 5;       // この時刻より前は自動取り込みしない(前日分の削除だけ行う)
 const EMP_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
+// jinjerは「今月」をUTCで判定するため、日本時間の毎月1日 9:00 より前は、新しい月が「未来」として400(E400QP0017)で拒否される(2026-11-01に確認)。
+// これは失敗ではなく切り替え待ちなので、画面にはエラーではなく、この文を出す(2026-11-01・ユーザー依頼)
+const MONTH_WAIT_CODE = 'E400QP0017';
+const MONTH_WAIT_MESSAGE = 'jinjerの月の切り替え待ちです。9時以降に更新されます';
+
 const empCache = new Map(); // employee_id → { email, name, at }
 let running = false;
 
@@ -144,8 +149,13 @@ async function sync(db) {
     }
     result = { ok: true, message: '', count: found.length };
   } catch (e) {
-    console.error('jinjer出勤状況の取り込みに失敗しました:', e.message || e);
-    result = { ok: false, message: e.name === 'TimeoutError' ? 'jinjerへの接続がタイムアウトしました' : (e.message || '取り込みに失敗しました') };
+    if (e && e.status === 400 && e.code === MONTH_WAIT_CODE) {
+      console.warn('jinjer: 月の切り替え待ちのため、取り込みを見送りました(日本時間の9時以降に取得できます)');
+      result = { ok: false, message: MONTH_WAIT_MESSAGE };
+    } else {
+      console.error('jinjer出勤状況の取り込みに失敗しました:', e.message || e);
+      result = { ok: false, message: e.name === 'TimeoutError' ? 'jinjerへの接続がタイムアウトしました' : (e.message || '取り込みに失敗しました') };
+    }
   } finally {
     running = false;
   }
@@ -203,7 +213,7 @@ function getToday(db, now = new Date()) {
     date,
     items,
     configured: isConfigured(),
-    sync: st ? { ok: !!st.ok, message: st.message, runAt: st.run_at, lastSuccessDate: st.ok_date } : null
+    sync: st ? { ok: !!st.ok, waiting: !st.ok && st.message === MONTH_WAIT_MESSAGE, message: st.message, runAt: st.run_at, lastSuccessDate: st.ok_date } : null
   };
 }
 
