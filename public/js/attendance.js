@@ -10,6 +10,7 @@
 
 const el = id => document.getElementById(id);
 const SHOW_LEFT_KEY = 'attendance.showLeft';
+const SHOW_OFFS_KEY = 'attendance.showOffs';
 let lastSignature = '';
 let lastData = null;
 let loadSeq = 0; // 手動更新と自動更新が重なったとき、古い応答で新しい表示を上書きしないための番号
@@ -39,6 +40,35 @@ function setShowLeft(v) {
   try { localStorage.setItem(SHOW_LEFT_KEY, String(v)); } catch { /* 保存できなくても動作に影響しない */ }
 }
 
+function getShowOffs() {
+  try { return localStorage.getItem(SHOW_OFFS_KEY) !== 'false'; } catch { return true; }
+}
+function setShowOffs(v) {
+  try { localStorage.setItem(SHOW_OFFS_KEY, String(v)); } catch { /* 保存できなくても動作に影響しない */ }
+}
+
+/** 出勤の打刻のデータ(items)に、今日の休み(offs。休暇・休日。2026-11-02・ユーザー依頼)を合わせた一覧を作る(純粋な関数)。
+    ・出勤の打刻がある人の「休み」(全日の休暇・休日)は出さない(出勤が優先)。半休・時間休は、出勤の行に休みの種類(offLabel)を付ける
+    ・出勤の打刻がない人の休みは、休みだけの行(off: true)として足す
+    ・勤務予定が無い日(kind が holiday)は、部門(deptEmails)に入っている人だけ出す(退職者などが「その他」に並ばないように)
+    戻り値: 新しい配列(元の配列は変えない)。 */
+function mergeOffs(items, offs, deptEmails) {
+  const out = items.map(i => ({ ...i }));
+  const byEmail = new Map();
+  out.forEach(i => { const e = (i.email || '').toLowerCase(); if (e) byEmail.set(e, i); });
+  for (const o of offs || []) {
+    const email = (o.email || '').toLowerCase();
+    const stamped = email ? byEmail.get(email) : null;
+    if (stamped) {
+      if (o.kind === 'leave' && o.label !== '休み') stamped.offLabel = o.label; // 半休・時間休
+      continue;
+    }
+    if (o.kind === 'holiday' && !(email && deptEmails && deptEmails.has(email))) continue;
+    out.push({ email: o.email || '', name: o.name || '', attended: '', left_at: '', off: true, offLabel: o.label, pending: o.status === 'pending' });
+  }
+  return out;
+}
+
 /** 社員名簿と共用の部門情報を取得する(Entraのときだけ)。同時に1回だけ・10分に1回まで。失敗しても一覧は止めない */
 function ensureOrg() {
   if (Auth.mode !== 'entra') return Promise.resolve();
@@ -59,16 +89,20 @@ function nameOf(it) {
 
 function rowHtml(it, name) {
   const left = !!it.left_at;
-  const nameColor = left ? '#9aa7b4' : '#1c2b3a';
-  const avatarBg = left ? '#c3ccd6' : '#4a7fc0';
-  const status = left
-    ? `<span style="font-size:12px;color:#9aa7b4;white-space:nowrap">退勤 ${esc(it.left_at)}</span>`
-    : `<span style="font-size:12px;font-weight:700;color:#2e7d4f;white-space:nowrap">出勤中</span>`;
+  const off = !!it.off; // 休みだけの行(出勤の打刻がない)
+  const nameColor = left || off ? '#9aa7b4' : '#1c2b3a';
+  const avatarBg = left || off ? '#c3ccd6' : '#4a7fc0';
+  const offTag = it.offLabel && !off ? ` <span style="font-size:11px;font-weight:700;color:#b26a00;white-space:nowrap">${esc(it.offLabel)}</span>` : ''; // 出勤の行に付く、半休・時間休
+  const status = off
+    ? `<span style="font-size:12px;font-weight:700;color:#b26a00;white-space:nowrap">${esc(it.offLabel || '休み')}</span>${it.pending ? ' <span style="font-size:10px;font-weight:700;color:#4a3800;background:#f5b301;border-radius:4px;padding:1px 6px;white-space:nowrap">申請中</span>' : ''}`
+    : left
+      ? `<span style="font-size:12px;color:#9aa7b4;white-space:nowrap">退勤 ${esc(it.left_at)}</span>${offTag}`
+      : `<span style="font-size:12px;font-weight:700;color:#2e7d4f;white-space:nowrap">出勤中</span>${offTag}`;
   return `
   <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #f2f5f9">
     <div style="width:30px;height:30px;border-radius:50%;background:${avatarBg};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc([...name][0] || '')}</div>
     <span style="font-size:13px;font-weight:700;color:${nameColor};flex:1;min-width:0">${esc(name)}</span>
-    <span style="font-size:11px;color:#8a99a8;white-space:nowrap">${esc(it.attended)}〜</span>
+    ${off ? '' : `<span style="font-size:11px;color:#8a99a8;white-space:nowrap">${esc(it.attended)}〜</span>`}
     ${status}
   </div>`;
 }
@@ -115,7 +149,8 @@ function groupsHtml(groups) {
 function render(data) {
   lastData = data;
   const showLeft = el('att-show-left').checked;
-  const sig = JSON.stringify([data, showLeft, org, orgFailed]);
+  const showOffs = el('att-show-offs').checked;
+  const sig = JSON.stringify([data, showLeft, showOffs, org, orgFailed]);
   if (sig === lastSignature) return; // 差分がなければ何もしない(自動更新時のちらつき防止)
   lastSignature = sig;
 
@@ -129,26 +164,33 @@ function render(data) {
   else if (st.waiting) status = st.message; // jinjerの月の切り替え待ち(失敗ではない。毎月1日の9時前)
   else status = `最終取り込みに失敗しました(${formatTime(st.runAt)}): ${st.message || '原因不明'}` +
     (st.lastSuccessDate === data.date ? '。表示は本日の前回成功分です。' : '。表示が最新でない可能性があります。');
+  // 休みの情報の取り込みが失敗したときは、休みが出ていない可能性を知らせる(月の切り替え待ちは、出勤状況側の文と同じなので重ねない)
+  const os = data.offsSync;
+  const offsFailed = !!(os && !os.ok && !os.waiting);
+  if (offsFailed) status += ` 休みの情報を取得できませんでした(${os.message || '原因不明'})。休みの表示が不足している可能性があります。`;
   const orgNotice = orgFailed ? '部門情報を取得できなかったため、部門分けせずに表示しています。'
     : (org && [...org.failedLeft, ...org.failedRight].length) ? `次のグループを取得できませんでした(該当する方が「その他」に出ている可能性があります): ${[...org.failedLeft, ...org.failedRight].join('、')}` : '';
   const statusEl = el('att-status');
   statusEl.textContent = [status, orgNotice].filter(Boolean).join(' ');
-  statusEl.style.color = (st && !st.ok && !st.waiting) || !data.configured || orgNotice ? '#c05a5a' : '#6b7d8f';
+  statusEl.style.color = (st && !st.ok && !st.waiting) || offsFailed || !data.configured || orgNotice ? '#c05a5a' : '#6b7d8f';
 
   const loaded = st && st.lastSuccessDate === data.date;
+  const deptEmails = new Set([...((org && org.left) || []), ...((org && org.right) || [])].flatMap(g => g.members.map(m => (m.email || '').toLowerCase())).filter(Boolean));
+  const merged = mergeOffs(data.items, data.offs, deptEmails);
   const working = data.items.filter(i => !i.left_at).length;
   const left = data.items.length - working;
-  el('att-summary').textContent = data.items.length || loaded ? `出勤中 ${working}名 / 退勤済み ${left}名` : '';
+  const offCount = merged.filter(i => i.off).length;
+  el('att-summary').textContent = data.items.length || loaded ? `出勤中 ${working}名 / 退勤済み ${left}名${offCount ? ` / 休み ${offCount}名` : ''}` : '';
 
   // 本日分がまだ取り込まれていない(日付が変わった直後・取り込み失敗が続いたとき)は「出勤者なし」と誤解させない
-  if (!data.items.length && !loaded) {
+  if (!merged.length && !loaded) {
     const msg = '<p style="margin:0;padding:18px 20px;font-size:13px;color:#8a99a8">本日分はまだ取り込まれていません(サーバーが10分おきに自動で取り込みます。しばらくしてから「最新の情報に更新」を押してください)</p>';
     el('att-left').innerHTML = msg;
     el('att-right').innerHTML = '';
     return;
   }
 
-  const visible = data.items.filter(i => showLeft || !i.left_at);
+  const visible = merged.filter(i => (i.off ? showOffs : (showLeft || !i.left_at)));
   const isYume = i => (i.email || '').toLowerCase().endsWith('@yumesumika.com');
   // 列の振り分けは社員名簿と同じ(個別指定 PERSON_OVERRIDES があればそれを優先)。部門情報がなければメールアドレスのドメインで分ける
   const person = i => PERSON_OVERRIDES[(i.email || '').toLowerCase()];
@@ -206,6 +248,8 @@ async function reloadFromServer() {
     await Auth.init();
     el('att-show-left').checked = getShowLeft();
     el('att-show-left').addEventListener('change', () => { setShowLeft(el('att-show-left').checked); if (lastData) render(lastData); });
+    el('att-show-offs').checked = getShowOffs();
+    el('att-show-offs').addEventListener('change', () => { setShowOffs(el('att-show-offs').checked); if (lastData) render(lastData); });
     el('att-sync').addEventListener('click', reloadFromServer);
     setInterval(() => { if (!document.hidden) load({ silent: true }); }, 2 * 60 * 1000); // 初回表示の成否に関わらず自動更新を登録する
     await load();

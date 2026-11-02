@@ -218,4 +218,4 @@ function getToday(db, now = new Date()) {
   };
 }
 
-module.exports = { sync, startScheduler, getToday, judge, isFutureTime };
+module.exports = { sync, startScheduler, getToday, judge, isFutureTime, resolveEmployees, MONTH_WAIT_CODE, MONTH_WAIT_MESSAGE };

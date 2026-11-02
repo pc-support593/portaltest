@@ -177,6 +177,28 @@ function migrate(db) {
       synced_at     TEXT NOT NULL    -- 取得日時(ISO 8601, UTC)
     );
     CREATE INDEX IF NOT EXISTS idx_day_offs_date ON day_offs(date);
+    -- jinjerの休暇・勤務予定から作る「本日の休み」(2026-11-02・ユーザー依頼。出勤状況の画面に出す)。今日の分だけ保持し、取り込みのたびに入れ替える(履歴は持たない)
+    -- 休暇の理由・休暇名(年次有休など)は保存しない(氏名のみ)。kind: 'leave'(休暇)| 'holiday'(勤務予定が無い日=所定休日・祝日)。label: 画面に出す文字(休み/午前休/午後休/時間休…)
+    CREATE TABLE IF NOT EXISTS attendance_offs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      date        TEXT NOT NULL,   -- ISO 8601 (YYYY-MM-DD)。対象日(日本時間)
+      employee_id TEXT NOT NULL,   -- jinjerの社員番号(画面には返さない)
+      email       TEXT NOT NULL DEFAULT '', -- 社用メールアドレス(小文字)。MS365との紐づけキー。jinjerに未登録なら空
+      name        TEXT NOT NULL DEFAULT '', -- jinjerの職場氏名(姓 名)。紐づけできない場合の表示用
+      kind        TEXT NOT NULL,   -- 'leave' | 'holiday'
+      label       TEXT NOT NULL,   -- 休み / 午前休 / 午後休 / 半休 / 時間休 HH:MM-HH:MM
+      status      TEXT NOT NULL,   -- 'approved'(承認・休日) | 'pending'(休暇の申請中)。否認は保存しない
+      synced_at   TEXT NOT NULL    -- 取得日時(ISO 8601, UTC)
+    );
+    CREATE INDEX IF NOT EXISTS idx_attendance_offs_date ON attendance_offs(date);
+    CREATE TABLE IF NOT EXISTS attendance_offs_sync (
+      id          INTEGER PRIMARY KEY CHECK (id = 1),
+      target_date TEXT NOT NULL DEFAULT '',
+      ok          INTEGER NOT NULL DEFAULT 0,
+      message     TEXT NOT NULL DEFAULT '',
+      run_at      TEXT NOT NULL DEFAULT '',
+      ok_date     TEXT NOT NULL DEFAULT ''
+    );
     -- jinjerの打刻データから作る「本日の出勤状況」(2026-10-17)。当日分だけ保持し、毎日リセット(前日以前は削除。履歴は持たない)
     CREATE TABLE IF NOT EXISTS attendance_today (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

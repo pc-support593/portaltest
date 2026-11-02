@@ -8,12 +8,16 @@ const { check, done } = makeChecker('jinjer');
 (async () => {
   // 模擬サーバー: /v2/token は常に成功。/data は、mode に応じて 429 を返す
   const log = []; // { path, at }
-  let remain429 = 0, retryAfter = null, mode400 = null, plain400 = false; // mode400: 400で返すエラーコード(null=返さない)。plain400: JSONでない本文で返す
+  let remain429 = 0, retryAfter = null, mode400 = null, plain400 = false, fixtures = null; // fixtures: { パスの先頭: { total, data } } を返す(休み取り込みの確認用)。 // mode400: 400で返すエラーコード(null=返さない)。plain400: JSONでない本文で返す
   const server = http.createServer((req, res) => {
     log.push({ path: req.url, at: Date.now() });
     if (req.url.startsWith('/v2/token')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: { access_token: 'dummy-token' } })); }
-    if (mode400 && plain400 && req.url.startsWith('/v2/employees/attendances')) { res.statusCode = 400; return res.end('Bad Request <html>'); }
-    if (mode400 && req.url.startsWith('/v2/employees/attendances')) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ results: 'failure', errors: [{ code: mode400, reason: 'Invalid query parameter.' }] })); }
+    if (fixtures) {
+      const key = Object.keys(fixtures).find(k => req.url.startsWith(k));
+      if (key) { res.setHeader('content-type', 'application/json'); res.setHeader('X-Item-Counts', String(fixtures[key].total)); return res.end(JSON.stringify({ data: /page=([2-9]|[1-9][0-9])/.test(req.url) ? [] : fixtures[key].data })); }
+    }
+    if (mode400 && plain400 && req.url.startsWith('/v2/employees/')) { res.statusCode = 400; return res.end('Bad Request <html>'); }
+    if (mode400 && req.url.startsWith('/v2/employees/')) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ results: 'failure', errors: [{ code: mode400, reason: 'Invalid query parameter.' }] })); }
     if (remain429 > 0) {
       remain429--;
       res.statusCode = 429;
@@ -114,6 +118,55 @@ const { check, done } = makeChecker('jinjer');
     const gw2 = att.getToday(mem, new Date());
     check('ほかの400は、切り替え待ちにしない(エラーとして出す。waiting=false)', w2.ok === false && w2.message.includes('HTTP 400') && gw2.sync.waiting === false, JSON.stringify(w2));
     mode400 = null;
+
+    // 8) 休みの取り込み(2026-11-02): 休暇(requested-day-offs)と勤務予定(work-schedules)から、今日の休みを求める
+    const offs = require(path.join(ROOT, 'src', 'jinjerOffs.js'));
+    const today = client.jstNow().date;
+    const other = today.slice(0, 8) + (today.endsWith('-01') ? '02' : '01'); // 今日ではない日付
+    const sched = d => [{ date: d, store: { id: '1', name: 's' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }];
+    const leaveFull = { id: '0', name: '全日' };
+    const leaveAm = { id: '1', name: '半休', start_time: today + ' 09:00:00', end_time: today + ' 13:00:00' };
+    const leaveData = [
+      { employee_id: '10', requested_day_offs: [{ date: today, status: '1', day_off_classification: { name: '年次有休' }, duration_classification: leaveFull }] },       // 承認済みの全日
+      { employee_id: '11', requested_day_offs: [{ date: today, status: '0', day_off_classification: { name: '振休' }, duration_classification: leaveAm }] },             // 申請中の午前半休
+      { employee_id: '12', requested_day_offs: [{ date: today, status: '2', day_off_classification: { name: '年次有休' }, duration_classification: leaveFull }] },       // 否認(出さない)
+      { employee_id: '13', requested_day_offs: [{ date: other, status: '1', day_off_classification: { name: '年次有休' }, duration_classification: leaveFull }] }       // 別の日
+    ];
+    const scheduleData = [
+      { employee_id: '10', work_schedules: sched(other) },                 // 休暇が優先(休日にはしない)
+      { employee_id: '12', work_schedules: sched(other) },                 // 否認された休暇は無視され、今日の行がないので休日
+      { employee_id: '14', work_schedules: sched(today) },                 // 今日の勤務予定あり=出勤予定(出さない)
+      { employee_id: '15', work_schedules: sched(other) },                 // 今日の行なし=休日
+      { employee_id: '16', work_schedules: [] },                           // 月の勤務予定が1行もない(未作成の可能性)=出さない
+      { employee_id: '13', work_schedules: sched(other) }                  // 別の日の休暇のみ+今日の行なし=休日
+    ];
+    const comp = offs.computeOffs(leaveData, scheduleData, today);
+    const cm = Object.fromEntries(comp.map(r => [r.employee_id, r.kind + ':' + r.label + ':' + r.status]));
+    check('休みの判定: 全日=休み・半休=午前休(申請中)。否認は休暇にしない', cm['10'] === 'leave:休み:approved' && cm['11'] === 'leave:午前休:pending' && cm['12'] === 'holiday:休み:approved', JSON.stringify(cm));
+    check('休みの判定: 勤務予定がない日は休日。今日の勤務予定がある人・月の予定が1行もない人は出さない', cm['15'] === 'holiday:休み:approved' && cm['13'] === 'holiday:休み:approved' && !('14' in cm) && !('16' in cm), JSON.stringify(cm));
+    check('休みの判定: 休暇と休日が重なる人は、休暇を優先する', cm['10'].startsWith('leave:') && comp.filter(r => r.employee_id === '10').length === 1);
+    check('休みのラベル: 半休・時間休・全日', offs.offLabelOf('全日') === '休み' && offs.offLabelOf('午後半休') === '午後休' && offs.offLabelOf('半休') === '半休' && offs.offLabelOf('時間休 10:00-12:00') === '時間休 10:00-12:00' && offs.offLabelOf('') === '休み');
+
+    fixtures = {
+      '/v2/employees/requested-day-offs': { total: leaveData.length, data: leaveData },
+      '/v2/employees/work-schedules': { total: scheduleData.length, data: scheduleData },
+      '/v1/employees': { total: 0, data: ['10', '11', '12', '13', '15'].map(id => ({ id, company: { email: 'U' + id + '@X.com', last_name: '姓' + id, first_name: '名' } })) }
+    };
+    mem.exec("CREATE TABLE attendance_offs (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, employee_id TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, label TEXT NOT NULL, status TEXT NOT NULL, synced_at TEXT NOT NULL);" +
+      'CREATE TABLE attendance_offs_sync (id INTEGER PRIMARY KEY CHECK (id = 1), target_date TEXT NOT NULL DEFAULT "", ok INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL DEFAULT "", run_at TEXT NOT NULL DEFAULT "", ok_date TEXT NOT NULL DEFAULT "");');
+    mem.prepare("INSERT INTO attendance_offs (date, employee_id, email, name, kind, label, status, synced_at) VALUES ('2020-01-01', '99', '', 'old', 'leave', '休み', 'approved', '')").run(); // 古い行は取り込みで消える
+    const so = await offs.sync(mem);
+    const go = offs.getToday(mem);
+    const gm = Object.fromEntries(go.offs.map(r => [r.email, r.kind + ':' + r.label + ':' + r.status]));
+    check('休みの取り込み: 成功し、休暇・休日の行を保存する(古い行は消える)。メール・氏名を解決し、メールは小文字', so.ok === true && so.count === 5 && go.offs.length === 5 && gm['u13@x.com'] === 'holiday:休み:approved' && gm['u10@x.com'] === 'leave:休み:approved' && gm['u11@x.com'] === 'leave:午前休:pending' && gm['u12@x.com'] === 'holiday:休み:approved' && gm['u15@x.com'] === 'holiday:休み:approved' && !go.offs.some(r => r.name === 'old'), JSON.stringify(so) + JSON.stringify(gm));
+    check('休みの取り込み: 画面用の状態(offsSync)が入り、社員番号は返さない', go.offsSync && go.offsSync.ok === true && go.offsSync.waiting === false && !JSON.stringify(go.offs).includes('employee_id'));
+    mode400 = null; fixtures = null; mem.exec('DELETE FROM attendance_offs_sync');
+    // 月の切り替え待ち(2026-11-01と同じ)でも例外で落ちず、前回の休みは残る
+    mode400 = 'E400QP0017'; fixtures = { '/v1/employees': { total: 0, data: [] } };
+    const sw = await offs.sync(mem);
+    const gw3 = offs.getToday(mem);
+    check('休みの取り込み: 月の切り替え待ちは、切り替え待ちとして記録し、前回の休みは残す', sw.ok === false && sw.message === 'jinjerの月の切り替え待ちです。9時以降に更新されます' && gw3.offsSync.waiting === true && gw3.offs.length === 5, JSON.stringify(sw));
+    mode400 = null; fixtures = null;
   } finally {
     console.warn = warn;
     server.close();

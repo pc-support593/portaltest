@@ -138,7 +138,7 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('予定: 翌日0時ちょうどに終わる予定は翌日に出さない', s.eventCoversDay(midnight, '2026-10-13') && !s.eventCoversDay(midnight, '2026-10-14'));
 
   // 社員名簿・出勤状況で共用の部門の組み立て(orgData.js)と、出勤状況の部門分け(attendance.js)
-  const o = load(['common.js', 'roomsData.js', 'orgData.js', 'attendance.js'], ['buildGroups', 'splitByCompany', 'buildAttendanceGroups', 'groupsHtml', 'LEFT_GROUP_ORDER']);
+  const o = load(['common.js', 'roomsData.js', 'orgData.js', 'attendance.js'], ['buildGroups', 'splitByCompany', 'buildAttendanceGroups', 'groupsHtml', 'mergeOffs', 'rowHtml', 'LEFT_GROUP_ORDER']);
   const u = (email, name, empType = '', title = '') => ({ name, email, dept: '', title, empType, phone: '' });
   const people = [u('t-zeta@yoshimuraichi.com', 'ゼータ', '3'), u('a-aoki@yoshimuraichi.com', 'アオキ'), u('y-yama@yoshimuraichi.com', 'ヤマ', '2'), u('c-chief@yoshimuraichi.com', '会長さん', '1', '会長')];
   const depts = { 't-zeta@yoshimuraichi.com': ['営業部', '総務部'], 'a-aoki@yoshimuraichi.com': ['営業部'], 'y-yama@yoshimuraichi.com': ['営業部'] };
@@ -167,6 +167,24 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   const ag = o.buildAttendanceGroups(orgLeft, items, { 'd-dd@x.com': 'ディー 四' });
   check('出勤状況: 社員名簿の部門・順で、出勤している人だけ', ag.map(g => g.dept + ':' + g.rows.map(r => r.name).join('/')).join(' | ') === '営業部:アオキ 一 | 総務部:アオキ 一/シー 三 | その他:ディー 四/台帳なし', ag.map(g => g.dept + ':' + g.rows.map(r => r.name).join('/')).join(' | '));
   check('出勤状況: 出勤者のいない部門は出さない', !ag.some(g => g.dept === ''));
+  // 休みの表示(2026-11-02): 出勤の打刻と、休暇・休日(offs)を合わせる
+  const dept = new Set(['a-aoki@x.com', 'h-hol@x.com']);
+  const offsIn = [
+    { email: 'a-aoki@x.com', name: 'A', kind: 'leave', label: '午前休', status: 'approved' },  // 出勤の打刻あり+半休 → 出勤の行に種類を付ける
+    { email: 'c-cc@x.com', name: 'C', kind: 'leave', label: '休み', status: 'approved' },    // 出勤の打刻あり+全日休暇 → 出勤を優先(休みは出さない)
+    { email: 'v-vv@x.com', name: 'V', kind: 'leave', label: '休み', status: 'pending' },     // 打刻なし → 休みだけの行(申請中)
+    { email: 'h-hol@x.com', name: 'H', kind: 'holiday', label: '休み', status: 'approved' }, // 休日・部門に入っている → 出す
+    { email: 'x-out@x.com', name: 'X', kind: 'holiday', label: '休み', status: 'approved' }, // 休日・部門に入っていない → 出さない
+    { email: '', name: 'メールなし休日', kind: 'holiday', label: '休み', status: 'approved' } // 休日・メールなし → 出さない
+  ];
+  const mg2 = o.mergeOffs(items.slice(0, 2), offsIn, dept);
+  const byE = e => mg2.find(i => i.email === e);
+  check('休みの表示: 出勤の打刻がある人の全日休暇・休日は出さない。半休は出勤の行に種類を付ける', mg2.length === 4 && byE('a-aoki@x.com').offLabel === '午前休' && !byE('a-aoki@x.com').off && !mg2.some(i => i.email === 'c-cc@x.com' && i.off), JSON.stringify(mg2.map(i => [i.email, i.off, i.offLabel])));
+  check('休みの表示: 打刻のない休暇は休みだけの行(申請中の印つき)。休日は部門に入る人だけ出す', byE('v-vv@x.com').off === true && byE('v-vv@x.com').pending === true && byE('h-hol@x.com').off === true && !byE('x-out@x.com') && !mg2.some(i => i.name === 'メールなし休日'));
+  check('休みの表示: 元の配列は変えない・休みの情報がなくても動く', !('offLabel' in items[1]) && o.mergeOffs(items, undefined, null).length === items.length && o.mergeOffs(items, [], null).length === items.length);
+  const offHtml = o.rowHtml({ email: 'v-vv@x.com', name: 'V', off: true, offLabel: '休み', pending: true, attended: '', left_at: '' }, 'V<b>');
+  check('休みの表示: 休みの行は「休み」と出し、出勤時刻・出勤中は出さない。氏名はエスケープ', offHtml.includes('>休み<') && offHtml.includes('申請中') && !offHtml.includes('出勤中') && !offHtml.includes('〜') && offHtml.includes('V&lt;b&gt;'));
+  check('休みの表示: 出勤の行に付く半休の種類', o.rowHtml({ email: 'a', name: 'A', attended: '09:00', left_at: '', offLabel: '午前休' }, 'A').includes('午前休') && o.rowHtml({ email: 'a', name: 'A', attended: '09:00', left_at: '' }, 'A').includes('出勤中'));
   check('出勤状況: 手動追加(メールなし)の人は出勤データに出ない', !JSON.stringify(ag).includes('手動'));
   const flat = o.buildAttendanceGroups(null, items, null);
   check('出勤状況: 部門情報がないときは見出しなしの1グループ', flat.length === 1 && flat[0].dept === '' && flat[0].rows.length === 4);

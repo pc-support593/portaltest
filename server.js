@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
 const jinjerAttendance = require('./src/jinjerAttendance');
+const jinjerOffs = require('./src/jinjerOffs');
 const { isConfigured: jinjerConfigured, jstNow } = require('./src/jinjerClient');
 const { extractAttachmentText, normalizeForSearch } = require('./src/textExtract');
 
@@ -1053,7 +1054,7 @@ app.post('/api/day-offs/sync', async (req, res, next) => {
 app.get('/api/attendance', (req, res) => {
   me(req);
   res.set('Cache-Control', 'no-store');
-  res.json(jinjerAttendance.getToday(db));
+  res.json({ ...jinjerAttendance.getToday(db), ...jinjerOffs.getToday(db) }); // 出勤の打刻+今日の休み(休暇・休日。2026-11-02)
 });
 
 // 1件の失敗でプロセスを落とさない(→ E001)
@@ -1070,7 +1071,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
-  if (ATTENDANCE_ENABLED) jinjerAttendance.startScheduler(db);
+  if (ATTENDANCE_ENABLED) { jinjerAttendance.startScheduler(db); jinjerOffs.startScheduler(db); }
   reindexGuideAttachments(); // システム案内の添付で、検索用の文字が未取得のものを順に取り出す(待たずに起動する)
   if (AUTH_MODE === 'dev') {
     console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');
