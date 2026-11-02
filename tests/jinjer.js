@@ -14,7 +14,7 @@ const { check, done } = makeChecker('jinjer');
     if (req.url.startsWith('/v2/token')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: { access_token: 'dummy-token' } })); }
     if (fixtures) {
       const key = Object.keys(fixtures).find(k => req.url.startsWith(k));
-      if (key) { res.setHeader('content-type', 'application/json'); res.setHeader('X-Item-Counts', String(fixtures[key].total)); return res.end(JSON.stringify({ data: /page=([2-9]|[1-9][0-9])/.test(req.url) ? [] : fixtures[key].data })); }
+      if (key) { res.statusCode = fixtures[key].status || 200; res.setHeader('content-type', 'application/json'); res.setHeader('X-Item-Counts', String(fixtures[key].total)); return res.end(JSON.stringify({ data: /page=([2-9]|[1-9][0-9])/.test(req.url) ? [] : fixtures[key].data })); }
     }
     if (mode400 && plain400 && req.url.startsWith('/v2/employees/')) { res.statusCode = 400; return res.end('Bad Request <html>'); }
     if (mode400 && req.url.startsWith('/v2/employees/')) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ results: 'failure', errors: [{ code: mode400, reason: 'Invalid query parameter.' }] })); }
@@ -145,6 +145,16 @@ const { check, done } = makeChecker('jinjer');
     check('休みの判定: 全日=休み・半休=午前休(申請中)。否認は休暇にしない', cm['10'] === 'leave:休み:approved' && cm['11'] === 'leave:午前休:pending' && cm['12'] === 'holiday:休み:approved', JSON.stringify(cm));
     check('休みの判定: 勤務予定がない日は休日。今日の勤務予定がある人・月の予定が1行もない人は出さない', cm['15'] === 'holiday:休み:approved' && cm['13'] === 'holiday:休み:approved' && !('14' in cm) && !('16' in cm), JSON.stringify(cm));
     check('休みの判定: 休暇と休日が重なる人は、休暇を優先する', cm['10'].startsWith('leave:') && comp.filter(r => r.employee_id === '10').length === 1);
+    // 同じ日に複数の休暇があるとき
+    const lv = (id, st, span) => ({ employee_id: id, requested_day_offs: [{ date: today, status: st, day_off_classification: { name: 'x' }, duration_classification: span }] });
+    const pm = { id: '1', name: '半休', start_time: today + ' 14:00:00', end_time: today + ' 18:00:00' };
+    const multi = offs.computeOffs([
+      { employee_id: '20', requested_day_offs: [lv('20', '1', leaveAm).requested_day_offs[0], lv('20', '1', pm).requested_day_offs[0]] },   // 午前休+午後休(承認済み)
+      { employee_id: '21', requested_day_offs: [lv('21', '0', leaveFull).requested_day_offs[0], lv('21', '1', leaveAm).requested_day_offs[0]] }, // 全日(申請中)+午前休(承認済み)
+      { employee_id: '22', requested_day_offs: [lv('22', '1', leaveAm).requested_day_offs[0], lv('22', '0', pm).requested_day_offs[0]] }    // 午前休(承認済み)+午後休(申請中)
+    ], [], today);
+    const mm = Object.fromEntries(multi.map(r => [r.employee_id, r.label + ':' + r.status]));
+    check('休みの判定: 午前休と午後休が両方あれば「休み」(両方承認済みなら承認済み、どちらかが申請中なら申請中)。全日があれば「休み」', mm['20'] === '休み:pending' || mm['20'] === '休み:approved' ? mm['20'] === '休み:approved' && mm['21'] === '休み:pending' && mm['22'] === '休み:pending' : false, JSON.stringify(mm));
     check('休みのラベル: 半休・時間休・全日', offs.offLabelOf('全日') === '休み' && offs.offLabelOf('午後半休') === '午後休' && offs.offLabelOf('半休') === '半休' && offs.offLabelOf('時間休 10:00-12:00') === '時間休 10:00-12:00' && offs.offLabelOf('') === '休み');
 
     fixtures = {
@@ -167,6 +177,21 @@ const { check, done } = makeChecker('jinjer');
     const gw3 = offs.getToday(mem);
     check('休みの取り込み: 月の切り替え待ちは、切り替え待ちとして記録し、前回の休みは残す', sw.ok === false && sw.message === 'jinjerの月の切り替え待ちです。9時以降に更新されます' && gw3.offsSync.waiting === true && gw3.offs.length === 5, JSON.stringify(sw));
     mode400 = null; fixtures = null;
+    // 氏名・メールを解決できなかったときは、取り込みを失敗として扱い、前回の休みを残す(名無しの行で置き換えない)
+    const newLeave = [lv('30', '1', leaveFull)]; // 氏名・メールが未キャッシュの社員(キャッシュにあると、問い合わせが起きないため)
+    fixtures = {
+      '/v2/employees/requested-day-offs': { total: newLeave.length, data: newLeave },
+      '/v2/employees/work-schedules': { total: 0, data: [] },
+      '/v1/employees': { total: 0, data: [], status: 500 }
+    };
+    const beforeNames = JSON.stringify(offs.getToday(mem).offs);
+    const sf = await offs.sync(mem);
+    check('休みの取り込み: 氏名・メールを取得できないときは失敗として扱い、前回の休みは変えない', sf.ok === false && sf.message.includes('社員情報') && JSON.stringify(offs.getToday(mem).offs) === beforeNames, JSON.stringify(sf));
+    // 全件取れなかったとき(総数より少ない)も失敗とし、前回の休みを残す
+    fixtures = { '/v2/employees/requested-day-offs': { total: 99, data: leaveData }, '/v2/employees/work-schedules': { total: scheduleData.length, data: scheduleData } };
+    const sp = await offs.sync(mem);
+    check('休みの取り込み: 総数より少ないときは、部分取得を成功扱いにせず、前回の休みは変えない', sp.ok === false && sp.message.includes('全件') && JSON.stringify(offs.getToday(mem).offs) === beforeNames, JSON.stringify(sp));
+    fixtures = null;
   } finally {
     console.warn = warn;
     server.close();

@@ -57,17 +57,24 @@ function computeOffs(leaveData, scheduleData, targetDate) {
   const out = new Map(); // employee_id → row(休暇を優先)
   for (const emp of leaveData || []) {
     const id = String(emp.employee_id);
+    const list = [];
     for (const off of emp.requested_day_offs || []) {
       if (!off || off.date !== targetDate) continue;
       const status = statusOf(off.status);
       if (!status) continue; // 否認は出さない
-      const label = offLabelOf(spanLabel(off.duration_classification));
-      const prev = out.get(id);
-      // 同じ人に複数あるときは、全日(「休み」)を優先し、次に承認済みを優先する
-      if (!prev || (prev.label !== '休み' && label === '休み') || (prev.status === 'pending' && status === 'approved' && prev.label === label)) {
-        out.set(id, { employee_id: id, kind: 'leave', label, status });
-      }
+      list.push({ label: offLabelOf(spanLabel(off.duration_classification)), status });
     }
+    if (!list.length) continue;
+    // 同じ日に複数あるときの決め方: ①全日(「休み」)があれば「休み」(承認済みの全日があれば承認済み、なければ申請中)
+    // ②午前休と午後休が両方あれば、実質1日休みなので「休み」(両方とも承認済みなら承認済み、どちらかが申請中なら申請中)
+    // ③それ以外は、承認済みを優先して、先頭の1件
+    const full = list.filter(r => r.label === '休み');
+    const am = list.filter(r => r.label === '午前休'), pm = list.filter(r => r.label === '午後休');
+    let pick;
+    if (full.length) pick = { label: '休み', status: full.some(r => r.status === 'approved') ? 'approved' : 'pending' };
+    else if (am.length && pm.length) pick = { label: '休み', status: am.some(r => r.status === 'approved') && pm.some(r => r.status === 'approved') ? 'approved' : 'pending' };
+    else pick = list.find(r => r.status === 'approved') || list[0];
+    out.set(id, { employee_id: id, kind: 'leave', label: pick.label, status: pick.status });
   }
   for (const emp of scheduleData || []) {
     const id = String(emp.employee_id);
@@ -94,11 +101,11 @@ async function sync(db) {
     const leaveData = await fetchAllPages('/v2/employees/requested-day-offs', month, deadline, signal);
     const scheduleData = await fetchAllPages('/v2/employees/work-schedules', month, deadline, signal);
     const rows = computeOffs(leaveData, scheduleData, targetDate);
-    // 氏名・メールの解決に失敗しても、取得済みの休みは保存する(氏名不明で表示。次回の取り込みで再解決される)
+    // 氏名・メールが解決できないと、メールなしの行(休日は画面で出なくなる・休暇は氏名不明になる)で前回の良いデータを置き換えてしまうため、失敗として扱う(前回の休みを残す)
     let emps = new Map();
     if (rows.length) {
       try { emps = await resolveEmployees(rows.map(r => r.employee_id), signal); }
-      catch (e) { console.error('jinjer社員情報(氏名・メール)の取得に失敗しました:', e.message || e); }
+      catch (e) { console.error('jinjer社員情報(氏名・メール)の取得に失敗しました:', e.message || e); throw new Error('jinjerの社員情報(氏名・メール)を取得できませんでした'); }
     }
     const syncedAt = new Date().toISOString();
     const ins = db.prepare(

@@ -168,7 +168,9 @@ function render(data) {
   const os = data.offsSync;
   const offsFailed = !!(os && !os.ok && !os.waiting);
   if (offsFailed) status += ` 休みの情報を取得できませんでした(${os.message || '原因不明'})。休みの表示が不足している可能性があります。`;
-  const orgNotice = orgFailed ? '部門情報を取得できなかったため、部門分けせずに表示しています。'
+  // 休みの情報が、本日分まだ取り込まれていない(5時前・再起動後・一度も取り込まれていない)ときも、「休みなし」と誤解させない
+  else if (data.configured && !(os && os.waiting) && !(os && os.ok && os.lastSuccessDate === data.date)) status += ' 休みの情報は、まだ本日分を取り込んでいません(サーバーが30分おきに自動で取り込みます)。';
+  const orgNotice = orgFailed ? '部門情報を取得できなかったため、部門分けせずに表示しています(休日の方の表示には部門情報が必要なため、休日の表示は出ません)。'
     : (org && [...org.failedLeft, ...org.failedRight].length) ? `次のグループを取得できませんでした(該当する方が「その他」に出ている可能性があります): ${[...org.failedLeft, ...org.failedRight].join('、')}` : '';
   const statusEl = el('att-status');
   statusEl.textContent = [status, orgNotice].filter(Boolean).join(' ');
@@ -179,7 +181,7 @@ function render(data) {
   const merged = mergeOffs(data.items, data.offs, deptEmails);
   const working = data.items.filter(i => !i.left_at).length;
   const left = data.items.length - working;
-  const offCount = merged.filter(i => i.off).length;
+  const offCount = merged.filter(i => i.off && i.offLabel === '休み').length; // 全日の休みだけ数える(午前休・午後休・時間休の人は、一部は出勤するため)
   el('att-summary').textContent = data.items.length || loaded ? `出勤中 ${working}名 / 退勤済み ${left}名${offCount ? ` / 休み ${offCount}名` : ''}` : '';
 
   // 本日分がまだ取り込まれていない(日付が変わった直後・取り込み失敗が続いたとき)は「出勤者なし」と誤解させない
