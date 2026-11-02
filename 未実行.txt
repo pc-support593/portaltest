@@ -1669,3 +1669,7 @@
 
    本番反映の準備(2026-11-02・ユーザー依頼。203番): /check Portal リリース(条件付きOK。記録は、反映後に保存)→スナップショット portal-before-offs-20261102 を取得。本番サーバーのキーで事前確認したところ、/v2/employees/work-schedules は HTTP 200(137人)だが、**/v2/employees/requested-day-offs は HTTP 403**(このキーに休暇APIの権限が無い)。テスト用キー(Render・ローカル)では両方とも200。
    判断: このまま本番に反映すると、休みの取り込みが毎回失敗し、出勤状況の画面の全員に赤字の通知が出続ける(出勤の打刻の表示は壊れない)ため、**本番への反映は保留**。本番用APIキーに、休暇(requested-day-offs)の権限を付けてもらってから反映する。コードの変更なし・本番への書き込みなし(スナップショットの取得のみ)。
+
+   本番反映(2026-11-02・ユーザー依頼。203番。休暇APIの権限を付け直してから): 本番キーで requested-day-offs・work-schedules とも200を確認→スナップショット portal-before-offs-20261102・DBバックアップ(VACUUM INTO。サーバーの /opt/portal/backup/portal-before-offs-20261102.db)→本番に、jinjerOffs.js(新規)・jinjerAttendance.js・jinjerClient.js・db.js(新テーブル2つのみ)・attendance.html・attendance.js と、server.js の3か所(手で)を反映(7f899f3。区分・Excel出力・メンバー検索以外のテスト専用機能・システム案内・添付検索・unpdf は含めない)→サーバーで git pull→構文・require の確認→再起動。確認: 起動ログ正常、各URL 200、配信中の attendance.js に新コード、休みの取り込みが成功(20件=休暇のみ。平日)、出勤状況の取り込みも次の周期で回復(再起動の直後に /v1/employees で429が出たが、次の取り込みで氏名・メールが解決され、メールなしは1件のみ)。
+   戻す手順: 本番リポジトリで、7ファイルを f555eae の内容に戻してコミット・push→サーバーで git pull→再起動(新テーブルが残っても無害。旧コードは参照しない)。DBは portal-before-offs-20261102.db(追加のテーブルだけなので、通常は戻さない)。
+   状態: 203番は本番に反映済み。画面の表示(休み・午前休・申請中・「休みも表示」)は、本番で未確認(ユーザーが確認)。
