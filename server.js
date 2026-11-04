@@ -12,6 +12,7 @@ const { open } = require('./src/db');
 const jinjerDayOffs = require('./src/jinjerDayOffs');
 const jinjerAttendance = require('./src/jinjerAttendance');
 const jinjerOffs = require('./src/jinjerOffs');
+const jinjerShift = require('./src/jinjerShift');
 const { isConfigured: jinjerConfigured, jstNow } = require('./src/jinjerClient');
 const { extractAttachmentText, normalizeForSearch } = require('./src/textExtract');
 
@@ -59,7 +60,7 @@ const ATTENDANCE_ENABLED = jinjerConfigured();
 if (!ATTENDANCE_ENABLED) {
   app.use((req, res, next) => {
     const p = req.path.toLowerCase(); // Expressのルーティングは大文字小文字を区別しないため、ゲートも区別しない
-    if (p === '/attendance.html' || p === '/js/attendance.js' || p.startsWith('/api/attendance')) {
+    if (p === '/attendance.html' || p === '/js/attendance.js' || p.startsWith('/api/attendance') || p === '/shift-table.html' || p === '/js/shifttable.js' || p.startsWith('/api/shift-table')) {
       return res.status(404).send('Not Found');
     }
     next();
@@ -1057,6 +1058,20 @@ app.get('/api/attendance', (req, res) => {
   res.json({ ...jinjerAttendance.getToday(db), ...jinjerOffs.getToday(db) }); // 出勤の打刻+今日の休み(休暇・休日。2026-11-02)
 });
 
+// 月間の休み表(2026-11-04)。出勤以外(休日・休暇・半休・時間休)を、社員×日で返す。全社員が閲覧できる(ユーザー指示)。月ごとにメモリへキャッシュ(src/jinjerShift.js)
+app.get('/api/shift-table', async (req, res, next) => {
+  try {
+    me(req);
+    res.set('Cache-Control', 'no-store');
+    const month = String(req.query.month || jstNow().date.slice(0, 7));
+    const r = await jinjerShift.getMonth(month);
+    if (!r.ok) return res.status(r.status).json({ error: r.message });
+    res.json({ ...r.data, today: jstNow().date, stale: r.stale || '' });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // 1件の失敗でプロセスを落とさない(→ E001)
 app.use((err, _req, res, _next) => {
   console.error(err.message || err);
@@ -1071,7 +1086,7 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`社内ポータルが起動しました: http://localhost:${PORT} (認証: ${AUTH_MODE})`);
   if (DAYOFFS_ENABLED) jinjerDayOffs.startScheduler(db);
-  if (ATTENDANCE_ENABLED) { jinjerAttendance.startScheduler(db); jinjerOffs.startScheduler(db); }
+  if (ATTENDANCE_ENABLED) { jinjerAttendance.startScheduler(db); jinjerOffs.startScheduler(db); jinjerShift.startWarmer(); }
   reindexGuideAttachments(); // システム案内の添付で、検索用の文字が未取得のものを順に取り出す(待たずに起動する)
   if (AUTH_MODE === 'dev') {
     console.warn('⚠ AUTH_MODE=dev(認証なし・管理者権限のモックユーザー)で起動しました。ローカル確認専用です。本番・公開環境では使わないでください');

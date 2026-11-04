@@ -24,7 +24,7 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
   try {
     // ---- 全ページ: 表示される・横にはみ出さない(PC 1280 / スマホ 390) ----
     // 機能が無効な環境では配信されないページ(出勤状況=jinjerキーが必要。本日のお休み=ENABLE_DAYOFFS)は、無効のときに404であることを確認する
-    const gated = ['attendance.html', 'today-off.html'];
+    const gated = ['attendance.html', 'shift-table.html', 'today-off.html'];
     for (const p of gated) check(`${p}: キー未設定では配信されない(404)`, (await fetch(`${sb.base}/${p}`)).status === 404);
     const pages = fs.readdirSync(path.join(ROOT, 'public')).filter(f => f.endsWith('.html') && f !== 'igrace-login.html' && !gated.includes(f)).sort();
     for (const p of pages) {
@@ -193,6 +193,23 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
         check(`attendance.html (${w}px): キーありでは表示される`, shown);
         if (shown) { await sleep(500); check(`attendance.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
       }
+      // 月間の休み表: 横にはみ出さない(表は枠の中でスクロール)。サーバーの応答を差し替えて、名字だけ・振休の色・休日・申請中・出勤日は空欄を確認する
+      const stData = { month: '2026-11', days: 30, today: '2026-11-04', stale: '', fetchedAt: new Date().toISOString(), people: [
+        { email: 'a@x.com', name: '山田 太郎', cells: { '2026-11-02': { t: 'leave', label: '振休', pending: false, furi: true }, '2026-11-03': { t: 'leave', label: '午前休', pending: true, furi: false }, '2026-11-07': { t: 'holiday', label: '休日' } } },
+        { email: 'b@x.com', name: '佐藤 花子', cells: {} } ] };
+      await br.setPreScript(`(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/shift-table') ? Promise.resolve(new Response(JSON.stringify(${JSON.stringify(stData)}), { status: 200, headers: { 'Content-Type': 'application/json' } })) : f(u, o); })();`);
+      for (const w of [1280, 390]) {
+        const shown = await br.open(`${sbk.base}/shift-table.html`, w);
+        check(`shift-table.html (${w}px): キーありでは表示される`, shown);
+        if (shown) { await sleep(700); check(`shift-table.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
+      }
+      await br.open(`${sbk.base}/shift-table.html`, 1280);
+      await sleep(700);
+      const stInfo = await br.evaluate("(() => { const t = [...document.querySelectorAll('#st-body td')].map(td => [td.textContent, getComputedStyle(td).color]); const names = [...document.querySelectorAll('#st-body td[style*=\"sticky\"]')].map(td => td.textContent); return JSON.stringify({ t, names, title: document.getElementById('st-title').textContent, next: document.getElementById('st-next').disabled }); })()");
+      const si = JSON.parse(stInfo || '{}');
+      check('月間の休み表: 名字だけ表示・振休は別の文字色・申請中に※・休日・出勤日は空欄・現在の月では「次の月」が押せない',
+        si.names && si.names.includes('山田') && si.names.includes('佐藤') && !si.names.includes('山田 太郎') && si.t.some(([x, c]) => x === '振休' && c === 'rgb(123, 63, 160)') && si.t.some(([x, c]) => x === '午前休※' && c === 'rgb(178, 106, 0)') && si.t.some(([x]) => x === '休日') && si.t.filter(([x]) => x === '').length >= 40 && si.title.includes('2026年11月') && si.next === true, stInfo);
+      await br.setPreScript(null);
       // 「最新の情報に更新」を押しても、jinjerを呼ぶ取り込みAPIは使わず、保存済みデータの読み直し(GET)だけ
       await br.setPreScript("window.__calls = []; (() => { const f = window.fetch; window.fetch = (u, o) => { window.__calls.push((o && o.method || 'GET') + ' ' + String(u)); return f(u, o); }; })();");
       await br.open(`${sbk.base}/attendance.html`, 1280);

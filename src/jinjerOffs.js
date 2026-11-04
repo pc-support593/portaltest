@@ -62,7 +62,7 @@ function computeOffs(leaveData, scheduleData, targetDate) {
       if (!off || off.date !== targetDate) continue;
       const status = statusOf(off.status);
       if (!status) continue; // 否認は出さない
-      list.push({ label: offLabelOf(spanLabel(off.duration_classification)), status });
+      list.push({ label: offLabelOf(spanLabel(off.duration_classification)), status, furi: String((off.day_off_classification || {}).name || '').includes('振') }); // furi: 振休(月間の休み表で文字色を変える)
     }
     if (!list.length) continue;
     // 同じ日に複数あるときの決め方: ①全日(「休み」)があれば「休み」(承認済みの全日があれば承認済み、なければ申請中)
@@ -70,11 +70,11 @@ function computeOffs(leaveData, scheduleData, targetDate) {
     // ③それ以外は、承認済みを優先して、先頭の1件
     const full = list.filter(r => r.label === '休み');
     const am = list.filter(r => r.label === '午前休'), pm = list.filter(r => r.label === '午後休');
-    let pick;
-    if (full.length) pick = { label: '休み', status: full.some(r => r.status === 'approved') ? 'approved' : 'pending' };
-    else if (am.length && pm.length) pick = { label: '休み', status: am.some(r => r.status === 'approved') && pm.some(r => r.status === 'approved') ? 'approved' : 'pending' };
-    else pick = list.find(r => r.status === 'approved') || list[0];
-    out.set(id, { employee_id: id, kind: 'leave', label: pick.label, status: pick.status });
+    let pick, src;
+    if (full.length) { src = full; pick = { label: '休み', status: full.some(r => r.status === 'approved') ? 'approved' : 'pending' }; }
+    else if (am.length && pm.length) { src = [...am, ...pm]; pick = { label: '休み', status: am.some(r => r.status === 'approved') && pm.some(r => r.status === 'approved') ? 'approved' : 'pending' }; }
+    else { pick = list.find(r => r.status === 'approved') || list[0]; src = [pick]; }
+    out.set(id, { employee_id: id, kind: 'leave', label: pick.label, status: pick.status, furikyu: src.some(r => r.furi) });
   }
   for (const emp of scheduleData || []) {
     const id = String(emp.employee_id);
@@ -176,4 +176,4 @@ function getToday(db) {
   };
 }
 
-module.exports = { sync, startScheduler, getToday, computeOffs, offLabelOf };
+module.exports = { sync, startScheduler, getToday, computeOffs, offLabelOf, fetchAllPages };

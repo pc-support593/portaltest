@@ -170,6 +170,36 @@ const { check, done } = makeChecker('jinjer');
     const gm = Object.fromEntries(go.offs.map(r => [r.email, r.kind + ':' + r.label + ':' + r.status]));
     check('休みの取り込み: 成功し、休暇・休日の行を保存する(古い行は消える)。メール・氏名を解決し、メールは小文字', so.ok === true && so.count === 5 && go.offs.length === 5 && gm['u13@x.com'] === 'holiday:休み:approved' && gm['u10@x.com'] === 'leave:休み:approved' && gm['u11@x.com'] === 'leave:午前休:pending' && gm['u12@x.com'] === 'holiday:休み:approved' && gm['u15@x.com'] === 'holiday:休み:approved' && !go.offs.some(r => r.name === 'old'), JSON.stringify(so) + JSON.stringify(gm));
     check('休みの取り込み: 画面用の状態(offsSync)が入り、社員番号は返さない', go.offsSync && go.offsSync.ok === true && go.offsSync.waiting === false && !JSON.stringify(go.offs).includes('employee_id'));
+    // 月間の休み表(2026-11-04)
+    const shift = require(path.join(ROOT, 'src', 'jinjerShift.js'));
+    const month = today.slice(0, 7);
+    const dayN = n => month + '-' + String(n).padStart(2, '0');
+    const sch = ds => ds.map(d => ({ date: dayN(d), store: { id: '1', name: 's' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }));
+    const furi = { name: '振休' }, nenkyu = { name: '年次有休' };
+    const lv2 = (d, st, cls, span) => ({ date: dayN(d), status: st, day_off_classification: cls, duration_classification: span });
+    const cm2 = shift.computeMonth(
+      [{ employee_id: '1', requested_day_offs: [lv2(2, '1', furi, leaveFull), lv2(3, '0', nenkyu, leaveAm), lv2(4, '1', nenkyu, leaveFull)] }],
+      [{ employee_id: '1', work_schedules: sch([1, 5]) }, { employee_id: '2', work_schedules: sch([1, 2]) }, { employee_id: '3', work_schedules: [] }], month).get('1');
+    const cm3 = shift.computeMonth([], [{ employee_id: '2', work_schedules: sch([1, 2]) }, { employee_id: '3', work_schedules: [] }], month);
+    check('月間の休み表: 全日=休暇、振休=振休(furi)、午前半休=午前休(申請中)、勤務予定のない日=休日、勤務日は出さない', cm2[dayN(2)].label === '振休' && cm2[dayN(2)].furi === true && cm2[dayN(3)].label === '午前休' && cm2[dayN(3)].pending === true && cm2[dayN(4)].label === '休暇' && !cm2[dayN(4)].furi && !(dayN(1) in cm2) && !(dayN(5) in cm2) && cm2[dayN(6)].t === 'holiday', JSON.stringify(cm2).slice(0, 200));
+    check('月間の休み表: 月の勤務予定が1行も無い人は休日を出さない。勤務予定のある人は、勤務のない日を休日にする', !cm3.has('3') && cm3.get('2')[dayN(3)].label === '休日' && !(dayN(2) in cm3.get('2')));
+    check('月間の休み表: 月の日数・前後の月', shift.daysInMonth('2026-02') === 28 && shift.daysInMonth('2028-02') === 29 && shift.shiftMonth('2026-01', -1) === '2025-12' && shift.shiftMonth('2026-12', 1) === '2027-01');
+    fixtures = {
+      '/v2/employees/requested-day-offs': { total: 1, data: [{ employee_id: '10', requested_day_offs: [lv2(2, '1', furi, leaveFull)] }] },
+      '/v2/employees/work-schedules': { total: 2, data: [{ employee_id: '10', work_schedules: sch([1]) }, { employee_id: '15', work_schedules: sch([1, 2]) }] },
+      '/v1/employees': { total: 0, data: ['10', '15'].map(id => ({ id, company: { email: 'U' + id + '@X.com', last_name: '姓' + id, first_name: '名' } })) }
+    };
+    shift.resetCache();
+    const sm = await shift.getMonth(month);
+    const callsBefore = log.length;
+    const sm2 = await shift.getMonth(month);
+    check('月間の休み表: 取得でき、氏名・メールを解決し(メールは小文字)、社員番号は返さない。2回目はキャッシュ(jinjerを呼ばない)', sm.ok && sm.data.people.length === 2 && sm.data.people[0].email === 'u10@x.com' && sm.data.people[0].cells[dayN(2)].furi === true && !JSON.stringify(sm.data).includes('employee_id') && sm2.ok && log.length === callsBefore, JSON.stringify(sm).slice(0, 200));
+    const smFuture = await shift.getMonth(shift.shiftMonth(month, 1)), smOld = await shift.getMonth(shift.shiftMonth(month, -4)), smBad = await shift.getMonth('2026-13');
+    check('月間の休み表: 来月以降・4か月より前・形式不正は、jinjerを呼ばずに断る', !smFuture.ok && !smOld.ok && !smBad.ok && log.length === callsBefore);
+    shift.resetCache(); mode400 = 'E400QP0017'; fixtures = null; // 模擬サーバーは fixtures を優先するため外す
+    const smWait = await shift.getMonth(month);
+    check('月間の休み表: 月の切り替え待ち(400)は例外にせず、待ち表示の文言で返す', !smWait.ok && smWait.message === 'jinjerの月の切り替え待ちです。9時以降に更新されます', JSON.stringify(smWait));
+    mode400 = null; shift.resetCache();
     mode400 = null; fixtures = null; mem.exec('DELETE FROM attendance_offs_sync');
     // 月の切り替え待ち(2026-11-01と同じ)でも例外で落ちず、前回の休みは残る
     mode400 = 'E400QP0017'; fixtures = { '/v1/employees': { total: 0, data: [] } };

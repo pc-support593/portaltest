@@ -232,6 +232,7 @@ const PORTAL_PAGES = [
   { title: '社員名簿', url: 'organization.html', keywords: ['社員名簿', '組織図', '総務部', '部門', '組織'] },
   { title: '組織図', url: 'organization-chart.html', desktopOnly: true, keywords: ['組織図', '組織', '役職', '部長', '課長', '係長', '主任', '部門', '会長', '社長', '専務'] },
   { title: '出勤状況', url: 'attendance.html', feature: 'attendance', keywords: ['出勤', '退勤', '打刻', '出勤状況', '誰が出勤', 'jinjer', 'ジンジャー'] },
+  { title: '月間の休み表', url: 'shift-table.html', feature: 'attendance', keywords: ['休み', '休暇', '有給', '振休', 'シフト', '勤務予定', '月間', '休日', 'jinjer', 'ジンジャー'] },
   { title: '本日の出勤者', url: 'today-attendance.html', keywords: ['出勤', '班', 'A班', 'B班', 'C班', '当番'] },
   // 「本日のお休み」(today-off.html)は一時停止中のため検索対象から外している(2026-10-07。再開時は ENABLE_DAYOFFS=true とあわせて戻す):
   // { title: '本日のお休み', url: 'today-off.html', keywords: ['休み', '休暇', '有給', '有休', '半休', '休日', '不在', 'jinjer', 'ジンジャー'] },

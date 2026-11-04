@@ -35,6 +35,7 @@ const files = {
   check('/api/me: モックユーザー', (await json('GET', '/api/me')).status === 200);
   check('jinjerキー未設定: 出勤状況の機能は無効(features)', cfg.features && cfg.features.attendance === false && cfg.features.dayOffs === false, JSON.stringify(cfg.features));
   check('jinjerキー未設定: /api/attendance は404', (await json('GET', '/api/attendance')).status === 404 && (await json('GET', '/API/Attendance')).status === 404 && (await fetch(B + '/attendance.html')).status === 404 && (await fetch(B + '/js/attendance.js')).status === 404);
+  check('jinjerキー未設定: 月間の休み表も無効(ページ・API・js が404)', (await json('GET', '/api/shift-table')).status === 404 && (await json('GET', '/API/Shift-Table')).status === 404 && (await fetch(B + '/shift-table.html')).status === 404 && (await fetch(B + '/js/shiftTable.js')).status === 404);
   check('本日のお休みは無効(404)', (await fetch(B + '/today-off.html')).status === 404 && (await json('GET', '/api/day-offs')).status === 404);
   const pin = (await json('POST', '/api/admin/news', { title: '固定テスト', pinned: '1' })).data.id;
   check('お知らせの固定(pinned)が保存される', ((await json('GET', '/api/content')).data.news.find(n => n.id === pin) || {}).pinned === '1');
@@ -245,6 +246,7 @@ const files = {
     check('jinjerキーあり: /api/attendance が使える', att.status === 200 && att.data.configured === true && Array.isArray(att.data.items), JSON.stringify(att.data).slice(0, 120));
     check('jinjerキーあり: 手動取り込みAPI(POST /api/attendance/sync)は無い(jinjerを呼ぶのはサーバーの自動取り込みだけ)', (await json('POST', '/api/attendance/sync')).status === 404);
     check('jinjerキーあり: attendance.html が配信される', (await fetch(B + '/attendance.html')).status === 200);
+    check('jinjerキーあり: 月間の休み表(shift-table.html・js)が配信される。来月・形式不正は400(jinjerを呼ばない)', (await fetch(B + '/shift-table.html')).status === 200 && (await fetch(B + '/js/shiftTable.js')).status === 200 && (await json('GET', '/api/shift-table?month=2999-01')).status === 400 && (await json('GET', '/api/shift-table?month=abc')).status === 400);
   } finally { await sb2.stop(); }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error("TEST ERROR", e); process.exit(2); });
