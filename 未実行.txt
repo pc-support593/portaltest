@@ -1673,3 +1673,8 @@
    本番反映(2026-11-02・ユーザー依頼。203番。休暇APIの権限を付け直してから): 本番キーで requested-day-offs・work-schedules とも200を確認→スナップショット portal-before-offs-20261102・DBバックアップ(VACUUM INTO。サーバーの /opt/portal/backup/portal-before-offs-20261102.db)→本番に、jinjerOffs.js(新規)・jinjerAttendance.js・jinjerClient.js・db.js(新テーブル2つのみ)・attendance.html・attendance.js と、server.js の3か所(手で)を反映(7f899f3。区分・Excel出力・メンバー検索以外のテスト専用機能・システム案内・添付検索・unpdf は含めない)→サーバーで git pull→構文・require の確認→再起動。確認: 起動ログ正常、各URL 200、配信中の attendance.js に新コード、休みの取り込みが成功(20件=休暇のみ。平日)、出勤状況の取り込みも次の周期で回復(再起動の直後に /v1/employees で429が出たが、次の取り込みで氏名・メールが解決され、メールなしは1件のみ)。
    戻す手順: 本番リポジトリで、7ファイルを f555eae の内容に戻してコミット・push→サーバーで git pull→再起動(新テーブルが残っても無害。旧コードは参照しない)。DBは portal-before-offs-20261102.db(追加のテーブルだけなので、通常は戻さない)。
    状態: 203番は本番に反映済み。画面の表示(休み・午前休・申請中・「休みも表示」)は、本番で未確認(ユーザーが確認)。
+
+205. [未実行] 勤務予定(work-schedules)のAPIで、法定休日・所定休日は分からないか(2026-11-04・ユーザー質問。203番の関連)
+   確認: work-schedules の1件の項目は、store・date・work_schedule(start・end)・break_schedules・overtime_break_schedule・created_at・updated_at だけで、休日の種類(法定・所定)の項目は無い。休みの日の行そのものが入らない。休日の種類が出てくるのは converted-day-offs の holiday_classification(「所定休日」。休日に出勤した人の記録=振休の発生)だけ。requested-day-offs にも休日の種類は無い。jinjerサポートからは、2026-10-07に「所定休日・法定休日を取得するAPIは無い」との回答あり。ほかのAPIの名前を推測して試したが、存在しないAPIと権限のないAPIの両方が同じ403を返すため、分からなかった(読み取りのみ)。
+   代替案: ①画面は今のまま(「休み」だけ。法定・所定の区別は出さない)/②会社の規則(例: 日曜=法定休日、土曜・祝日=所定休日)が決まっていれば、曜日で区別して表示する(jinjer側の設定とずれる可能性があるため、人事の確認が必要)/③jinjerサポートに、新しいAPIの有無を再確認する。
+   状態: 回答のみ。コードの変更なし。用途の確認待ち。
