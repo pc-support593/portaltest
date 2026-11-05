@@ -173,6 +173,7 @@ async function fetchRoomsBusy(dateStr, rooms) {
         end: ev.end.dateTime.slice(11, 16),
         subject: ev.subject || '(件名なし)',
         organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
+        organizerEmail: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',
         tentative: ev.showAs === 'tentative'
       }));
     } catch (e) {
@@ -180,6 +181,7 @@ async function fetchRoomsBusy(dateStr, rooms) {
       map[room.id] = null;
     }
   }));
+  await applyOrganizerFullNames(map);
   return map;
 }
 

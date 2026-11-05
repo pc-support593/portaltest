@@ -313,6 +313,7 @@ async function fetchCalendarViewBusy(dateStr, rooms, token) {
         end: ev.end.dateTime.slice(11, 16),
         subject: ev.subject || '(件名なし)',
         organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
+        organizerEmail: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',
         // tentative = このリソース側でまだ承諾していない仮の状態(この後、自動承諾または重複なら自動辞退される)
         tentative: ev.showAs === 'tentative',
         eventId: ev.id,
@@ -323,6 +324,7 @@ async function fetchCalendarViewBusy(dateStr, rooms, token) {
       map[room.id] = [];
     }
   }));
+  await applyOrganizerFullNames(map);
   return map;
 }
 
@@ -618,7 +620,19 @@ function openEditForm(ev) {
   memberCandidates = [];
   renderModal();
   refreshKindsInForm();
+  refreshMemberNames();
   if (formState.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
+}
+
+/** 編集画面の「社内メンバー」の名前を「姓 名」にする(2026-11-05・ユーザー指示)。取得できない人は、予定にある表示名のまま。保存はメールアドレスだけなので、名前の置き換えは保存内容に影響しない */
+async function refreshMemberNames() {
+  const f = formState;
+  if (!f || !f.members.length) return;
+  const names = await resolveFullNames(f.members.map(m => m.email));
+  if (formState !== f) return;
+  let changed = false;
+  f.members.forEach(m => { const n = names.get(String(m.email || '').toLowerCase()); if (n && n !== m.name) { m.name = n; changed = true; } });
+  if (changed) renderModal();
 }
 
 function closeForm() {

@@ -337,5 +337,36 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   check('shift_holiday: 班があれば「A班 …」', w.dayLabelsHtml([{ type: 'shift_holiday', team: 'A', label: '特別休' }]).includes('A班 特別休'));
   check('shift_holiday: labelが空なら「休日」', w.dayLabelsHtml([{ type: 'shift_holiday', team: '', label: '' }]).includes('>休日<'));
   check('shift_holiday: 他の種類(祝日)の見た目は変わらない', !w.dayLabelsHtml([{ type: 'holiday', team: '', label: '祝日' }]).includes('#d64545'));
+  // 予約者・出席者の名前を「姓 名」にする(2026-11-05。common.js の resolveFullNames)
+  {
+    const calls = [];
+    const ctx2 = vm.createContext({
+      console: { error() {}, log: console.log }, setTimeout, clearTimeout, Promise, Date, Intl, TextEncoder,
+      window: { addEventListener() {} },
+      document: { addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
+      Auth: { mode: 'entra', init: () => new Promise(() => {}), getGraphToken: async () => 't' },
+      fetch: async (url, opt) => {
+        const reqs = JSON.parse(opt.body).requests; calls.push(reqs.map(r => r.url));
+        const byUrl = { 'a@x.com': [200, { surname: '山田', givenName: '太郎' }], 'b@x.com': [200, { surname: '佐藤', givenName: '' }], 'c@x.com': [404, {}], 'd@x.com': [429, {}] };
+        return { ok: true, status: 200, json: async () => ({ responses: reqs.map(r => { const k = decodeURIComponent(r.url.split('/users/')[1].split('?')[0]); const [status, body] = byUrl[k] || [404, {}]; return { id: r.id, status, body }; }) }) };
+      }
+    });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8'), ctx2, { filename: 'common.js' });
+    vm.runInContext('globalThis.resolveFullNames = resolveFullNames; globalThis.applyOrganizerFullNames = applyOrganizerFullNames;', ctx2);
+    const m1 = await ctx2.resolveFullNames(['A@x.com', 'b@x.com', 'c@x.com', 'd@x.com', '', null]);
+    check('姓名: 姓・名が揃う人だけ「姓 名」になる(メールは大文字小文字を区別しない)。姓か名が空・MS365に居ない・429の人は入らない', m1.size === 1 && m1.get('a@x.com') === '山田 太郎', JSON.stringify([...m1]));
+    const before = calls.length;
+    const m2 = await ctx2.resolveFullNames(['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com']);
+    check('姓名: 取得済み(見つからない人を含む)は再取得しない。429の人だけ再取得する', m2.get('a@x.com') === '山田 太郎' && calls.length === before + 1 && calls[before].length === 1 && calls[before][0].includes('d%40x.com'), JSON.stringify(calls.slice(before)));
+    const many = Array.from({ length: 45 }, (_, i) => `u${i}@x.com`);
+    const callsBefore = calls.length;
+    await ctx2.resolveFullNames(many);
+    check('姓名: 20件ずつ$batchにまとめて取得する(45人=3回)', calls.length - callsBefore === 3 && calls[callsBefore].length === 20 && calls[callsBefore + 2].length === 5);
+    const map = { r1: [{ organizer: '表示名A', organizerEmail: 'a@x.com' }, { organizer: '表示名B', organizerEmail: 'b@x.com' }], r2: null };
+    await ctx2.applyOrganizerFullNames(map);
+    check('姓名: 予約者は「姓 名」に置き換わり、取得できない人は表示名のまま。取得失敗(null)の会議室があっても落ちない', map.r1[0].organizer === '山田 太郎' && map.r1[1].organizer === '表示名B' && map.r2 === null);
+    ctx2.Auth.mode = 'dev';
+    check('姓名: devモードでは何も取得しない', (await ctx2.resolveFullNames(['zz@x.com'])).size === 0);
+  }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error('TEST ERROR', e); process.exit(2); });

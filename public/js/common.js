@@ -143,6 +143,56 @@ function fullNameOf(surname, givenName, displayNameFallback) {
   return displayName(displayNameFallback);
 }
 
+// ---- 予約者・出席者の名前を「姓 名」にする(2026-11-05・ユーザー指示。会議室予約まわりの全表示) ----
+// 予定(Exchange)に入っている名前は、主催者・出席者の表示名のため、メールアドレスからMS365(Entra)の「姓」「名」を引いて置き換える。
+// 姓・名が揃わない人・取得に失敗した人・devモードは、これまでの表示名のまま(画面は止めない。P004)。取得済みの人は、ページを開いている間は再取得しない。
+const fullNameCache = new Map(); // メール(小文字) → '姓 名' | ''(姓・名が揃わない、またはMS365に居ない=表示名のまま)
+const FULLNAME_BATCH = 20;       // Graph $batch の上限
+const FULLNAME_TIMEOUT_MS = 8000;
+
+/** メールアドレスの一覧 → Map(メール小文字 → '姓 名')。姓・名が揃う人だけが入る。例外は投げない */
+async function resolveFullNames(emails) {
+  const out = new Map();
+  if (Auth.mode !== 'entra') return out;
+  const wanted = [...new Set((emails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  const need = wanted.filter(e => !fullNameCache.has(e));
+  try {
+    if (need.length) {
+      const token = await withTimeout(Auth.getGraphToken(['User.Read.All']), FULLNAME_TIMEOUT_MS, '名前の取得(認証)が時間内に完了しませんでした');
+      for (let i = 0; i < need.length; i += FULLNAME_BATCH) {
+        const batch = need.slice(i, i + FULLNAME_BATCH);
+        const res = await withTimeout(fetch('https://graph.microsoft.com/v1.0/$batch', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: batch.map((e, k) => ({ id: String(k), method: 'GET', url: `/users/${encodeURIComponent(e)}?$select=surname,givenName` })) })
+        }), FULLNAME_TIMEOUT_MS, '名前の取得が時間内に完了しませんでした');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        for (const r of body.responses || []) {
+          const e = batch[Number(r.id)];
+          if (!e) continue;
+          if (r.status === 200) {
+            const sn = String((r.body && r.body.surname) || '').trim(), gn = String((r.body && r.body.givenName) || '').trim();
+            fullNameCache.set(e, sn && gn ? sn + ' ' + gn : '');
+          } else if (r.status === 404) fullNameCache.set(e, ''); // MS365に居ない(社外の出席者など)。表示名のまま
+          // それ以外(429など)は、キャッシュせず、次の機会に再取得する
+        }
+      }
+    }
+  } catch (e) {
+    console.error('姓・名の取得に失敗しました(表示名のまま表示します)', e);
+  }
+  wanted.forEach(e => { if (fullNameCache.get(e)) out.set(e, fullNameCache.get(e)); });
+  return out;
+}
+
+/** 会議室ごとの予約の一覧(map: 会議室ID → [{ organizer, organizerEmail, ... }] か null)の予約者を「姓 名」にする。取得できない人は、予定にある表示名のまま */
+async function applyOrganizerFullNames(map) {
+  const items = Object.values(map).filter(Array.isArray).flat();
+  const names = await resolveFullNames(items.map(b => b.organizerEmail));
+  items.forEach(b => { b.organizer = names.get(String(b.organizerEmail || '').toLowerCase()) || b.organizer; });
+}
+
 /** 日本時間(JST)の日付 'YYYY-MM-DD'。入社日の判定を、サーバー・ブラウザのタイムゾーンに依らず日本の暦で行うため */
 function jstDateKey(date) {
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);

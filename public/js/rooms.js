@@ -232,7 +232,7 @@ function renderCalendar() {
             <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(b.start)}–${esc(b.end)}</span>
             <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93);word-break:normal;overflow-wrap:break-word">/ ${esc(b.roomName || room.name)}</span>
             ${statusBadge(b)}${extraBadgeHtml(b)}
-            <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(surname(b.owner))}</span>
+            <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.93)">${esc(b.owner)}</span>
           </span>
           <span style="font-size:11px;font-weight:500;color:#ffffff;word-break:normal;overflow-wrap:break-word">${esc(b.title)}</span>
         </span>`;
@@ -1041,7 +1041,16 @@ async function fetchRealRoomBookings(rooms, from, to) {
     });
   });
 
-  return { rows: rows.concat(pending), errors };
+  // 予約者・メンバーの名前を「姓 名」にする(2026-11-05・ユーザー指示)。取得できない人は、予定にある表示名のまま
+  const all = rows.concat(pending);
+  const names = await resolveFullNames(all.flatMap(r => [r.owner_email, ...(r.members || []).map(m => m.email)]));
+  const nameOf = (email, fallback) => names.get(String(email || '').toLowerCase()) || fallback;
+  const doneMembers = new Set(); // 同じ予定のメンバー配列が複数の行で共有されるため、1回だけ置き換える
+  all.forEach(r => {
+    r.owner = nameOf(r.owner_email, r.owner);
+    if (r.members && !doneMembers.has(r.members)) { doneMembers.add(r.members); r.members.forEach(m => { m.name = nameOf(m.email, m.name); }); }
+  });
+  return { rows: all, errors };
 }
 
 /** 拠点別の「今どういう状態か」の説明文(実データ・サンプルの区別を必ず示す。CLAUDE.mdルール4) */
