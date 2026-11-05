@@ -123,6 +123,15 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       const org = { left: [{ dept: '専務取締役', members: [P('東 伸考', 'c@x.com', '専務取締役', '2')] }, { dept: '工務部(本社)', members: [P('本社 一', 'h1@x.com')] }, { dept: '工務部(平野)', members: [P('平野 一', 'h2@x.com')] }, { dept: '工務部(西宮)', members: [P('西宮 一', 'h3@x.com')] }], right: [], names: {} };
       renderOrgChart(buildOrgChart(org, []));
     })()`);
+    // 表示順が未入力・0の人は、同じ部門の一番下(1以上の数字を入れた人が、小さい順に上。2026-11-05・ユーザー指示)
+    const ocOrder = await br.evaluate(`(() => {
+      const P = (name, email, title, empType) => ({ name, email, title: title || '', empType: empType || '', phone: '' });
+      const org = { left: [{ dept: '総務部', members: [P('課長 二', 'e@x.com', '課長'), P('一般 三', 'f@x.com'), P('一般 四', 'g@x.com'), P('一般 五', 'h@x.com')] }], right: [], names: {} };
+      const ch = buildOrgChart(org, [{ email: 'f@x.com', dept: '', title: '', sort: 2 }, { email: 'g@x.com', dept: '', title: '', sort: 1 }, { email: 'h@x.com', dept: '', title: '', sort: 0 }]);
+      const col = [...ch.columns, ...ch.sides].find(c => c.name.includes('総務'));
+      return col.sections.flatMap(sec => sec.members.map(m => m.name)).join(',');
+    })()`);
+    check('組織図: 表示順の数字がない人(未入力・0)は、同じ部門の一番下。数字を入れた人は小さい順で上', ocOrder === '一般 四,一般 三,課長 二,一般 五' || (typeof ocOrder === 'string' && ocOrder.split(',').slice(-2).join(',') === '課長 二,一般 五' && ocOrder.indexOf('一般 四') < ocOrder.indexOf('一般 三')), String(ocOrder));
     check('組織図: 専務取締役が②の枠に出る', await br.evaluate("document.querySelector('.oc-l2') && document.querySelector('.oc-l2').textContent.includes('東 伸考')"));
     check('組織図: 工務部の小区分(本社・平野・西宮)は横に並ぶ(縦に積まない)', await br.evaluate("(() => { const s = [...document.querySelectorAll('.oc-col')].find(c => c.textContent.includes('工務部')).querySelectorAll('.oc-section'); return s.length === 3 && s[0].getBoundingClientRect().top === s[1].getBoundingClientRect().top && s[1].getBoundingClientRect().left > s[0].getBoundingClientRect().left; })()"));
     check('組織図: ゆめすみかの展示場などは、すべての列の下の段に、横に並べて置く(他の部門の人の一覧にかぶらない)', await br.evaluate("(() => { const P = (n, e) => ({ name: n, email: e, title: '', empType: '', phone: '' }); renderOrgChart(buildOrgChart({ left: [{ dept: '購買部', members: [P('甲 一', 'k1@x.com'), P('甲 二', 'k2@x.com'), P('甲 三', 'k3@x.com'), P('甲 四', 'k4@x.com'), P('甲 五', 'k5@x.com')] }], right: [{ dept: '福田/泉佐野展示場', members: [P('A 一', 'a@y.com')] }, { dept: '中百舌鳥展示場', members: [P('B 二', 'b@y.com')] }], names: {} }, [])); const tier = document.querySelector('.oc-tier'); const s = tier.querySelectorAll('.oc-section'); const colsBottom = Math.max(...[...document.querySelectorAll('.oc-col')].map(c => c.getBoundingClientRect().bottom)); return !!tier && s.length === 2 && s[0].getBoundingClientRect().top === s[1].getBoundingClientRect().top && tier.getBoundingClientRect().top >= colsBottom - 1 && !document.querySelector('.oc-col.oc-tier-link .oc-members'); })()"));

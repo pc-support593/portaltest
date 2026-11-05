@@ -55,6 +55,12 @@ const orgStartsWith = (title, list) => list.some(t => { const s = String(title |
 const orgNorm = s => String(s || '').normalize('NFKC').replace(/\s+/g, ''); // サーバー(server.js の normalizeOrgKey)と同じ規則
 const orgKeyOf = m => (m.email ? m.email.toLowerCase() : 'name:' + orgNorm(m.name)); // メールの無い手動メンバーは 'name:氏名' で区別する
 
+/** 手入力の「表示順」を並べ替えの値にする(2026-11-05・ユーザー指示)。1以上の数字は、その数字の小さい順。未入力・0・数字でないものは「数字なし」として、同じ部門の一番下に並べる */
+function orgSortKey(sort) {
+  const n = Number(sort);
+  return Number.isFinite(n) && n > 0 ? n : 1e9;
+}
+
 function orgRank(title) {
   const t = String(title || '');
   if (!t) return ORG_L5_RANK.length + 1;
@@ -197,7 +203,7 @@ function buildOrgChart(org, manual) {
       sec.members = sec.members.map((m, i) => ({ m, i }))
         .sort((a, b) => sortOf(a.m) - sortOf(b.m) || orgRank(a.m.title) - orgRank(b.m.title) || a.i - b.i).map(x => x.m);
     });
-    function sortOf(m) { const r = man.get(`${m.key}|${col.name}`) || man.get(`${m.key}|`); return r ? Number(r.sort) || 0 : 0; }
+    function sortOf(m) { const r = man.get(`${m.key}|${col.name}`) || man.get(`${m.key}|`); return orgSortKey(r ? r.sort : 0); }
     return out;
   };
   chart.columns = ORG_CHART_FRAME.columns.map(buildCol);
@@ -228,7 +234,7 @@ function buildOrgChart(org, manual) {
       return false;
     });
   }));
-  const jimuSort = m => { const r = man.get(`${m.key}|`) || (manual || []).find(x => String(x.email).toLowerCase() === m.key); return r ? Number(r.sort) || 0 : 0; };
+  const jimuSort = m => { const r = man.get(`${m.key}|`) || (manual || []).find(x => String(x.email).toLowerCase() === m.key); return orgSortKey(r ? r.sort : 0); };
   chart.jimu.members = chart.jimu.members.map((m, i) => ({ m, i })).sort((a, b) => jimuSort(a.m) - jimuSort(b.m) || a.i - b.i).map(x => x.m);
   // 人数(2026-10-26・ユーザー指示): 部門=③④⑤の全員(部長・次長も数える)+補足(person=1・count=人数)。兼任(追加行・役職に(兼任)の注記)は数えない。
   //   区分(本社・展示場・班など)は、その区分の人数。工務事務の箱は単独で数える。班は区分として独立に数え、部門の合計には含める。会長・社長・専務は数えない

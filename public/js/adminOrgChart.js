@@ -63,7 +63,7 @@ async function renderOrgChartTitlesTab() {
         <input class="in-input" data-title maxlength="30" value="${esc(cur ? cur.title : '')}" placeholder="例: 課長" style="${inputStyle};width:130px">
         <span data-result style="font-size:12px;white-space:nowrap"></span>
       </span>
-      <input class="in-input" data-sort type="number" min="0" max="9999" value="${esc(cur ? cur.sort : 0)}" style="${inputStyle};width:70px;flex-shrink:0">
+      <input class="in-input" data-sort type="number" min="1" max="9999" value="${esc(cur && Number(cur.sort) > 0 ? cur.sort : '')}" placeholder="なし" style="${inputStyle};width:70px;flex-shrink:0">
     </div>`;
   };
 
