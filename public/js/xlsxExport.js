@@ -2,6 +2,7 @@
 // ライブラリは使わず、.xlsx(ZIPの中のXML)をここで組み立てる(サーバーに何も足さない)。
 // 体裁は manual/template/フォーマット.xlsx を元にしている: 列幅・30pt の文字・見出し行の高さ・A3縦。
 // 見出しは 会議室名・件名・時間・区分。右上(D1・E1)に日付。各行に、ポータルの予定の色(主催=黄・参加=青緑・それ以外=会議室の色)を塗る。
+// ゆめすみかの展示場の予約は、新しいフォーマット(buildShowroomXlsx。2026-11-05・ユーザー指示。manual/template/フォーマット.xlsx)で出す: B=番号・C=商談場所・D=お客様名(件名)・E=時間・F=担当者(姓 名)・G=区分、F1=日付。1枚15行、16件目からは2枚目(同じ形式)。各行(C〜G)は会議室の色。吉村一建設の会議室・社用車は、従来の形式(buildDayXlsx)のまま。
 'use strict';
 
 const XLSX_COL_WIDTHS = [38.5, 39.5, 44.75, 17.125, 23.125]; // テンプレートの列幅(A〜E)
@@ -131,4 +132,85 @@ function buildDayXlsx(dateLabel, rows) {
     ['xl/worksheets/sheet1.xml', sheet]
   ];
   return xlsxZip(files.map(([name, text]) => ({ name, data: enc.encode(text) })));
+}
+
+// ---- ゆめすみか展示場の新しいフォーマット(2026-11-05) ----
+const SHOWROOM_ROWS_PER_SHEET = 15; // テンプレートの番号 1〜15
+const SHOWROOM_HEADERS = ['商談場所', 'お客様名', '時間', '担当者', '区分']; // C〜G
+const SHOWROOM_COL_WIDTHS = [12.625, 53, 53, 49.75, 35.75, 33.25]; // B〜G(テンプレートの列幅)
+const SHOWROOM_ROW_HEIGHT = 150, SHOWROOM_LINE_HEIGHT = 40;
+
+/** 展示場の予約のExcel(.xlsx)を作る。dateLabel=F1に出す日付の文字。rows=[{ place, title, time, owner, kind, color }](並べる順にして渡す)。
+    15件ごとに1枚(シート)。番号は続けて振り、各シートの15行は、予約が無くても番号と枠を残す。戻り値は Uint8Array */
+function buildShowroomXlsx(dateLabel, rows) {
+  const enc = new TextEncoder();
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const hexOf = c => { const h = String(c || '').replace('#', '').toUpperCase(); return /^[0-9A-F]{6}$/.test(h) ? h : ''; };
+  const colors = [...new Set(rows.map(r => hexOf(r.color)).filter(Boolean))];
+  const font = (sz, rgb) => `<font><sz val="${sz}"/><color rgb="${rgb}"/><name val="游ゴシック"/><family val="3"/><charset val="128"/></font>`;
+  const fonts = [font(11, 'FF000000'), font(6, 'FF000000'), font(30, 'FF000000'), font(28, 'FF000000'), font(36, 'FF000000'), font(30, 'FFFFFFFF')]; // 0〜4=テンプレートと同じ・5=白(濃い色の行の文字)
+  const fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>']
+    .concat(colors.map(h => `<fill><patternFill patternType="solid"><fgColor rgb="FF${h}"/><bgColor indexed="64"/></patternFill></fill>`));
+  const B = (l, r, t, b) => { const e = (n, v) => (v ? `<${n} style="${v}"><color auto="1"/></${n}>` : `<${n}/>`); return `<border>${e('left', l)}${e('right', r)}${e('top', t)}${e('bottom', b)}<diagonal/></border>`; };
+  const borders = [B(), B(0, 0, 0, 'thick'), B('thick', 'thin', 'thick', 'medium'), B('thin', 'thin', 'thick', 'medium'), B('thin', 'thick', 'thick', 'medium'),
+    B(0, 0, 'medium', 'thin'), B(0, 'thick', 'medium', 'thin'), B('thick', 0, 'thin', 'thin'), B(0, 0, 'thin', 'thin'), B(0, 'thick', 'thin', 'thin'),
+    B('thick', 0, 'thin', 'thick'), B(0, 0, 'thin', 'thick'), B(0, 'thick', 'thin', 'thick'), B('thick', 0, 'medium', 0)]; // 0〜13=テンプレートと同じ
+  const xf = (fontId, fillId, borderId, align) => `<xf numFmtId="0" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment ${align}/></xf>`;
+  const CENTER = 'horizontal="center" vertical="center"', LEFT = 'vertical="center" wrapText="1"';
+  // 0=標準 1〜3=見出し(B2・C〜F・G) 4=F1の日付 5=G1 6〜8=B列の番号(先頭・途中・最後の行)
+  const xfs = [xf(0, 0, 0, 'vertical="center"'), xf(2, 0, 2, CENTER), xf(2, 0, 3, CENTER), xf(2, 0, 4, CENTER), xf(3, 0, 1, 'vertical="center"'), xf(0, 0, 1, 'vertical="center"'),
+    xf(4, 0, 13, CENTER), xf(4, 0, 7, CENTER), xf(4, 0, 10, CENTER)];
+  const BODY = { first: [5, 6], mid: [8, 9], last: [11, 12] }; // 先頭・途中・最後の行の、C〜F と G の枠
+  const plain = {}, filled = {}; // 色なし: 位置+列 → 書式番号 / 色あり: 色+位置+列 → 書式番号
+  Object.entries(BODY).forEach(([pos, [bc, bg]]) => { plain[pos + 'c'] = xfs.length; xfs.push(xf(2, 0, bc, LEFT)); plain[pos + 'g'] = xfs.length; xfs.push(xf(2, 0, bg, LEFT)); });
+  colors.forEach((h, i) => {
+    const f = xlsxTextColor('#' + h) === 'white' ? 5 : 2;
+    Object.entries(BODY).forEach(([pos, [bc, bg]]) => { filled[h + pos + 'c'] = xfs.length; xfs.push(xf(f, i + 2, bc, LEFT)); filled[h + pos + 'g'] = xfs.length; xfs.push(xf(f, i + 2, bg, LEFT)); });
+  });
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="${NS}"><fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills><borders count="${borders.length}">${borders.join('')}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="標準" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+  const text = (ref, t, style) => `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xlsxEsc(t)}</t></is></c>`;
+  const blank = (ref, style) => `<c r="${ref}" s="${style}"/>`;
+  const sheetCount = Math.max(1, Math.ceil(rows.length / SHOWROOM_ROWS_PER_SHEET));
+  const sheets = [];
+  for (let k = 0; k < sheetCount; k++) {
+    const out = [
+      `<row r="1" ht="51.75" customHeight="1">${text('F1', dateLabel, 4)}${blank('G1', 5)}</row>`,
+      `<row r="2" ht="69.95" customHeight="1">${blank('B2', 1)}${SHOWROOM_HEADERS.map((h, i) => text('CDEFG'[i] + '2', h, i === 4 ? 3 : 2)).join('')}</row>`
+    ];
+    for (let i = 0; i < SHOWROOM_ROWS_PER_SHEET; i++) {
+      const r = 3 + i, pos = i === 0 ? 'first' : i === SHOWROOM_ROWS_PER_SHEET - 1 ? 'last' : 'mid';
+      const item = rows[k * SHOWROOM_ROWS_PER_SHEET + i];
+      const num = `<c r="B${r}" s="${6 + (pos === 'first' ? 0 : pos === 'mid' ? 1 : 2)}"><v>${k * SHOWROOM_ROWS_PER_SHEET + i + 1}</v></c>`;
+      const h = item ? hexOf(item.color) : '';
+      const sty = col => (h ? filled[h + pos + col] : plain[pos + col]);
+      let cells, ht = SHOWROOM_ROW_HEIGHT;
+      if (item) {
+        const vals = [item.place, item.title, item.time, item.owner, item.kind];
+        const lines = Math.max(...vals.map((v, c) => xlsxLineCount(v, SHOWROOM_COL_WIDTHS[c + 1])));
+        ht = Math.max(SHOWROOM_ROW_HEIGHT, lines * SHOWROOM_LINE_HEIGHT + 8.75);
+        cells = vals.map((v, c) => text('CDEFG'[c] + r, v, sty(c === 4 ? 'g' : 'c'))).join('');
+      } else cells = 'CDEFG'.split('').map((l, c) => blank(l + r, sty(c === 4 ? 'g' : 'c'))).join('');
+      out.push(`<row r="${r}" ht="${ht}" customHeight="1">${num}${cells}</row>`);
+    }
+    out.push('<row r="18" ht="19.5" customHeight="1"/>');
+    sheets.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="${NS}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="B1:G18"/><sheetViews><sheetView ${k === 0 ? 'tabSelected="1" ' : ''}workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18.75"/><cols>${SHOWROOM_COL_WIDTHS.map((w, i) => `<col min="${i + 2}" max="${i + 2}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${out.join('')}</sheetData><mergeCells count="1"><mergeCell ref="F1:G1"/></mergeCells><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><pageSetup paperSize="8" orientation="portrait" fitToWidth="1" fitToHeight="1"/></worksheet>`);
+  }
+  const nos = sheets.map((_, i) => i + 1);
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${nos.map(n => `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="${NS}" xmlns:r="${R}"><sheets>${nos.map(n => `<sheet name="${n}枚目" sheetId="${n}" r:id="rId${n}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${nos.map(n => `<Relationship Id="rId${n}" Type="${R}/worksheet" Target="worksheets/sheet${n}.xml"/>`).join('')}<Relationship Id="rId${sheetCount + 1}" Type="${R}/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', styles],
+    ...sheets.map((x, i) => [`xl/worksheets/sheet${i + 1}.xml`, x])
+  ];
+  return xlsxZip(files.map(([name, t]) => ({ name, data: enc.encode(t) })));
 }

@@ -354,12 +354,16 @@ async function exportDayExcel() {
       room: r.name, title: b.title, start: b.start, end: b.end,
       time: `${b.start}–${b.end}`,
       kind: kindOfCategories(b.categories, MEETING_KINDS),
-      color: barColor(b, r.color)
+      owner: b.owner || '', // 担当者(予約したアカウント。「姓 名」)
+      color: barColor(b, r.color), roomColor: r.color
     });
   }));
   items.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.room.localeCompare(b.room, 'ja'));
   const dateLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WDAYS[today.getDay()]})`;
-  const bytes = buildDayXlsx(dateLabel, items);
+  // ゆめすみかの展示場は、新しいフォーマット(商談場所・お客様名・時間・担当者・区分。各行は会議室の色。2026-11-05・ユーザー指示)。それ以外は従来の形式
+  const bytes = VIEW === 'yumesumika'
+    ? buildShowroomXlsx(dateLabel, items.map(i => ({ place: i.room, title: i.title, time: i.time, owner: i.owner, kind: i.kind, color: i.roomColor })))
+    : buildDayXlsx(dateLabel, items);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   a.download = `${V_ITEM_LABEL}予約_${site.name}_${isoDate(today).replace(/-/g, '')}.xlsx`;
