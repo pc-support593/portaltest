@@ -312,13 +312,16 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
   // ⑤の並びは、手入力の表示順の小さい順(役職に関係なく)。役職が空でも表示順だけの行で並べられる。同じ表示順なら役職の順
   const chSort = oc.buildOrgChart({ left: [{ dept: '購買部', members: [P('甲 一', 's1@x.com'), P('乙 二', 's2@x.com'), P('丙 三', 's3@x.com'), P('丁 四', 's4@x.com'), P('戊 五', 's5@x.com', '主任')] }], right: [], names: {} },
     [{ email: 's1@x.com', dept: '', title: '', sort: 3 }, { email: 's2@x.com', dept: '', title: '課長', sort: 2 }, { email: 's3@x.com', dept: '', title: '', sort: 1 }]);
-  check('組織図: ⑤は表示順の小さい順(役職が空の人も)。表示順なし(0)が先頭で、同じ0の中は役職の順→名簿の順。役職が空の行はMS365の役職を消さない', chSort.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '戊 五,丁 四,丙 三,乙 二,甲 一' && chSort.columns.find(c => c.name === '購買部').sections[0].members[0].title === '主任');
+  check('組織図: ⑤は表示順の小さい順(役職が空の人も)。表示順なし(0)は一番下(2026-11-05変更)で、同じ0の中は役職の順→名簿の順。役職が空の行はMS365の役職を消さない', chSort.columns.find(c => c.name === '購買部').sections[0].members.map(m => m.name).join() === '丙 三,乙 二,甲 一,戊 五,丁 四' && chSort.columns.find(c => c.name === '購買部').sections[0].members[3].title === '主任');
+
+  const ocS = load(['orgChart.js'], ['orgSortKey']);
+  check('組織図: 表示順の値 — 1以上はそのまま、0・空・文字列・負の数・null は「数字なし」(同じ値の一番下)', ocS.orgSortKey(3) === 3 && ocS.orgSortKey('2') === 2 && [0, '', 'x', -1, null, undefined, NaN].every(v => ocS.orgSortKey(v) === ocS.orgSortKey(0) && ocS.orgSortKey(v) > 9999));
 
   // 工務事務: 役職(手入力またはMS365)が「工務事務」の人は、本来の箱の一覧から外し、1つの箱(chart.jimu)にまとめる
   const jOrg = { left: [{ dept: 'カスタマーサポート室', members: [P('CS 一', 'j1@x.com'), P('CS 二', 'j2@x.com')] }, { dept: 'リフォーム部', members: [P('リ 一', 'j3@x.com', '工務事務')] }, { dept: '工務部(本社)', members: [P('工 一', 'j4@x.com'), P('工 二', 'j5@x.com')] }, { dept: '購買部', members: [P('購 一', 'j6@x.com')] }], right: [], names: {} };
   const jManual = [{ email: 'j1@x.com', dept: '', title: '工務事務', sort: 2 }, { email: 'j4@x.com', dept: '', title: '工務事務', sort: 1 }, { email: 'j5@x.com', dept: '', title: '事務員', sort: 0 }, { email: 'j6@x.com', dept: '', title: '工務事務', sort: 0 }];
   const chJ = oc.buildOrgChart(jOrg, jManual);
-  check('組織図: 工務事務の人(手入力・MS365の役職)は、1つの箱にまとまり、並びは表示順の小さい順', chJ.jimu.name === '工務事務' && chJ.jimu.members.map(m => m.name).join() === 'リ 一,購 一,工 一,CS 一' && chJ.jimu.parents.join() === 'カスタマーサポート室,リフォーム部,工務部');
+  check('組織図: 工務事務の人(手入力・MS365の役職)は、1つの箱にまとまり、並びは表示順の小さい順', chJ.jimu.name === '工務事務' && chJ.jimu.members.map(m => m.name).join() === '工 一,CS 一,リ 一,購 一' && chJ.jimu.parents.join() === 'カスタマーサポート室,リフォーム部,工務部');
   check('組織図: 工務事務の人は、本来の箱(⑤の一覧)から外れる。「事務員」は区別せず役職として残る', chJ.columns.find(c => c.name === 'カスタマーサポート室').sections[0].members.map(m => m.name).join() === 'CS 二' && chJ.columns.find(c => c.name === 'リフォーム部').sections[0].members.length === 0 && chJ.columns.find(c => c.name === '工務部').sections[0].members.map(m => m.name + ':' + m.title).join() === '工 二:事務員' && chJ.columns.find(c => c.name === '購買部').sections[0].members.length === 0);
   { // 「工務事務 主任」(先頭が工務事務+空白)は箱に入り、箱の中で「主任」が氏名の横に出る。「工務事務課長」のように空白なしでは入らない
     const sOrg = { left: [{ dept: 'カスタマーサポート室', members: [P('主 一', 's1@x.com'), P('主 二', 's2@x.com'), P('主 三', 's3@x.com')] }], right: [], names: {} };
