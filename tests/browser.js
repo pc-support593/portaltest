@@ -49,7 +49,14 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       await br.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       check('スマホ: Escでメニューが閉じる', await br.evaluate("!document.querySelector('.portal-mobile-menu').classList.contains('open')"));
     }
+    // スマホのトップの枠の並び(2026-11-06・ユーザー指示): お知らせ→今日の予定→業務システムリンク→全社スケジュール→社内規程(画面上の縦の位置で確認)
+    const SP_TOP_ORDER = "(() => { const ids = ['sec-news','sec-today','sec-links','sec-schedule','sec-policies']; const ys = ids.map(id => document.getElementById(id).getBoundingClientRect().top); return ys.every((y, i) => i === 0 || y > ys[i - 1]); })()";
+    check('スマホ(390px): トップの枠がお知らせ→今日の予定→業務システムリンク→全社スケジュール→社内規程の順', await br.evaluate(SP_TOP_ORDER));
+    // 個人の配置(左右の入れ替え)を保存済みでも、スマホの並びは変わらない
+    await br.evaluate("applyLayout({ left: ['policies','today'], right: ['links','schedule','news','tasks'] })");
+    check('スマホ: 個人の配置が違っても、並びは同じ', await br.evaluate(SP_TOP_ORDER));
     await br.open(`${sb.base}/index.html`, 1280);
+    check('PC(1280px): トップは従来どおり2列(お知らせの右に今日の予定)', await br.evaluate("(() => { const n = document.getElementById('sec-news').getBoundingClientRect(), t = document.getElementById('sec-today').getBoundingClientRect(); return t.left > n.right && Math.abs(t.top - n.top) < 2; })()"));
     check('PC(1280px): ハンバーガーは表示されない', await br.evaluate("(() => { const b = document.querySelector('.portal-burger'); return !b || getComputedStyle(b).display === 'none'; })()"));
 
     // ---- お知らせ: 固定/重要が先頭・NEW・期限切れは出さない ----
