@@ -704,7 +704,7 @@ function renderModal() {
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
         <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると、あなたの予定に反映されます。' : '作成すると、あなたの予定に反映されます。'}${activeMaster ? `${esc(activeMaster.itemLabel)}は招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
         <label style="display:flex;flex-direction:column;gap:5px">
-          <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名/お客様名</span>
           <input id="f-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
         </label>
         <label style="display:flex;flex-direction:column;gap:5px">
@@ -865,7 +865,7 @@ function renderMemberCandidates() {
 async function submitCreateForm() {
   const f = formState;
   const errEl = document.getElementById('f-error');
-  if (!f.title.trim()) { errEl.textContent = '件名を入力してください'; return; }
+  if (!f.title.trim()) { errEl.textContent = '件名/お客様名を入力してください'; return; }
   if (f.start >= f.end) { errEl.textContent = '終了時刻は開始時刻より後にしてください'; return; }
   const activeMaster = resourceMaster(f.resourceType);
   if (activeMaster && !f.room) { errEl.textContent = `${activeMaster.itemLabel}を選択してください`; return; }

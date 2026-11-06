@@ -194,6 +194,14 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('/api/me が無応答でも約10秒以内に画面が表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 14000));
     await br.setPreScript(null);
 
+    // Excel出力のボタンは、ゆめすみかの展示場だけ(吉村一建設の会議室・社用車には出さない。2026-11-06・ユーザー指示)
+    const excelBtn = {};
+    for (const v of ['yumesumika', 'yoshimura', 'cars']) {
+      await br.open(sb.base + '/rooms.html' + (v === 'yumesumika' ? '' : '?view=' + v), 1280);
+      await sleep(600);
+      excelBtn[v] = await br.evaluate("!!document.getElementById('export-excel')");
+    }
+    check('Excel出力のボタン: ゆめすみか展示場にはあり、吉村一建設の会議室・社用車には無い', excelBtn.yumesumika === true && excelBtn.yoshimura === false && excelBtn.cars === false, JSON.stringify(excelBtn));
     // ---- jinjerキーがある環境(ダミー)では、出勤状況のページとボタンが出る ----
     const sbk = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });
     try {

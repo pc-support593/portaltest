@@ -274,7 +274,7 @@ function renderCalendar() {
         <span style="font-size:15px;font-weight:700;min-width:118px;text-align:center;white-space:nowrap">${y}年 ${m + 1}月</span>
         <button id="next-month" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
         <button id="this-month" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;margin-left:6px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今月</button>
-        <button id="export-excel" class="hv-btn-plain" title="表示中の拠点・会議室の、今日の予定をExcelで出力します(時間順)。区分は、自分の予定表にある予約だけ入ります" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">Excel出力</button>
+        ${VIEW === 'yumesumika' ? `<button id="export-excel" class="hv-btn-plain" title="表示中の拠点・会議室の、今日の予定をExcelで出力します(時間順)。区分は、自分の予定表にある予約だけ入ります" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">Excel出力</button>` : ''}
       </span>
     </div>
     ${weekBanner}
@@ -297,7 +297,8 @@ function renderCalendar() {
     state.day = null; state.week = null;
     navigate();
   });
-  el.querySelector('#export-excel').addEventListener('click', e => {
+  const exportBtn = el.querySelector('#export-excel'); // ゆめすみかの展示場だけにある(吉村一建設の会議室・社用車には出さない。2026-11-06・ユーザー指示)
+  if (exportBtn) exportBtn.addEventListener('click', e => {
     const btn = e.currentTarget;
     if (btn.disabled) return;
     const label = btn.textContent;
@@ -360,10 +361,8 @@ async function exportDayExcel() {
   }));
   items.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.room.localeCompare(b.room, 'ja'));
   const dateLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WDAYS[today.getDay()]})`;
-  // ゆめすみかの展示場は、新しいフォーマット(商談場所・お客様名・時間・担当者・区分。各行は会議室の色。2026-11-05・ユーザー指示)。それ以外は従来の形式
-  const bytes = VIEW === 'yumesumika'
-    ? buildShowroomXlsx(dateLabel, items.map(i => ({ place: i.room, title: i.title, time: i.time, owner: i.owner, kind: i.kind, color: i.roomColor })))
-    : buildDayXlsx(dateLabel, items);
+  // ゆめすみかの展示場の新しいフォーマット(商談場所・お客様名・時間・担当者・区分。各行は会議室の色。2026-11-05・ユーザー指示)
+  const bytes = buildShowroomXlsx(dateLabel, items.map(i => ({ place: i.room, title: i.title, time: i.time, owner: i.owner, kind: i.kind, color: i.roomColor })));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   a.download = `${V_ITEM_LABEL}予約_${site.name}_${isoDate(today).replace(/-/g, '')}.xlsx`;
@@ -591,7 +590,7 @@ function renderFormModal() {
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
         ${target}
         <label style="display:flex;flex-direction:column;gap:5px">
-          <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名</span>
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名/お客様名</span>
           <input id="form-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
         </label>
         <label style="display:flex;flex-direction:column;gap:5px">
@@ -736,7 +735,7 @@ function updateFormError() {
 
 async function submitForm() {
   const f = state.form;
-  const err = formError(f) || (!f.title.trim() ? '件名を入力してください' : '');
+  const err = formError(f) || (!f.title.trim() ? '件名/お客様名を入力してください' : '');
   if (err) {
     const el = document.getElementById('form-error');
     if (el) el.textContent = err;
