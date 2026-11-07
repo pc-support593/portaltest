@@ -127,12 +127,23 @@ const CONFIG = {
       { key: 'url', label: 'リンク先URL', ph: '例: https://…' }
     ],
     cells: it => [it.char, it.label, it.url]
+  },
+  tools: {
+    label: '便利なツール', hasBody: false,
+    h1: 'アイコン文字', h2: '名称', h3: '説明 / リンク先URL',
+    fields: [
+      { key: 'char', label: 'アイコン文字(1文字)', ph: '例: F' },
+      { key: 'label', label: '名称', ph: '例: Forms' },
+      { key: 'description', label: '何ができるか(50文字まで。トップのタイルに表示)', ph: '例: アンケートを作って回答を集計できる', max: 50, wide: true },
+      { key: 'url', label: 'リンク先URL(http/https)', ph: '例: https://forms.office.com/…', wide: true }
+    ],
+    cells: it => [it.char, it.label, [it.description, it.url].filter(Boolean).join(' / ')]
   }
 };
 
 const state = {
   tab: 'news',
-  data: { news: [], schedule: [], links: [], policies: [], guide: [] },
+  data: { news: [], schedule: [], links: [], policies: [], tools: [], guide: [] },
   draft: null,    // 編集中の1件(null でモーダル閉)
   editId: null    // 編集対象のid(null で新規)
 };
@@ -501,12 +512,12 @@ function renderModal() {
             <input type="checkbox" data-field="${f.key}" ${d[f.key] === '1' ? 'checked' : ''}>
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.label}</span>
           </label>` : `
-          <label style="display:flex;flex-direction:column;gap:5px">
+          <label style="${f.wide ? 'grid-column:1 / -1;' : ''}display:flex;flex-direction:column;gap:5px">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.label}</span>
             ${f.type === 'select'
               ? `<select class="in-input" data-field="${f.key}">${f.options.map(([v, t]) =>
                   `<option value="${esc(v)}" ${(d[f.key] || f.defaultValue) === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`
-              : `<input class="in-input" type="${f.type || 'text'}" data-field="${f.key}" value="${esc(d[f.key] || '')}" placeholder="${esc(f.ph || '')}">`}
+              : `<input class="in-input" type="${f.type || 'text'}" data-field="${f.key}" value="${esc(d[f.key] || '')}" placeholder="${esc(f.ph || '')}"${f.max ? ` maxlength="${f.max}"` : ''}>`}
           </label>`).join('')}
         </div>
         ${cfg.hasBody ? `

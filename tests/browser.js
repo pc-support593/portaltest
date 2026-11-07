@@ -52,12 +52,27 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     // スマホのトップの枠の並び(2026-11-06・ユーザー指示): お知らせ→今日の予定→業務システムリンク→全社スケジュール→社内規程(画面上の縦の位置で確認)
     const SP_TOP_ORDER = "(() => { const ids = ['sec-news','sec-today','sec-links','sec-schedule','sec-policies']; const ys = ids.map(id => document.getElementById(id).getBoundingClientRect().top); return ys.every((y, i) => i === 0 || y > ys[i - 1]); })()";
     check('スマホ(390px): トップの枠がお知らせ→今日の予定→業務システムリンク→全社スケジュール→社内規程の順', await br.evaluate(SP_TOP_ORDER));
-    // 個人の配置(左右の入れ替え)を保存済みでも、スマホの並びは変わらない
-    await br.evaluate("applyLayout({ left: ['policies','today'], right: ['links','schedule','news','tasks'] })");
-    check('スマホ: 個人の配置が違っても、並びは同じ', await br.evaluate(SP_TOP_ORDER));
+    // 個人が並べ替えて保存した人(custom)は、スマホでもその配置(左の列→右の列)のまま
+    await br.evaluate("applyLayout({ left: ['policies','today'], right: ['links','schedule','news','tasks'], custom: true })");
+    check('スマホ: 個人が並べ替えた人は、保存した配置(左の列→右の列)のまま', await br.evaluate("(() => { const ids = ['sec-policies','sec-today','sec-links','sec-schedule','sec-news']; const ys = ids.map(id => document.getElementById(id).getBoundingClientRect().top); return ys.every((y, i) => i === 0 || y > ys[i - 1]); })()"));
+    await br.evaluate("applyLayout({ left: ['news','schedule','links'], right: ['today','policies','tasks'], custom: false })");
+    check('スマホ: 並べ替えていない人は、スマホ用の並びに戻る', await br.evaluate(SP_TOP_ORDER));
     await br.open(`${sb.base}/index.html`, 1280);
     check('PC(1280px): トップは従来どおり2列(お知らせの右に今日の予定)', await br.evaluate("(() => { const n = document.getElementById('sec-news').getBoundingClientRect(), t = document.getElementById('sec-today').getBoundingClientRect(); return t.left > n.right && Math.abs(t.top - n.top) < 2; })()"));
     check('PC(1280px): ハンバーガーは表示されない', await br.evaluate("(() => { const b = document.querySelector('.portal-burger'); return !b || getComputedStyle(b).display === 'none'; })()"));
+
+    // ---- 便利なツール(2026-11-07): PCは社内規程の下に説明つきのタイル、スマホは表示しない ----
+    await br.open(`${sb.base}/index.html`, 1280, 900, "document.getElementById('tool-links').textContent.trim().length > 0");
+    check('便利なツール: 未登録の間は「まだ登録がありません」', await br.evaluate("/まだ登録がありません/.test(document.getElementById('tool-links').textContent)"));
+    await api('POST', '/api/admin/tools', { char: 'F', label: 'Forms', description: 'アンケートを作って回答を集計できる', url: 'https://forms.office.com/' });
+    await api('POST', '/api/admin/tools', { char: 'N', label: 'OneNote', description: '', url: 'https://www.onenote.com/' });
+    await br.open(`${sb.base}/index.html`, 1280, 900, "document.querySelectorAll('#tool-links [data-tile-id]').length === 2");
+    check('便利なツール(PC): 説明つきのタイルが出る(説明が空のタイルは説明なし)', await br.evaluate("(() => { const t = [...document.querySelectorAll('#tool-links [data-tile-id]')]; return t.length === 2 && /Forms/.test(t[0].textContent) && t[0].querySelector('.tile-desc').textContent === 'アンケートを作って回答を集計できる' && !t[1].querySelector('.tile-desc') && t[0].target === '_blank'; })()"));
+    check('便利なツール(PC): 右の列の一番下(社内規程の下)', await br.evaluate("(() => { const p = document.getElementById('sec-policies'), s = document.getElementById('sec-tools'); return p.parentElement.id === 'col-right' && p.parentElement.lastElementChild === s && s.getBoundingClientRect().top > p.getBoundingClientRect().bottom; })()"));
+    await br.open(`${sb.base}/index.html`, 390);
+    check('便利なツール(スマホ390px): 表示しない', await br.evaluate("getComputedStyle(document.getElementById('sec-tools')).display === 'none'"));
+    await br.evaluate("applyLayout({ left: ['tools','policies','today'], right: ['links','schedule','news','tasks'], custom: true })");
+    check('便利なツール(スマホ): 並べ替えた人でも表示しない', await br.evaluate("getComputedStyle(document.getElementById('sec-tools')).display === 'none'"));
 
     // ---- お知らせ: 固定/重要が先頭・NEW・期限切れは出さない ----
     const today = iso(new Date());

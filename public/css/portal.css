@@ -75,17 +75,20 @@ input::placeholder, textarea::placeholder { color: #8fa3bd; }
   /* トップ画面: タッチ操作ではドラッグが動かないため、並べ替えの表示は隠す。リンクのタイルは3列 */
   .drag-handle, .pc-only { display: none !important; }
   #quick-links, #policy-links { grid-template-columns: repeat(3, 1fr) !important; padding-left: 14px !important; padding-right: 14px !important; }
-  /* トップ画面の枠の並び(2026-11-06・ユーザー指示): スマホでは個人の配置(PCでのドラッグ)に関係なく
-     お知らせ → 今日の予定 → 業務システムリンク → 全社スケジュール → 社内規程 の順に固定する。
+  /* トップ画面の枠の並び(2026-11-06・ユーザー指示): スマホの初期の並びは
+     お知らせ → 今日の予定 → 業務システムリンク → 全社スケジュール → 社内規程。
+     個人が並べ替えて保存した人(.layout-custom。portal.js の applyLayout が付ける)には適用せず、保存した配置(左の列→右の列)のまま。
      左右の列の箱(col-left/col-right)を display:contents で外し、枠を1列のグリッドに直接並べて order で順番を決める(DOMと保存済みの配置は変えない) */
-  .top-grid { grid-template-columns: 1fr !important; }
-  #col-left, #col-right { display: contents !important; }
-  #sec-news { order: 1; }
-  #sec-today { order: 2; }
-  #sec-links { order: 3; }
-  #sec-schedule { order: 4; }
-  #sec-policies { order: 5; }
-  #sec-tasks { order: 6; }
+  .top-grid:not(.layout-custom) { grid-template-columns: 1fr !important; }
+  .top-grid:not(.layout-custom) > #col-left, .top-grid:not(.layout-custom) > #col-right { display: contents !important; }
+  .top-grid:not(.layout-custom) #sec-news { order: 1; }
+  .top-grid:not(.layout-custom) #sec-today { order: 2; }
+  .top-grid:not(.layout-custom) #sec-links { order: 3; }
+  .top-grid:not(.layout-custom) #sec-schedule { order: 4; }
+  .top-grid:not(.layout-custom) #sec-policies { order: 5; }
+  .top-grid:not(.layout-custom) #sec-tasks { order: 6; }
+  /* 便利なツール(2026-11-07・ユーザー指示): スマホ幅では表示しない(並べ替えた人も同じ) */
+  #sec-tools { display: none !important; }
 }
 /* ---- スマホ対応 第2段階(2026-10-14・ユーザー指示): スケジュール・社員名簿・年間カレンダー・本日の出勤者 ---- */
 @media (max-width: 760px) {

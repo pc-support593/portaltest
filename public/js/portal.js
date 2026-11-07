@@ -237,8 +237,9 @@ function orderTiles(items, savedIds) {
     .map(x => x.it);
 }
 
-/** クイックリンク(業務システムリンク)・社内規程で共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化)。
-    kind('links'|'policies')と savedIds で、メンバー個人の並びを適用し、ドラッグ&ドロップで並べ替えて保存できる(2026-10-08) */
+/** クイックリンク(業務システムリンク)・社内規程・便利なツールで共用のタイル表示(仕組みは同一。2026-09-07: 社内規程を追加する際に共通化)。
+    kind('links'|'policies'|'tools')と savedIds で、メンバー個人の並びを適用し、ドラッグ&ドロップで並べ替えて保存できる(2026-10-08)。
+    説明(description。便利なツールだけが持つ)があれば、名称の下に小さく3行まで出す(2026-11-07) */
 function renderTileGrid(elId, items, kind, savedIds) {
   const el = document.getElementById(elId);
   el.innerHTML = orderTiles(items, savedIds).map(l => {
@@ -250,6 +251,7 @@ function renderTileGrid(elId, items, kind, savedIds) {
     <a href="${esc(l.url || '#')}"${external ? ' target="_blank" rel="noopener"' : ''} data-tile-id="${esc(String(l.id))}" draggable="true" title="ドラッグして並べ替え" class="hv-tile" style="display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid #e4eaf1;border-radius:10px;padding:22px 8px;color:#1c2b3a">
       <span style="width:38px;height:38px;border-radius:10px;background:${LINK_COLORS[colorIdx % LINK_COLORS.length]};color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">${esc(l.char)}</span>
       <span style="font-size:13px;font-weight:500;text-align:center">${tileLabelHtml(l.label)}</span>
+      ${l.description ? `<span class="tile-desc" style="font-size:11px;line-height:1.5;color:#6b7d8f;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-top:-4px">${esc(l.description)}</span>` : ''}
     </a>`;
   }).join('');
   if (kind) setupTileDnD(el, kind);
@@ -447,6 +449,8 @@ function sectionIdsOf(col) {
 function applyLayout(layout) {
   const colLeft = document.getElementById('col-left');
   const colRight = document.getElementById('col-right');
+  // 個人が並べ替えた人(custom)は、スマホでもその配置(左の列→右の列)のまま。並べ替えていない人は、スマホ用の固定の並び(portal.css)
+  document.querySelector('.top-grid').classList.toggle('layout-custom', !!layout.custom);
   (layout.left || []).forEach(id => {
     const el = document.getElementById(`sec-${id}`);
     if (el) colLeft.appendChild(el);
@@ -462,6 +466,7 @@ async function saveLayout() {
   const colRight = document.getElementById('col-right');
   try {
     await api('/api/layout', { method: 'PUT', body: { left: sectionIdsOf(colLeft), right: sectionIdsOf(colRight) } });
+    document.querySelector('.top-grid').classList.add('layout-custom');
   } catch (e) {
     console.error('レイアウトの保存に失敗しました', e);
   }
@@ -678,9 +683,12 @@ async function renderShiftBadge() {
     });
     // メンバー個人のリンクの並び(取得に失敗しても登録順で表示する)
     const savedOrder = async kind => (await api(`/api/tile-order?kind=${kind}`).catch(() => ({ ids: [] }))).ids || [];
-    const [linkOrder, policyOrder] = await Promise.all([savedOrder('links'), savedOrder('policies')]);
+    const [linkOrder, policyOrder, toolOrder] = await Promise.all([savedOrder('links'), savedOrder('policies'), savedOrder('tools')]);
     renderTileGrid('quick-links', content.links, 'links', linkOrder);
     renderTileGrid('policy-links', content.policies, 'policies', policyOrder);
+    const tools = content.tools || [];
+    renderTileGrid('tool-links', tools, 'tools', toolOrder);
+    if (!tools.length) document.getElementById('tool-links').innerHTML = '<p style="grid-column:1 / -1;margin:0;font-size:13px;color:#8a99a8">まだ登録がありません</p>';
     initHeaderSearch();
     // 後段: 定休グループが分かったら、全社スケジュールを自分のグループの項目だけに絞り込む(待たない。失敗・未確定なら全件のまま)
     retryGroup = () => getMyCalendarGroup().then(group => {

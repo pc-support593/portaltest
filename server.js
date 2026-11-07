@@ -182,8 +182,10 @@ const KINDS = {
   schedule: ['date', 'title', 'sub', 'body', 'calendar_scope'],
   links: ['char', 'label', 'url'],
   policies: ['char', 'label', 'url'],
+  tools: ['char', 'label', 'description', 'url'], // 便利なツール(2026-11-07。社内規程と同じ仕組み+何ができるかの短い説明)
   guide: ['cat', 'kind', 'title', 'updated', 'popular', 'body'] // システム案内(案B。2026-10-20)
 };
+const TOOL_DESC_MAX = 50; // 便利なツールの説明の上限(タイルに3行程度で収まる長さ)
 // システム案内の分野・種類(画面の定義もここから /api/guide で受け取る=定義はこの1か所)
 const GUIDE_CATS = [
   { id: 'pc', icon: '💻', label: 'PC・周辺機器', desc: '貸与・故障・購入申請、プリンタ、ソフトの導入' },
@@ -207,6 +209,7 @@ function pickFields(kind, body) {
   for (const f of KINDS[kind]) {
     let v = typeof body[f] === 'string' ? body[f].trim() : '';
     if (f === 'body') v = v.slice(0, BODY_LIMITS[kind] || 2000);
+    if (f === 'description') v = Array.from(v).slice(0, TOOL_DESC_MAX).join(''); // 絵文字などを途中で切らないよう文字単位で
     if (f === 'cat' && !GUIDE_CATS.some(c => c.id === v)) v = ''; // 許可外の分野は空(=どの分野にも入らない)
     if (f === 'kind' && !GUIDE_KINDS.includes(v)) v = GUIDE_KINDS[0];
     if (f === 'updated' && kind === 'guide' && !CAL_DATE_RE.test(v)) v = jstNow().date; // 更新日が空・不正なら当日(日本時間)
@@ -225,7 +228,9 @@ function hasAnyInput(row) {
 /** リンクURLは http(s) と相対パスのみ許可(javascript: 等のスキームによる格納型XSS対策) */
 function isSafeUrl(url) {
   if (url === '' || url === '#') return true;
-  const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(url);
+  // ブラウザはURLの先頭の空白・制御文字と、途中のタブ・改行を無視する(「java(タブ)script:」が javascript: として動く)ため、取り除いてから判定する
+  const cleaned = String(url).replace(/[\u0000-\u0020\u007f-\u009f]/g, '');
+  const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(cleaned);
   return scheme ? /^https?:$/i.test(scheme[0]) : true;
 }
 
@@ -249,16 +254,33 @@ app.get('/api/content', (_req, res) => {
     schedule: withFiles('schedule', db.prepare('SELECT * FROM schedule ORDER BY id').all()),
     links: db.prepare('SELECT * FROM links ORDER BY id').all(),
     policies: db.prepare('SELECT * FROM policies ORDER BY id').all(),
+    tools: db.prepare('SELECT * FROM tools ORDER BY id').all(),
     guide: withFiles('guide', db.prepare('SELECT * FROM guide ORDER BY id').all()) // 管理画面の一覧用
   });
 });
 
 // ---- ポータルトップの配置(個人ごとのドラッグ&ドロップ並び順) ----
 
-const LAYOUT_SECTIONS = ['news', 'links', 'policies', 'today', 'schedule', 'tasks'];
+const LAYOUT_SECTIONS = ['news', 'links', 'policies', 'tools', 'today', 'schedule', 'tasks'];
 // 初期配置(個人の保存済み配置があればそちらが優先され、これには戻さない)。tasks(タスク・承認待ち)は画面で非表示だが、
 // 既存の保存済み配置(6セクション)を無効にしないためLAYOUT_SECTIONSには残す(2026-10-08)
-const DEFAULT_LAYOUT = { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] };
+const DEFAULT_LAYOUT = { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] }; // 便利なツールは初期配置の一番下(2026-11-07・ユーザー指示)
+// 後から追加した枠と、その枠を補う位置(列の一番下)。追加前に保存された配置には含まれないため、読み出し・保存のときに補う
+// (補わないと過不足の検証で無効になり、並べ替えた人の配置が初期配置に戻ってしまう。DBの行は、本人が次に保存したときに書き換わる)
+const ADDED_SECTIONS = [{ id: 'tools', column: 'right' }]; // 便利なツール(2026-11-07)
+// スマホには出ない枠。並べ替えたかの判定から外す(PCでこの枠の位置を変えただけで、スマホの固定の並びが変わらないように)
+const MOBILE_HIDDEN = ['tasks', 'tools'];
+
+/** 後から追加した枠が無い配置に、その枠を補う(元の配置は変えずに新しい配置を返す。配列でなければそのまま返す) */
+function withAddedSections(layout) {
+  if (!layout || !Array.isArray(layout.left) || !Array.isArray(layout.right)) return layout;
+  const left = [...layout.left], right = [...layout.right];
+  for (const { id, column } of ADDED_SECTIONS) {
+    if (left.includes(id) || right.includes(id)) continue;
+    (column === 'left' ? left : right).push(id);
+  }
+  return { left, right };
+}
 
 /** left/rightの合計がLAYOUT_SECTIONSの過不足ない並べ替えであることを検証 */
 function isValidLayout(body) {
@@ -269,17 +291,29 @@ function isValidLayout(body) {
   return set.size === LAYOUT_SECTIONS.length && LAYOUT_SECTIONS.every(id => set.has(id));
 }
 
+/** 初期配置と同じ並びか(個人が並べ替えたかの判定。並べ替えて初期配置に戻した人は、並べ替えていない扱い) */
+function isDefaultLayout(layout) {
+  const shown = col => col.filter(id => !MOBILE_HIDDEN.includes(id));
+  const same = (a, b) => a.length === b.length && a.every((id, i) => id === b[i]);
+  return same(shown(layout.left), shown(DEFAULT_LAYOUT.left)) && same(shown(layout.right), shown(DEFAULT_LAYOUT.right));
+}
+
+// custom: 個人が初期配置から並べ替えて保存しているか。スマホの画面は、custom でなければスマホ用の固定の並び、
+// custom なら保存した配置(左の列→右の列の順)で表示する(2026-11-06・ユーザー指示)
 app.get('/api/layout', (req, res) => {
   const row = db.prepare('SELECT layout FROM user_layouts WHERE email = ?').get(me(req).email);
-  if (!row) return res.json(DEFAULT_LAYOUT);
-  let layout;
-  try { layout = JSON.parse(row.layout); } catch { layout = null; }
-  res.json(isValidLayout(layout) ? layout : DEFAULT_LAYOUT);
+  let layout = null;
+  if (row) {
+    try { layout = withAddedSections(JSON.parse(row.layout)); } catch { layout = null; }
+  }
+  if (!isValidLayout(layout)) return res.json({ ...DEFAULT_LAYOUT, custom: false });
+  res.json({ left: layout.left, right: layout.right, custom: !isDefaultLayout(layout) });
 });
 
 app.put('/api/layout', (req, res) => {
-  if (!isValidLayout(req.body)) return res.status(400).json({ error: '不正なレイアウトです' });
-  const layout = JSON.stringify({ left: req.body.left, right: req.body.right });
+  const body = withAddedSections(req.body); // 枠の追加前に開いていた画面からの保存も受け付ける
+  if (!isValidLayout(body)) return res.status(400).json({ error: '不正なレイアウトです' });
+  const layout = JSON.stringify({ left: body.left, right: body.right });
   db.prepare(
     `INSERT INTO user_layouts (email, layout, updated_at) VALUES (?, ?, datetime('now'))
      ON CONFLICT(email) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at`
@@ -287,12 +321,12 @@ app.put('/api/layout', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- メンバー個人のリンク並び順(業務システムリンク・社内規程。2026-10-08・ユーザー指示) ----
+// ---- メンバー個人のリンク並び順(業務システムリンク・社内規程・便利なツール。2026-10-08・ユーザー指示) ----
 // 管理者が並びを決めるのではなく、各メンバーがトップ画面のタイルをドラッグして並べ替え、その人だけに反映する。
-// 保存するのはリンクIDの並びだけ(リンク本体は links / policies テーブル)。保存が無い人・保存後に追加された
+// 保存するのはリンクIDの並びだけ(リンク本体は links / policies / tools テーブル)。保存が無い人・保存後に追加された
 // リンクは、登録順(IDの順)で末尾に出る。
 
-const TILE_KINDS = ['links', 'policies'];
+const TILE_KINDS = ['links', 'policies', 'tools'];
 
 app.get('/api/tile-order', (req, res) => {
   const kind = String(req.query.kind || '');

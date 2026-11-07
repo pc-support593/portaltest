@@ -42,6 +42,55 @@ const files = {
   await json('PUT', `/api/admin/news/${pin}`, { title: '固定テスト2' });
   check('pinnedを送らない更新では固定が外れない', ((await json('GET', '/api/content')).data.news.find(n => n.id === pin) || {}).pinned === '1');
   check('存在しないAPIは404', (await json('GET', '/api/no-such')).status === 404);
+  // トップの配置: 個人が並べ替えたか(custom)。スマホの並びの切り替えに使う(2026-11-06)
+  const lay0 = (await json('GET', '/api/layout')).data;
+  check('配置: 保存が無い人は初期配置・custom=false', lay0.custom === false && lay0.left.join() === 'news,schedule,links' && lay0.right.join() === 'today,policies,tasks,tools', JSON.stringify(lay0));
+  await json('PUT', '/api/layout', { left: ['today', 'news'], right: ['links', 'schedule', 'policies', 'tasks'] });
+  const lay1 = (await json('GET', '/api/layout')).data;
+  check('配置: 並べ替えて保存した人は custom=true・保存した配置', lay1.custom === true && lay1.left.join() === 'today,news', JSON.stringify(lay1));
+  await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] });
+  check('配置: 初期配置と同じ並びに戻して保存した人は custom=false', (await json('GET', '/api/layout')).data.custom === false);
+  check('配置: custom を含めて送っても保存できる(余分な項目は無視)', (await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'], custom: true })).status === 200 && (await json('GET', '/api/layout')).data.custom === false);
+
+  // 便利なツールの枠の追加(2026-11-07): 追加前に保存された6枠の配置も無効にしない(tools を policies の直後に補う)
+  const { DatabaseSync } = require('node:sqlite');
+  const rawDb = new DatabaseSync(path.join(sb.dir, 'data', 'portal.db'));
+  const myEmail = (await json('GET', '/api/me')).data.email;
+  const setSavedLayout = l => rawDb.prepare('UPDATE user_layouts SET layout = ? WHERE email = ?').run(JSON.stringify(l), myEmail);
+  setSavedLayout({ left: ['policies', 'today'], right: ['links', 'schedule', 'news', 'tasks'] }); // 追加前に並べ替えて保存した人(DBは6枠のまま)
+  const layOld = (await json('GET', '/api/layout')).data;
+  check('配置: 追加前に並べ替えた人は custom=true のまま、tools が右の列の一番下に入る', layOld.custom === true && layOld.left.join() === 'policies,today' && layOld.right.join() === 'links,schedule,news,tasks,tools', JSON.stringify(layOld));
+  setSavedLayout({ left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] }); // 追加前の初期配置のまま保存していた人
+  const layOldDef = (await json('GET', '/api/layout')).data;
+  check('配置: 追加前の初期配置のまま保存していた人は custom=false(新しい初期配置と同じ)', layOldDef.custom === false && layOldDef.right.join() === 'today,policies,tasks,tools', JSON.stringify(layOldDef));
+  setSavedLayout({ left: ['news', 'news'], right: ['today', 'policies', 'tasks', 'links'] }); // 壊れた配置(重複・不足)は補っても通さない
+  check('配置: 壊れた配置は初期配置に戻す', (await json('GET', '/api/layout')).data.custom === false);
+  rawDb.close();
+  check('配置: 7枠の保存ができる', (await json('PUT', '/api/layout', { left: ['tools', 'news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] })).status === 200 && (await json('GET', '/api/layout')).data.left.join() === 'tools,news,schedule,links');
+  check('配置: 不明な枠は保存できない', (await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links', 'zzz'], right: ['today', 'policies', 'tools', 'tasks'] })).status === 400);
+  await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] });
+
+  // 便利なツール(2026-11-07): 登録・説明の上限(50文字)・URLの制限・トップ用の取得・個人の並び
+  const longDesc = 'あ'.repeat(49) + '😀' + 'い'.repeat(5);
+  const tool = (await json('POST', '/api/admin/tools', { char: 'F', label: 'Forms', description: longDesc, url: 'https://forms.office.com/' })).data.id;
+  const savedTool = (await json('GET', '/api/content')).data.tools.find(t => t.id === tool) || {};
+  check('便利なツール: 登録できて /api/content に出る', savedTool.label === 'Forms' && savedTool.url === 'https://forms.office.com/', JSON.stringify(savedTool));
+  check('便利なツール: 説明は50文字まで(絵文字を途中で切らない)', Array.from(savedTool.description || '').length === 50 && savedTool.description.endsWith('😀'), savedTool.description);
+  check('便利なツール: javascript: のURLは登録できない', (await json('POST', '/api/admin/tools', { label: 'x', url: 'javascript:alert(1)' })).status === 400);
+  for (const bad of ['java\tscript:alert(1)', 'java\nscript:alert(1)', ' javascript:alert(1)', '\u0001javascript:alert(1)', 'JaVa\r\nScRiPt:alert(1)', 'data:text/html,x', 'vbscript:x']) {
+    check('URLの検査: ' + JSON.stringify(bad) + ' は登録できない', (await json('POST', '/api/admin/tools', { label: 'x', url: bad })).status === 400);
+  }
+  check('URLの検査: https と相対パスは登録できる', (await json('POST', '/api/admin/tools', { label: 'ok1', url: 'https://example.com/a?b=1' })).status === 200 && (await json('POST', '/api/admin/tools', { label: 'ok2', url: '/guide.html' })).status === 200);
+  // PCで枠(便利なツール・タスク)の位置を変えただけの人は、スマホの並びを変えない(custom=false)
+  await json('PUT', '/api/layout', { left: ['tools', 'news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] });
+  check('配置: スマホに出ない枠(tools)の位置だけ変えた人は custom=false', (await json('GET', '/api/layout')).data.custom === false);
+  await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['policies', 'today', 'tasks', 'tools'] });
+  check('配置: スマホに出る枠(policies)の位置を変えた人は custom=true', (await json('GET', '/api/layout')).data.custom === true);
+  await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] });
+  await json('PUT', `/api/admin/tools/${tool}`, { char: 'F', label: 'Forms', description: 'アンケート', url: 'https://forms.office.com/' });
+  check('便利なツール: 説明を更新できる', ((await json('GET', '/api/content')).data.tools.find(t => t.id === tool) || {}).description === 'アンケート');
+  check('便利なツール: 個人の並びを保存できる', (await json('PUT', '/api/tile-order', { kind: 'tools', ids: [tool] })).status === 200 && (await json('GET', '/api/tile-order?kind=tools')).data.ids.join() === String(tool));
+  check('便利なツール: 削除できる', (await json('DELETE', `/api/admin/tools/${tool}`)).status === 200 && !(await json('GET', '/api/content')).data.tools.some(t => t.id === tool));
 
   const news = (await json('POST', '/api/admin/news', { title: '添付テスト', date: '2026-10-09' })).data.id;
   const sched = (await json('POST', '/api/admin/schedule', { title: '行事テスト', date: '2026-10-20' })).data.id;

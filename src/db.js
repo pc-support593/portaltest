@@ -48,6 +48,15 @@ function migrate(db) {
       label TEXT NOT NULL DEFAULT '',
       url TEXT NOT NULL DEFAULT ''
     );
+    -- 便利なツール(2026-11-07・ユーザー指示)。社内規程(policies)と同じ仕組みのトップのタイル+何ができるかの短い説明。
+    -- 項目は管理画面で登録する(サンプルのシードは入れない)。description は50字まで(server.js の pickFields で切り詰め)
+    CREATE TABLE IF NOT EXISTS tools (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      char TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT ''
+    );
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       room TEXT NOT NULL,
@@ -137,7 +146,7 @@ function migrate(db) {
     );
     CREATE TABLE IF NOT EXISTS user_tile_orders (
       email TEXT NOT NULL,           -- ユーザーの同一性はメールで判定(user_layoutsと同方式)
-      kind TEXT NOT NULL,            -- 'links'(業務システムリンク) | 'policies'(社内規程)
+      kind TEXT NOT NULL,            -- 'links'(業務システムリンク) | 'policies'(社内規程) | 'tools'(便利なツール)
       item_ids TEXT NOT NULL,        -- JSON [id, ...] メンバー個人の並び順(未保存の項目は末尾に出る)
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (email, kind)
