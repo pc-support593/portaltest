@@ -107,8 +107,8 @@ async function fetchPersonalEvents(date) {
   const dateStr = isoDate(date);
   const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
-    `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
-    `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
+    `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59+09:00')}` +
     '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime';
 
   const res = await fetch(url, {
@@ -213,8 +213,8 @@ async function fetchWeekEvents(sunday) {
   next.setDate(next.getDate() + 7);
   const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
   let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
-    `?startDateTime=${encodeURIComponent(isoDate(sunday) + 'T00:00:00')}` +
-    `&endDateTime=${encodeURIComponent(isoDate(next) + 'T00:00:00')}` +
+    `?startDateTime=${encodeURIComponent(isoDate(sunday) + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(isoDate(next) + 'T00:00:00+09:00')}` +
     '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime&$top=100';
   const out = [];
   while (url) {
@@ -302,15 +302,15 @@ async function fetchCalendarViewBusy(dateStr, rooms, token) {
   await Promise.all(rooms.map(async room => {
     try {
       const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
-        `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
-        `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
+        `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00+09:00')}` +
+        `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59+09:00')}` +
         '&$select=id,subject,start,end,organizer,showAs&$orderby=start/dateTime';
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
-      map[room.id] = (d.value || []).map(ev => ({
-        start: ev.start.dateTime.slice(11, 16),
-        end: ev.end.dateTime.slice(11, 16),
+      // 日をまたぐ予約は、この日の範囲(0:00〜24:00)に切り詰める(前日22:00〜今日8:00 → 00:00–08:00)。重複チェックにも使うため
+      map[room.id] = (d.value || []).filter(ev => clipToDay(ev.start.dateTime, ev.end.dateTime, dateStr)).map(ev => ({
+        ...clipToDay(ev.start.dateTime, ev.end.dateTime, dateStr),
         subject: ev.subject || '(件名なし)',
         organizer: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
         organizerEmail: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',

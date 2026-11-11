@@ -790,9 +790,13 @@ async function submitRealForm(f) {
     submitBtn.textContent = '空き状況を確認中…';
     const { rows: busyRows } = await fetchRealRoomBookings([room], f.date, f.date);
     const isOwnOriginalSlot = b => f.myEventId && b.myEventId === f.myEventId;
-    const conflict = busyRows.find(b => b.start < f.end && b.end > f.start && !isOwnOriginalSlot(b));
+    // 日をまたぐ予約は、予約する日の範囲(0:00〜24:00)に切り詰めてから比べる(前日22:00〜今日8:00の予約 → 00:00–08:00。2026-11-11)
+    const conflict = busyRows
+      // 元の開始・終了(startAt)を持たない行は、従来どおりその日の行だけを比べる(黙って重複チェックから外さないため)
+      .map(b => ({ b, t: b.startAt ? clipToDay(b.startAt, b.endAt, f.date) : (b.date === f.date ? { start: b.start, end: b.end } : null) }))
+      .find(({ b, t }) => t && t.start < f.end && t.end > f.start && !isOwnOriginalSlot(b));
     if (conflict) {
-      throw new Error(`この時間帯は既に予約があります(${conflict.start}–${conflict.end})。別の時間帯または${V_ITEM_LABEL}を選択してください`);
+      throw new Error(`この時間帯は既に予約があります(${conflict.t.start}–${conflict.t.end})。別の時間帯または${V_ITEM_LABEL}を選択してください`);
     }
     submitBtn.textContent = f.editId ? '保存中…' : '作成中…';
 
@@ -959,8 +963,8 @@ function attendeesToMembers(attendees, myEmail) {
 async function fetchMyRoomEvents(from, to, token) {
   const myEmail = (ME && ME.email) || '';
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
-    `?startDateTime=${encodeURIComponent(from + 'T00:00:00')}` +
-    `&endDateTime=${encodeURIComponent(to + 'T23:59:59')}` +
+    `?startDateTime=${encodeURIComponent(from + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(to + 'T23:59:59+09:00')}` +
     '&$select=id,iCalUId,subject,start,end,attendees,body,isAllDay,type,isOrganizer,categories&$orderby=start/dateTime&$top=200';
   const events = await graphGetAll(url, token);
   const map = new Map();
@@ -975,7 +979,7 @@ async function fetchMyRoomEvents(from, to, token) {
     const decoded = decodeEventBody(ev.body && ev.body.contentType === 'text' ? ev.body.content : '');
     map.set(key, {
       id: ev.id, roomId: room.id, isOrganizer: !!ev.isOrganizer, type: ev.type,
-      date, start, end, title: ev.subject || '(件名なし)',
+      date, start, end, startAt: ev.start.dateTime, endAt: ev.end.dateTime, title: ev.subject || '(件名なし)',
       members: attendeesToMembers(ev.attendees, myEmail),
       content: decoded.content, guests: decoded.guests, categories: ev.categories || [],
       roomResponse: (roomAttendee.status && roomAttendee.status.response) || 'none'
@@ -997,8 +1001,8 @@ async function fetchRealRoomBookings(rooms, from, to) {
   const perRoom = await Promise.all(rooms.map(async room => {
     try {
       const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
-        `?startDateTime=${encodeURIComponent(from + 'T00:00:00')}` +
-        `&endDateTime=${encodeURIComponent(to + 'T23:59:59')}` +
+        `?startDateTime=${encodeURIComponent(from + 'T00:00:00+09:00')}` +
+        `&endDateTime=${encodeURIComponent(to + 'T23:59:59+09:00')}` +
         '&$select=id,iCalUId,subject,start,end,organizer,type,isAllDay&$orderby=start/dateTime&$top=200';
       const events = await graphGetAll(url, token);
       return events.map(ev => {
@@ -1008,6 +1012,8 @@ async function fetchRealRoomBookings(rooms, from, to) {
         return {
           id: `graph:${room.id}:${ev.id}`, source: 'graph',
           room: room.id, date, start, end,
+          // 元の開始・終了(日本時間)。日をまたぐ予約を、予約する日の範囲に切り詰めて重複チェックするため
+          startAt: ev.start.dateTime, endAt: ev.end.dateTime,
           title: ev.subject || '(件名なし)',
           owner: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.name) || '',
           owner_email: (ev.organizer && ev.organizer.emailAddress && ev.organizer.emailAddress.address) || '',
@@ -1037,6 +1043,7 @@ async function fetchRealRoomBookings(rooms, from, to) {
     pending.push({
       id: `pending:${mineEv.id}`, source: 'graph',
       room: mineEv.roomId, date: mineEv.date, start: mineEv.start, end: mineEv.end,
+      startAt: mineEv.startAt, endAt: mineEv.endAt,
       title: mineEv.title, owner: (ME && ME.name) || '', owner_email: (ME && ME.email) || '',
       members: mineEv.members, content: mineEv.content, guests: mineEv.guests, categories: mineEv.categories, myEventId: mineEv.id,
       editable: mineEv.isOrganizer && mineEv.type === 'singleInstance',

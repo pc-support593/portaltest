@@ -198,6 +198,22 @@ function jstDateKey(date) {
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/** 予定の開始・終了を、指定した日(dayKey: 'YYYY-MM-DD')の範囲(0:00〜24:00)に切り詰めて { start, end }('HH:MM')で返す。
+    startDateTime/endDateTime は Graph が日本時間で返す 'YYYY-MM-DDTHH:MM:SS…'。
+    前日以前に始まる予定は開始を '00:00'、翌日以降に終わる予定は終了を '24:00' にする。
+    時刻だけを切り出すと、前日22:00〜今日8:00の予約が「22:00–08:00」になり、重複チェックや表示がずれるため(2026-11-11 不具合対応)。
+    その日にかからない予定は null */
+function clipToDay(startDateTime, endDateTime, dayKey) {
+  const s = String(startDateTime || '').slice(0, 16);
+  const e = String(endDateTime || '').slice(0, 16);
+  if (s.length < 16 || e.length < 16) return null;
+  if (s.slice(0, 10) > dayKey || e <= `${dayKey}T00:00`) return null;
+  return {
+    start: s.slice(0, 10) < dayKey ? '00:00' : s.slice(11, 16),
+    end: e.slice(0, 10) > dayKey ? '24:00' : e.slice(11, 16)
+  };
+}
+
 /** 従業員入社日(Entra IDのemployeeHireDate)がまだ来ていない人か(入社日が日本時間の今日より後)。
     入社日当日から表示する。入社日が空・日付として読めない場合は、これまでどおり表示する(false)。
     社員名簿・スタッフ予定2ページ・社内検索・本日の出勤者で共通(2026-10-13・ユーザー指示。ポータル上の表示だけの話) */

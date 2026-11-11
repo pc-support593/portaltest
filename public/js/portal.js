@@ -38,9 +38,11 @@ async function fetchTodayEvents() {
   const d = new Date();
   const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const token = await Auth.getGraphToken(['Calendars.Read']);
+  // 範囲の時刻には日本時間の時差(+09:00)を必ず付ける。付けないと世界標準時として扱われ、「当日9:00〜翌日8:59」を取得してしまう
+  // (Prefer: outlook.timezone は返ってくる時刻の表記だけで、問い合わせの範囲には効かない。2026-11-11 不具合対応)
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
-    `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00')}` +
-    `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59')}` +
+    `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59+09:00')}` +
     '&$select=id,subject,start,end,location,isAllDay,isOrganizer&$orderby=start/dateTime';
 
   const res = await fetch(url, {
@@ -53,15 +55,20 @@ async function fetchTodayEvents() {
   if (!res.ok) throw new Error(`予定表の取得に失敗しました(HTTP ${res.status})`);
   const data = await res.json();
 
-  return (data.value || []).map((ev, i) => ({
-    id: ev.id,
-    // 主催者かつ終日でない予定のみ変更可能(schedule.jsと同じ基準。クリックでスケジュール画面の変更フォームへ)
-    editable: !!ev.isOrganizer && !ev.isAllDay,
-    time: ev.isAllDay ? '終日' : `${ev.start.dateTime.slice(11, 16)}–${ev.end.dateTime.slice(11, 16)}`,
-    title: ev.subject || '(件名なし)',
-    place: (ev.location && ev.location.displayName) || '',
-    ...EVENT_COLOR_CYCLE[i % EVENT_COLOR_CYCLE.length]
-  }));
+  return (data.value || []).map((ev, i) => {
+    // 日をまたぐ予定は今日の範囲(0:00〜24:00)に切り詰めて表示する(例: 前日22:00〜今日8:00 → 00:00–08:00)
+    const t = clipToDay(ev.start.dateTime, ev.end.dateTime, dateStr)
+      || { start: ev.start.dateTime.slice(11, 16), end: ev.end.dateTime.slice(11, 16) };
+    return {
+      id: ev.id,
+      // 主催者かつ終日でない予定のみ変更可能(schedule.jsと同じ基準。クリックでスケジュール画面の変更フォームへ)
+      editable: !!ev.isOrganizer && !ev.isAllDay,
+      time: ev.isAllDay ? '終日' : `${t.start}–${t.end}`,
+      title: ev.subject || '(件名なし)',
+      place: (ev.location && ev.location.displayName) || '',
+      ...EVENT_COLOR_CYCLE[i % EVENT_COLOR_CYCLE.length]
+    };
+  });
 }
 
 // 各システム連携までのダミー

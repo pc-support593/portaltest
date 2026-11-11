@@ -23,7 +23,7 @@ function load(files, names) {
   return ctx;
 }
 
-const c = load(['common.js'], ['memberSearchTerms', 'memberSearchExpr', 'memberMatchesTerms', 'kindOfCategories', 'categoriesWithKind', 'meetingKindFieldHtml', 'tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
+const c = load(['common.js'], ['memberSearchTerms', 'memberSearchExpr', 'memberMatchesTerms', 'kindOfCategories', 'categoriesWithKind', 'meetingKindFieldHtml', 'tileLabelHtml', 'linkify', 'extractUrls', 'eventLinksHtml', 'displayName', 'fullNameOf', 'jstDateKey', 'clipToDay', 'isBeforeHireDate', 'employeeTypeRank', 'compareMembersByRank', 'sortKeyFromEmail', 'compareRomajiGojuon', 'withTimeout', 'surname', 'esc', 'phoneListOf', 'searchPortalPages', 'isShiftTeamEligible', 'calendarGroupFor']);
 
 // 名前
 check('displayName: 会社名の括弧書きを除く(全角)', c.displayName('本田 悠(吉村一建設)') === '本田 悠');
@@ -34,6 +34,42 @@ check('fullNameOf: 姓 名(半角スペース1つ)', c.fullNameOf('本田', '悠
 check('fullNameOf: 姓か名が空なら表示名', c.fullNameOf('本田', '', '本田 悠(吉村一建設)') === '本田 悠');
 check('fullNameOf: 前後の空白を除く', c.fullNameOf(' 本田 ', ' 悠 ', 'x') === '本田 悠');
 check('surname: 全角スペース区切り', c.surname('本田　悠') === '本田');
+
+// 予定表の取得範囲(2026-11-11 不具合対応): Graph の startDateTime/endDateTime に時差が無いと世界標準時として扱われ、
+// 日本時間の「当日9:00〜翌日8:59」を取ってしまう。画面のJSの範囲指定に、すべて +09:00 が付いていることを確かめる
+{
+  const files = fs.readdirSync(path.join(ROOT, 'public', 'js')).filter(f => f.endsWith('.js'));
+  const found = [], bad = [];
+  files.forEach(f => {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', f), 'utf8');
+    for (const m of src.matchAll(/(start|end)DateTime=\$\{encodeURIComponent\((.*?)\)\}/g)) {
+      found.push(`${f}:${m[1]}`);
+      if (!/'T\d\d:\d\d:\d\d\+09:00'$/.test(m[2].trim())) bad.push(`${f}: ${m[0]}`);
+    }
+  });
+  check('予定表の取得範囲: startDateTime/endDateTime の時刻に、すべて日本時間の時差(+09:00)が付いている', found.length >= 20 && bad.length === 0, `件数=${found.length} 付いていない箇所=${JSON.stringify(bad)}`);
+}
+// 日をまたぐ予定を、その日の範囲(0:00〜24:00)に切り詰める(2026-11-11)。時刻だけ切り出すと「22:00–08:00」になり、重複チェック・表示がずれる
+{
+  const clip = (s, e, day) => JSON.stringify(c.clipToDay(s, e, day));
+  check('clipToDay: その日の中の予定は、そのままの時刻', clip('2026-11-11T10:00:00.0000000', '2026-11-11T11:00:00.0000000', '2026-11-11') === '{"start":"10:00","end":"11:00"}');
+  check('clipToDay: 前日に始まり今日の朝に終わる予定は 00:00 から', clip('2026-11-10T22:00:00.0000000', '2026-11-11T08:00:00.0000000', '2026-11-11') === '{"start":"00:00","end":"08:00"}');
+  check('clipToDay: 今日の夜に始まり翌日の早朝に終わる予定は 24:00 まで', clip('2026-11-11T22:00:00.0000000', '2026-11-12T06:00:00.0000000', '2026-11-11') === '{"start":"22:00","end":"24:00"}');
+  check('clipToDay: 何日も続く予定・終日の予定は 00:00–24:00', clip('2026-11-10T09:00:00', '2026-11-13T18:00:00', '2026-11-11') === '{"start":"00:00","end":"24:00"}' && clip('2026-11-11T00:00:00', '2026-11-12T00:00:00', '2026-11-11') === '{"start":"00:00","end":"24:00"}');
+  check('clipToDay: 月・年の境目をまたぐ予定も切り詰める', clip('2026-10-31T22:00:00', '2026-11-01T07:00:00', '2026-11-01') === '{"start":"00:00","end":"07:00"}' && clip('2026-12-31T23:00:00', '2027-01-01T01:00:00', '2026-12-31') === '{"start":"23:00","end":"24:00"}');
+  check('clipToDay: その日にかからない予定(前日0時ちょうどに終わる・翌日に始まる・時刻が空)は null', c.clipToDay('2026-11-10T22:00:00', '2026-11-11T00:00:00', '2026-11-11') === null && c.clipToDay('2026-11-12T08:30:00', '2026-11-12T17:30:00', '2026-11-11') === null && c.clipToDay(undefined, '2026-11-11T10:00:00', '2026-11-11') === null);
+  // 予約状況・今日の予定を作る箇所が、時刻を切り出すだけでなく clipToDay を通していること
+  const src = f => fs.readFileSync(path.join(ROOT, 'public', 'js', f), 'utf8');
+  const uses = {
+    'portal.js': /clipToDay\(ev\.start\.dateTime, ev\.end\.dateTime, dateStr\)/,
+    'schedule.js': /clipToDay\(ev\.start\.dateTime, ev\.end\.dateTime, dateStr\)/,
+    'yumesumikaSchedule.js': /clipToDay\(ev\.start\.dateTime, ev\.end\.dateTime, dateStr\)/,
+    'yoshimuraichiSchedule.js': /clipToDay\(ev\.start\.dateTime, ev\.end\.dateTime, dateStr\)/,
+    'rooms.js': /clipToDay\(b\.startAt, b\.endAt, f\.date\)/
+  };
+  const missing = Object.keys(uses).filter(f => !uses[f].test(src(f)));
+  check('clipToDay: トップの今日の予定・会議室の予約状況・会議室予約の重複チェックで使っている', missing.length === 0, `使っていないファイル=${JSON.stringify(missing)}`);
+}
 check('打ち合わせの区分: 分類項目から登録済みの区分を1つ取り出す(無ければ空)', c.kindOfCategories(['赤', '初回', '再提案'], ['初回', '再提案']) === '初回' && c.kindOfCategories(['赤'], ['初回']) === '' && c.kindOfCategories(null, ['初回']) === '' && c.kindOfCategories(['初回'], []) === '');
 check('打ち合わせの区分: 保存する分類項目は、登録済みの区分だけを入れ替え、ほかの分類項目は残す', JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回', '再提案'], '再提案')) === JSON.stringify(['赤', '再提案']) && JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回'], '')) === JSON.stringify(['赤']) && JSON.stringify(c.categoriesWithKind(undefined, ['初回'], '初回')) === JSON.stringify(['初回']) && JSON.stringify(c.categoriesWithKind(['古い区分'], ['初回'], '初回')) === JSON.stringify(['古い区分', '初回']));
 check('打ち合わせの区分: プルダウンは「選択しない」を先頭に持ち、選択中の値は一覧に無くても残す。値はエスケープする', c.meetingKindFieldHtml('f-kind', '').includes('id="f-kind"') && c.meetingKindFieldHtml('f-kind', '').includes('選択しない') && c.meetingKindFieldHtml('f-kind', '旧<b>').includes('旧&lt;b&gt;') && !c.meetingKindFieldHtml('f-kind', '旧<b>').includes('<b>') && c.meetingKindFieldHtml('f-kind', '旧').includes('value="旧" selected'));
