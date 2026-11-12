@@ -70,6 +70,32 @@ check('surname: 全角スペース区切り', c.surname('本田　悠') === '本
   const missing = Object.keys(uses).filter(f => !uses[f].test(src(f)));
   check('clipToDay: トップの今日の予定・会議室の予約状況・会議室予約の重複チェックで使っている', missing.length === 0, `使っていないファイル=${JSON.stringify(missing)}`);
 }
+// 会議室予約画面(日別ポップアップ・月のカレンダー・Excel出力が通る bookingsFor / viewBookingsFor): 日をまたぐ予約は、かかる日すべてに切り詰めて出し、変更不可(2026-11-11)
+{
+  const r = load(['common.js', 'roomsData.js'], ['bookingsFor', 'bookingOnDay']);
+  const over = { id: 'g1', room: 'car1', date: '2026-11-10', start: '17:00', end: '24:00', startAt: '2026-11-10T17:00:00.0000000', endAt: '2026-11-11T09:00:00.0000000', editable: true };
+  const same = { id: 'g2', room: 'car1', date: '2026-11-11', start: '10:00', end: '11:00', startAt: '2026-11-11T10:00:00.0000000', endAt: '2026-11-11T11:00:00.0000000', editable: true };
+  const legacy = { id: 's1', room: 'car1', date: '2026-11-11', start: '13:00', end: '14:00' };
+  const fmt = list => list.map(b => `${b.id}:${b.date} ${b.start}-${b.end}${b.multiDay ? '(日またぎ)' : ''}`).join(',');
+  check('会議室予約: 前日夕方〜今日朝の予約は、今日の分に 00:00–09:00 で出る(日またぎの印。取消のための editable はそのまま)。今日の中の予約・元の時刻が無い行はこれまでどおり',
+    fmt(r.bookingsFor('car1', new Date(2026, 10, 11), [over, same, legacy])) === 'g1:2026-11-11 00:00-09:00(日またぎ),g2:2026-11-11 10:00-11:00,s1:2026-11-11 13:00-14:00'
+    && r.bookingOnDay(over, '2026-11-11').editable === true);
+  check('会議室予約: 日をまたぐ予約は、開始日にも 17:00–24:00 で出る(日またぎの印)。かからない日には出ない',
+    fmt(r.bookingsFor('car1', new Date(2026, 10, 10), [over, same])) === 'g1:2026-11-10 17:00-24:00(日またぎ)' && r.bookingsFor('car1', new Date(2026, 10, 12), [over, same]).length === 0);
+  check('会議室予約: 翌日0時ちょうどに終わる予約(終日など)は、日をまたぐ扱いにしない(元の行のまま)',
+    !r.bookingOnDay({ ...same, startAt: '2026-11-11T00:00:00', endAt: '2026-11-12T00:00:00' }, '2026-11-11').multiDay && r.bookingOnDay({ ...same, startAt: '2026-11-11T00:00:00', endAt: '2026-11-12T00:00:00' }, '2026-11-12') === null);
+  const mOver = { ...over, date: '2026-10-31', startAt: '2026-10-31T22:00:00', endAt: '2026-11-01T06:00:00' };
+  const yOver = { ...over, date: '2026-12-31', startAt: '2026-12-31T20:00:00', endAt: '2027-01-01T08:00:00' };
+  check('会議室予約: 月末・年末をまたぐ予約も、翌月・翌年の1日に切り詰めて出る',
+    fmt([r.bookingOnDay(mOver, '2026-10-31'), r.bookingOnDay(mOver, '2026-11-01')]) === 'g1:2026-10-31 22:00-24:00(日またぎ),g1:2026-11-01 00:00-06:00(日またぎ)'
+    && fmt([r.bookingOnDay(yOver, '2026-12-31'), r.bookingOnDay(yOver, '2027-01-01')]) === 'g1:2026-12-31 20:00-24:00(日またぎ),g1:2027-01-01 00:00-08:00(日またぎ)');
+  const roomsSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'rooms.js'), 'utf8');
+  check('会議室予約: 日またぎの予約は「変更」を出さず取消だけ(説明付き)。月のカレンダーの予約からも変更フォームを開かない',
+    /s\.editable && s\.multiDay \?/.test(roomsSrc) && roomsSrc.includes('日をまたぐ予約は、この画面では時間を変更できません') && /b\.editable !== false && !b\.multiDay/.test(roomsSrc));
+  check('会議室予約: 日またぎの予約の取消の確認文に、元の時間帯と「すべての日の分が取り消されます」を出す(表示と同じ bookingOnDay で判定)',
+    roomsSrc.includes('すべての日の分が取り消されます') && /bookingOnDay\(row, startDay\)/.test(roomsSrc));
+  check('会議室予約: 会議室予約画面(rooms.js の viewBookingsFor)も bookingOnDay を通す', /\.map\(b => bookingOnDay\(b, key\)\)/.test(fs.readFileSync(path.join(ROOT, 'public', 'js', 'rooms.js'), 'utf8')));
+}
 check('打ち合わせの区分: 分類項目から登録済みの区分を1つ取り出す(無ければ空)', c.kindOfCategories(['赤', '初回', '再提案'], ['初回', '再提案']) === '初回' && c.kindOfCategories(['赤'], ['初回']) === '' && c.kindOfCategories(null, ['初回']) === '' && c.kindOfCategories(['初回'], []) === '');
 check('打ち合わせの区分: 保存する分類項目は、登録済みの区分だけを入れ替え、ほかの分類項目は残す', JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回', '再提案'], '再提案')) === JSON.stringify(['赤', '再提案']) && JSON.stringify(c.categoriesWithKind(['赤', '初回'], ['初回'], '')) === JSON.stringify(['赤']) && JSON.stringify(c.categoriesWithKind(undefined, ['初回'], '初回')) === JSON.stringify(['初回']) && JSON.stringify(c.categoriesWithKind(['古い区分'], ['初回'], '初回')) === JSON.stringify(['古い区分', '初回']));
 check('打ち合わせの区分: プルダウンは「選択しない」を先頭に持ち、選択中の値は一覧に無くても残す。値はエスケープする', c.meetingKindFieldHtml('f-kind', '').includes('id="f-kind"') && c.meetingKindFieldHtml('f-kind', '').includes('選択しない') && c.meetingKindFieldHtml('f-kind', '旧<b>').includes('旧&lt;b&gt;') && !c.meetingKindFieldHtml('f-kind', '旧<b>').includes('<b>') && c.meetingKindFieldHtml('f-kind', '旧').includes('value="旧" selected'));

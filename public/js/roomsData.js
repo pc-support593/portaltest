@@ -302,13 +302,29 @@ const SAMPLE_HISTORY = {
     2026-08-24以降: extraBookingsのみ(曜日パターンのダミーは適用しない)。呼び出し元(rooms.js)が
     entraモードなら実際のExchange予約(Graph)、devモードならサーバーSQLite保存のサンプルをここに渡す。
     それより前(2026-06-30以前): 従来どおり曜日パターン + extraBookings(サーバーSQLite保存)。 */
+/** 予約1件を、指定日(key: 'YYYY-MM-DD')の分として返す(その日にかからなければ null)。2026-11-11・ユーザー指示。
+    元の開始・終了(startAt/endAt。Exchangeの実予約)がある行は、日をまたぐ予約をその日の 00:00〜24:00 に切り詰めて、かかる日すべてに出す
+    (例: 前日17:00〜今日9:00の社用車 → 前日は 17:00–24:00、今日は 00:00–09:00)。
+    日をまたぐ予約には multiDay:true を付ける。予約フォーム(1日の中の時刻)では正しく変更できないため、rooms.js は「変更」を出さない(取消は時間帯に関係なく安全なので残す)。
+    元の時刻が無い行(サンプル・サーバー保存)は、従来どおり開始日(date)だけで判定する */
+function bookingOnDay(b, key) {
+  if (!b.startAt) return b.date === key ? b : null;
+  const t = clipToDay(b.startAt, b.endAt, key);
+  if (!t) return null;
+  const next = new Date(String(b.startAt).slice(0, 10) + 'T00:00:00Z');
+  next.setUTCDate(next.getUTCDate() + 1);
+  const multiDay = clipToDay(b.startAt, b.endAt, next.toISOString().slice(0, 10)) !== null; // 開始日の翌日にもかかる
+  return multiDay ? { ...b, date: key, start: t.start, end: t.end, multiDay: true } : b;
+}
+
 function bookingsFor(roomId, date, extraBookings) {
   const key = isoDate(date);
   if (key >= SAMPLE_HISTORY_START && key <= SAMPLE_HISTORY_END) {
     return (SAMPLE_HISTORY[key] || []).filter(b => b.room === roomId).sort((x, y) => x.start.localeCompare(y.start));
   }
   const own = (extraBookings || [])
-    .filter(b => b.room === roomId && b.date === key)
+    .filter(b => b.room === roomId)
+    .map(b => bookingOnDay(b, key)).filter(Boolean)
     .map(b => ({ ...b, user: true }));
   if (key > SAMPLE_HISTORY_END) {
     return own.sort((x, y) => x.start.localeCompare(y.start));

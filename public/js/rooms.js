@@ -42,8 +42,10 @@ function vRoomById(id) { return V_ROOMS.find(r => r.id === id); }
 function viewBookingsFor(roomId, date, extraBookings) {
   if (VIEW !== 'yumesumika') {
     const key = isoDate(date);
+    // 日をまたぐ予約は、かかる日すべてに、その日の範囲に切り詰めて出す(roomsData.js の bookingOnDay。2026-11-11)
     return (extraBookings || [])
-      .filter(b => b.room === roomId && b.date === key)
+      .filter(b => b.room === roomId)
+      .map(b => bookingOnDay(b, key)).filter(Boolean)
       .map(b => ({ ...b, user: true }))
       .sort((x, y) => x.start.localeCompare(y.start));
   }
@@ -225,7 +227,8 @@ function renderCalendar() {
         const rc = b.roomColor || room.color;
         // デザインサンプル・旧データは誰でも編集可能(ユーザー指示 2026-08-20)。
         // 2026-08-24以降の実予約(b.editable===false)は主催者本人のみ(Exchangeが強制)
-        const own = !!b.user && b.editable !== false;
+        // 日をまたぐ予約(multiDay)は、変更フォームを開かない(1日の中の時刻しか扱えないため。取消はその日の一覧から行える。2026-11-11)
+        const own = !!b.user && b.editable !== false && !b.multiDay;
         return `
         <span ${own ? `data-chip-edit="${esc(b.id)}" title="クリックで変更・取消" ` : ''}style="display:flex;flex-direction:column;background:${rc};border-left:4px solid ${barColor(b, rc)};border-radius:4px;padding:4px 7px;line-height:1.35${own ? ';cursor:pointer' : ''}${b.pending ? ';opacity:0.65' : ''}">
           <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -389,7 +392,7 @@ function renderDayModal() {
     slotsHtml = all.length ? all.map(b => slotRow({
       time: `${b.start}–${b.end}`, label: b.title, owner: b.owner, booked: true,
       bg: b.roomColor, bar: barColor(b, b.roomColor), roomLabel: b.roomName, badge: statusBadge(b) + extraBadgeHtml(b),
-      editable: !!b.user && b.editable !== false, id: b.id, pending: !!b.pending
+      editable: !!b.user && b.editable !== false, multiDay: !!b.multiDay, id: b.id, pending: !!b.pending
     })).join('') : `
       <div style="display:flex;align-items:center;gap:14px;background:#fbfcfd;border-left:6px solid #e8edf3;border-radius:8px;padding:10px 14px">
         <span style="font-size:13px;font-weight:500;color:#8a99a8">この日の予約はありません</span>
@@ -397,17 +400,20 @@ function renderDayModal() {
   } else {
     const bks = viewBookingsFor(state.room, dd, state.bookings);
     const parts = [];
+    let prevHitId = null; // 同じ予約が続く2行目以降は、日をまたぐ予約の説明文を省く
     // 予約可能時間 8:00〜21:00。30分単位のスロット表示(ユーザー指示 2026-08-22。最終スロットは 20:30–21:00)
     for (let min = 8 * 60; min < 21 * 60; min += 30) {
       const label = `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
       const slotEnd = `${pad(Math.floor((min + 30) / 60))}:${pad((min + 30) % 60)}`;
       // 区間重なり判定(ゼロ埋めHH:MMなので文字列比較でよい)
       const hit = bks.find(b => b.start < slotEnd && b.end > label);
+      const showNote = !!hit && hit.id !== prevHitId;
+      prevHitId = hit ? hit.id : null;
       parts.push(hit
         ? slotRow({
             time: label, label: hit.title, owner: hit.owner, booked: true,
             bg: room.color, bar: barColor(hit, room.color), roomLabel: room.name, badge: statusBadge(hit) + extraBadgeHtml(hit),
-            editable: !!hit.user && hit.editable !== false, id: hit.id, pending: !!hit.pending
+            editable: !!hit.user && hit.editable !== false, multiDay: !!hit.multiDay, showNote, id: hit.id, pending: !!hit.pending
           })
         : slotRow({ time: label, label: '空き', booked: false, start: label }));
     }
@@ -450,9 +456,11 @@ function slotRow(s) {
           ${s.badge}
         </span>
         <span style="font-size:13px;font-weight:700;color:#ffffff">${esc(s.label)}<span style="font-weight:500;color:rgba(255,255,255,0.93)"> ・ ${esc(s.owner)}</span></span>
+        ${s.editable && s.multiDay && s.showNote !== false ? '<span style="font-size:11px;color:rgba(255,255,255,0.93)">日をまたぐ予約は、この画面では時間を変更できません</span>' : ''}
       </span>
       <span style="margin-left:auto;flex-shrink:0;display:flex;gap:8px">
-        ${s.editable ? `
+        ${s.editable && s.multiDay ? `
+          <button class="hv-btn-danger" data-cancel-id="${esc(s.id)}" style="font-size:12px;font-weight:500;color:#a8b5c2;background:#ffffff;border:1px solid #e4eaf1;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">取消</button>` : s.editable ? `
           <button class="hv-btn-light" data-edit-id="${esc(s.id)}" style="font-size:12px;font-weight:700;color:#1e5fa8;background:#ffffff;border:1px solid #c8dcf0;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">変更</button>
           <button class="hv-btn-danger" data-cancel-id="${esc(s.id)}" style="font-size:12px;font-weight:500;color:#a8b5c2;background:#ffffff;border:1px solid #e4eaf1;border-radius:7px;padding:5px 14px;white-space:nowrap;cursor:pointer;font-family:inherit">取消</button>` : ''}
       </span>
@@ -877,7 +885,15 @@ function renderModals() {
   }));
   root.querySelectorAll('[data-cancel-id]').forEach(b => b.addEventListener('click', async () => {
     const row = state.bookings.find(x => String(x.id) === String(b.dataset.cancelId));
-    if (!confirm(row && row.source === 'graph' ? `この予約を取消しますか?(${V_ITEM_LABEL}や参加者には取消の通知が送られます)` : 'この予約を取消しますか?')) return;
+    // 日をまたぐ予約は、行にはその日の分の時刻しか出ないため、予約全体(元の時間帯)が取り消されることを確認の文に出す(2026-11-12)
+    const startDay = row && row.startAt ? String(row.startAt).slice(0, 10) : '';
+    const onStart = startDay ? bookingOnDay(row, startDay) : null; // 表示と同じ判定(開始日の翌日にもかかる=日をまたぐ)
+    const md = s => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))} ${s.slice(11, 16)}`;
+    const span = onStart && onStart.multiDay ? `${md(String(row.startAt))}〜${md(String(row.endAt))}` : '';
+    const msg = span
+      ? `この予約(${span})全体を取消しますか?日をまたぐ予約は、すべての日の分が取り消されます(${V_ITEM_LABEL}や参加者には取消の通知が送られます)`
+      : row && row.source === 'graph' ? `この予約を取消しますか?(${V_ITEM_LABEL}や参加者には取消の通知が送られます)` : 'この予約を取消しますか?';
+    if (!confirm(msg)) return;
     try {
       if (row && row.source === 'graph') {
         const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
