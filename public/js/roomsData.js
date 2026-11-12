@@ -317,6 +317,29 @@ function bookingOnDay(b, key) {
   return multiDay ? { ...b, date: key, start: t.start, end: t.end, multiDay: true } : b;
 }
 
+/** Excel出力の「時間」(2026-11-12・ユーザー指示): 予約そのもの(MS365上の予約。日本時間)の開始〜終了をそのまま出す(その日の範囲に切り詰めない)。
+    日をまたぐときは日付付き(例: 11/10 17:00–11/11 09:00)。翌日0時ちょうどに終わる予約は、画面と同じく日付を付けず 24:00 と書く(例: 22:00–24:00)。
+    start/end は並べ替え用の 'YYYY-MM-DDTHH:MM'。元の時刻(startAt/endAt)が無い行(サーバー保存)は date+start/end から作る */
+function excelTimeOf(b) {
+  const s0 = b.startAt ? String(b.startAt).slice(0, 16) : `${b.date}T${b.start}`;
+  const e0 = b.endAt ? String(b.endAt).slice(0, 16) : `${b.date}T${b.end}`;
+  const sd = s0.slice(0, 10);
+  const next = new Date(sd + 'T00:00:00Z');
+  next.setUTCDate(next.getUTCDate() + 1);
+  const endsAtMidnight = e0 === `${next.toISOString().slice(0, 10)}T00:00`;
+  if (e0.slice(0, 10) === sd || endsAtMidnight) {
+    const endHM = endsAtMidnight ? '24:00' : e0.slice(11);
+    return { start: s0, end: `${sd}T${endHM}`, time: `${s0.slice(11)}–${endHM}` };
+  }
+  const md = x => `${Number(x.slice(5, 7))}/${Number(x.slice(8, 10))} `;
+  return { start: s0, end: e0, time: `${md(s0)}${s0.slice(11)}–${md(e0)}${e0.slice(11)}` };
+}
+
+/** Excelの行の並び: 開始の早い順 → 終了の早い順 → 会議室名 */
+function compareExcelItems(a, b) {
+  return a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.room.localeCompare(b.room, 'ja');
+}
+
 function bookingsFor(roomId, date, extraBookings) {
   const key = isoDate(date);
   if (key >= SAMPLE_HISTORY_START && key <= SAMPLE_HISTORY_END) {

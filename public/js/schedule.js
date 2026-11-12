@@ -506,17 +506,17 @@ function bindSiteGridActions(root) {
 // ---- 予定作成モーダル(個人の予定。任意で実際の会議室を出席者として追加) ----
 
 function hourOptions() {
-  // 予約可能時間は 8:00〜21:00(30分刻み)
+  // 予約可能時間は 8:00〜23:00(30分刻み。2026-11-12・ユーザー指示で21:00→23:00。rooms.js と同じ)
   const opts = [];
-  for (let h = 8; h <= 20; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
-  opts.push('21:00');
+  for (let h = 8; h <= 22; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
+  opts.push('23:00');
   return opts;
 }
 
-/** 'HH:MM' の1時間後を返す(上限21:00)。開始時間選択時の終了時間の自動設定に使う */
+/** 'HH:MM' の1時間後を返す(上限23:00)。開始時間選択時の終了時間の自動設定に使う */
 function plusOneHour(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
-  const total = Math.min(h * 60 + m + 60, 21 * 60);
+  const total = Math.min(h * 60 + m + 60, 23 * 60);
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
 
@@ -673,7 +673,8 @@ function renderModal() {
   if (!formState) { root.innerHTML = ''; return; }
   const f = formState;
   const opts = hourOptions();
-  const selOpts = v => opts.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('');
+  // 開始は最後(23:00)を除く(開始23:00では終了が選べず、必ず「終了時刻は開始時刻より後に」のエラーになるため。2026-11-12)
+  const selOpts = (v, list = opts) => list.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('');
   const memberChips = f.members.map((mb, i) => `
     <span style="display:flex;align-items:center;gap:6px;background:#e9f1fa;border:1px solid #c8dcf0;border-radius:16px;padding:3px 10px 3px 4px">
       <span style="width:22px;height:22px;border-radius:50%;background:#4a7fc0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc(mb.name.charAt(0))}</span>
@@ -719,7 +720,7 @@ function renderModal() {
         <div style="display:flex;gap:12px;align-items:flex-end">
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">開始</span>
-            <select id="f-start" class="in-input">${selOpts(f.start)}</select>
+            <select id="f-start" class="in-input">${selOpts(f.start, opts.slice(0, -1))}</select>
           </label>
           <span style="font-size:14px;color:#8a99a8;padding-bottom:10px">〜</span>
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">

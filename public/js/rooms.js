@@ -354,15 +354,17 @@ async function exportDayExcel() {
   const items = [];
   rooms.forEach(r => viewBookingsFor(r.id, today, source).forEach(b => {
     if (b.declined) return;
+    // 時間は、予約そのもの(MS365 上の予約)の開始〜終了(日本時間)をそのまま出す(roomsData.js の excelTimeOf)。並びは開始の早い順(2026-11-12・ユーザー指示)
+    const t = excelTimeOf(b);
     items.push({
-      room: r.name, title: b.title, start: b.start, end: b.end,
-      time: `${b.start}–${b.end}`,
+      room: r.name, title: b.title, start: t.start, end: t.end,
+      time: t.time,
       kind: kindOfCategories(b.categories, MEETING_KINDS),
       owner: b.owner || '', // 担当者(予約したアカウント。「姓 名」)
       color: barColor(b, r.color), roomColor: r.color
     });
   }));
-  items.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.room.localeCompare(b.room, 'ja'));
+  items.sort(compareExcelItems);
   const dateLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WDAYS[today.getDay()]})`;
   // ゆめすみかの展示場の新しいフォーマット(商談場所・お客様名・時間・担当者・区分。各行は会議室の色。2026-11-05・ユーザー指示)
   const bytes = buildShowroomXlsx(dateLabel, items.map(i => ({ place: i.room, title: i.title, time: i.time, owner: i.owner, kind: i.kind, color: i.roomColor })));
@@ -401,8 +403,8 @@ function renderDayModal() {
     const bks = viewBookingsFor(state.room, dd, state.bookings);
     const parts = [];
     let prevHitId = null; // 同じ予約が続く2行目以降は、日をまたぐ予約の説明文を省く
-    // 予約可能時間 8:00〜21:00。30分単位のスロット表示(ユーザー指示 2026-08-22。最終スロットは 20:30–21:00)
-    for (let min = 8 * 60; min < 21 * 60; min += 30) {
+    // 予約可能時間 8:00〜23:00。30分単位のスロット表示(ユーザー指示 2026-08-22。2026-11-12 に21:00→23:00。最終スロットは 22:30–23:00)
+    for (let min = 8 * 60; min < 23 * 60; min += 30) {
       const label = `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
       const slotEnd = `${pad(Math.floor((min + 30) / 60))}:${pad((min + 30) % 60)}`;
       // 区間重なり判定(ゼロ埋めHH:MMなので文字列比較でよい)
@@ -481,17 +483,17 @@ function slotRow(s) {
 // ---- 予約フォーム ----
 
 function hourOptions() {
-  // 予約可能時間は 8:00〜21:00(30分刻み)
+  // 予約可能時間は 8:00〜23:00(30分刻み。2026-11-12・ユーザー指示で21:00→23:00。schedule.js と同じ)
   const opts = [];
-  for (let h = 8; h <= 20; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
-  opts.push('21:00');
+  for (let h = 8; h <= 22; h++) { opts.push(`${pad(h)}:00`); opts.push(`${pad(h)}:30`); }
+  opts.push('23:00');
   return opts;
 }
 
-/** 'HH:MM' の1時間後を返す(上限21:00)。開始時間選択時の終了時間の自動設定に使う */
+/** 'HH:MM' の1時間後を返す(上限23:00)。開始時間選択時の終了時間の自動設定に使う */
 function plusOneHour(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
-  const total = Math.min(h * 60 + m + 60, 21 * 60);
+  const total = Math.min(h * 60 + m + 60, 23 * 60);
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
 
@@ -559,7 +561,8 @@ function renderFormModal() {
   const site = V_SITES.find(s => s.id === (f.site || state.site));
   const room = vRoomById(f.room);
   const opts = hourOptions();
-  const selOpts = v => opts.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('');
+  // 開始は最後(23:00)を除く(開始23:00では終了が選べず、必ず「終了時刻は開始時刻より後に」のエラーになるため。2026-11-12)
+  const selOpts = (v, list = opts) => list.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('');
 
   const target = f.isNew ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
@@ -608,7 +611,7 @@ function renderFormModal() {
         <div style="display:flex;gap:12px;align-items:flex-end">
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">開始</span>
-            <select id="form-start" class="in-input">${selOpts(f.start)}</select>
+            <select id="form-start" class="in-input">${selOpts(f.start, opts.slice(0, -1))}</select>
           </label>
           <span style="font-size:14px;color:#8a99a8;padding-bottom:10px">〜</span>
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">

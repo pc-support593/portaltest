@@ -92,6 +92,35 @@ check('surname: 全角スペース区切り', c.surname('本田　悠') === '本
   const roomsSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'rooms.js'), 'utf8');
   check('会議室予約: 日またぎの予約は「変更」を出さず取消だけ(説明付き)。月のカレンダーの予約からも変更フォームを開かない',
     /s\.editable && s\.multiDay \?/.test(roomsSrc) && roomsSrc.includes('日をまたぐ予約は、この画面では時間を変更できません') && /b\.editable !== false && !b\.multiDay/.test(roomsSrc));
+  // 予約できる時間 8:00〜23:00(2026-11-12・ユーザー指示で21:00→23:00)。スケジュール画面の予約フォーム(schedule.js)と、会議室予約画面(rooms.js)の両方
+  const sc = load(['common.js', 'roomsData.js', 'schedule.js'], ['hourOptions', 'plusOneHour']);
+  const opts = sc.hourOptions();
+  check('予約できる時間: スケジュール画面の選択肢は 08:00〜23:00(30分刻み・31個)。終了の自動設定(+1時間)の上限は 23:00',
+    opts[0] === '08:00' && opts[opts.length - 1] === '23:00' && opts.length === 31 && opts.includes('22:30') && sc.plusOneHour('21:00') === '22:00' && sc.plusOneHour('22:30') === '23:00' && sc.plusOneHour('23:00') === '23:00');
+  check('予約できる時間: 会議室予約画面も同じ(選択肢 h <= 22 と 23:00・+1時間の上限 23:00・日別ポップアップの枠は 23:00 まで)',
+    /for \(let h = 8; h <= 22; h\+\+\)/.test(roomsSrc) && roomsSrc.includes("opts.push('23:00')") && /Math\.min\(h \* 60 \+ m \+ 60, 23 \* 60\)/.test(roomsSrc) && /min < 23 \* 60; min \+= 30/.test(roomsSrc) && !/21 \* 60/.test(roomsSrc));
+  check('予約できる時間: 開始の選択肢は最後(23:00)を除く(会議室予約画面・スケジュール画面)',
+    roomsSrc.includes('selOpts(f.start, opts.slice(0, -1))') && fs.readFileSync(path.join(ROOT, 'public', 'js', 'schedule.js'), 'utf8').includes('selOpts(f.start, opts.slice(0, -1))'));
+  // Excel出力の時間(予約そのものの開始〜終了。切り詰めない)と並び(開始の早い順)を、実際の値で確かめる
+  const x = load(['common.js', 'roomsData.js'], ['excelTimeOf', 'compareExcelItems']);
+  const xt = b => x.excelTimeOf(b).time;
+  check('会議室予約のExcel出力: 同じ日の予約は「HH:MM–HH:MM」、日をまたぐ予約は日付付き(年末年始も)、翌日0時ちょうどに終わる予約は「–24:00」',
+    xt({ startAt: '2026-11-12T08:30:00.0000000', endAt: '2026-11-12T09:30:00.0000000' }) === '08:30–09:30'
+    && xt({ startAt: '2026-11-11T17:00:00', endAt: '2026-11-12T09:00:00' }) === '11/11 17:00–11/12 09:00'
+    && xt({ startAt: '2026-12-31T20:00:00', endAt: '2027-01-01T08:00:00' }) === '12/31 20:00–1/1 08:00'
+    && xt({ startAt: '2026-11-12T22:00:00', endAt: '2026-11-13T00:00:00' }) === '22:00–24:00'
+    && xt({ startAt: '2026-11-12T00:00:00', endAt: '2026-11-13T00:00:00' }) === '00:00–24:00'
+    && xt({ date: '2026-11-12', start: '09:00', end: '10:00' }) === '09:00–10:00');
+  const rowsX = [
+    { room: 'B', ...x.excelTimeOf({ date: '2026-11-12', start: '22:30', end: '23:00' }) },
+    { room: 'A', ...x.excelTimeOf({ startAt: '2026-11-12T08:30:00', endAt: '2026-11-12T09:30:00' }) },
+    { room: 'A', ...x.excelTimeOf({ startAt: '2026-11-11T17:00:00', endAt: '2026-11-12T09:00:00' }) },
+    { room: 'C', ...x.excelTimeOf({ date: '2026-11-12', start: '09:00', end: '10:00' }) },
+    { room: 'B', ...x.excelTimeOf({ startAt: '2026-11-12T08:30:00', endAt: '2026-11-12T09:00:00' }) }
+  ].sort(x.compareExcelItems).map(r => `${r.room} ${r.time}`).join(',');
+  check('会議室予約のExcel出力: 並びは開始の早い順(前日開始が先頭)→終了の早い順→会議室名。元の時刻のある行とサーバー保存の行が混ざっても正しい',
+    rowsX === 'A 11/11 17:00–11/12 09:00,B 08:30–09:00,A 08:30–09:30,C 09:00–10:00,B 22:30–23:00', rowsX);
+  check('会議室予約のExcel出力: rooms.js は excelTimeOf と compareExcelItems を使う', roomsSrc.includes('const t = excelTimeOf(b);') && roomsSrc.includes('items.sort(compareExcelItems);'));
   check('会議室予約: 日またぎの予約の取消の確認文に、元の時間帯と「すべての日の分が取り消されます」を出す(表示と同じ bookingOnDay で判定)',
     roomsSrc.includes('すべての日の分が取り消されます') && /bookingOnDay\(row, startDay\)/.test(roomsSrc));
   check('会議室予約: 会議室予約画面(rooms.js の viewBookingsFor)も bookingOnDay を通す', /\.map\(b => bookingOnDay\(b, key\)\)/.test(fs.readFileSync(path.join(ROOT, 'public', 'js', 'rooms.js'), 'utf8')));
