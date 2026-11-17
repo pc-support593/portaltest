@@ -195,34 +195,6 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('週の予定: 1行目は日曜', /\(日\)/.test(week.first || ''), week.first);
     check('週の予定: 見出しが「今週の予定」', /^今週の予定/.test(week.title || ''), week.title);
 
-    // ---- スタッフ予定: タブ(吉村一建設は2行固定) ----
-    // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-26・ユーザー指示)
-    await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
-    check('予定の編集画面: 内容のURLがリンクとして出る(新しいタブ)。内容を書き換えるとリンクも変わる。URLが無ければ出ない。予定のカードには内容を出さない', await br.evaluate("(() => { openEditForm({ id: 'x1', date: '2026-10-26', start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '資料 https://example.com/a?x=1&y=2 です' }); const links = () => [...document.querySelectorAll('#f-content-links a')]; const a = links()[0]; const first = !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && links().length === 1; const ta = document.getElementById('f-content'); ta.value = 'x https://b.example/p https://c.example/q'; ta.dispatchEvent(new Event('input')); const two = links().length === 2; ta.value = 'URLなし'; ta.dispatchEvent(new Event('input')); const none = links().length === 0; return first && two && none && !document.querySelector('#personal-events a[target]'); })()"));
-    await br.open(`${sb.base}/yoshimuraichi-schedule.html`, 1280, 900, "document.querySelectorAll('#group-tabs > div').length > 0");
-    const tabRows = JSON.parse(await br.evaluate("JSON.stringify([...document.querySelectorAll('#group-tabs > div')].map(r => [...r.querySelectorAll('button')].map(b => b.textContent.trim())))"));
-    check('吉村一建設スタッフ予定: タブは2行', tabRows.length === 2, JSON.stringify(tabRows));
-    check('吉村一建設スタッフ予定: 大工のタブは出さない', !tabRows.flat().some(t => t.includes('大工')), JSON.stringify(tabRows));
-    check('吉村一建設スタッフ予定: 見出しに並び順の注記', await br.evaluate("document.body.textContent.includes('五十音順')"));
-
-    // ---- 社員名簿の「出勤状況」ボタン: キー未設定では出さない ----
-    await br.open(`${sb.base}/organization.html`, 1280);
-    check('社員名簿: 出勤状況ボタンは、キー未設定では表示されない', await br.evaluate("(() => { const a = document.querySelector('[data-feature=attendance]'); return !!a && a.offsetParent === null; })()"));
-
-    // ---- 通信の失敗・無応答でも画面が表示される(P004) ----
-    await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? Promise.reject(new TypeError('Failed to fetch')) : f(u, o); })();");
-    check('/api/me が失敗しても画面は表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 8000));
-    await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? new Promise(() => {}) : f(u, o); })();");
-    check('/api/me が無応答でも約10秒以内に画面が表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 14000));
-    await br.setPreScript(null);
-
-    // Excel出力のボタンは、ゆめすみかの展示場だけ(吉村一建設の会議室・社用車には出さない。2026-11-06・ユーザー指示)
-    const excelBtn = {};
-    for (const v of ['yumesumika', 'yoshimura', 'cars']) {
-      await br.open(sb.base + '/rooms.html' + (v === 'yumesumika' ? '' : '?view=' + v), 1280);
-      await sleep(600);
-      excelBtn[v] = await br.evaluate("!!document.getElementById('export-excel')");
-    }
     // ---- 月の予定(スケジュール画面。2026-11-17・ユーザー指示) ----
     const MQ = "JSON.stringify({ n: document.querySelectorAll('#month-grid [data-month-day]').length, title: document.getElementById('month-title').textContent, ev: document.querySelectorAll('#month-grid .mv-cell:not(.mv-other) .mv-ev').length, dwHidden: getComputedStyle(document.getElementById('dw-grid')).display === 'none', monthShown: !document.getElementById('month-view').hidden, dayNav: getComputedStyle(document.getElementById('date-label')).display, pressed: document.getElementById('view-month').getAttribute('aria-pressed'), head: [...document.querySelectorAll('#month-grid .mv-head')].map(e => e.textContent).join('') })";
     const dayShown = await br.evaluate("getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('month-view').hidden");
@@ -240,7 +212,10 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('月の予定: 「今月」で今月に戻る', JSON.parse(await br.evaluate(MQ)).title === nowD.getFullYear() + '年' + (nowD.getMonth() + 1) + '月');
     // 日のマスのクリック: その日を選んで「日・週」の画面へ(今月の15日をクリックして確かめる)
     await br.evaluate("(async () => { [...document.querySelectorAll('#month-grid .mv-cell:not(.mv-other)')][14].click(); await new Promise(r => setTimeout(r, 400)); })()");
-    check('月の予定: 日のマスをクリックすると、その日を選んで「日・週」の画面に戻る', await br.evaluate("(() => { const d = state.date; return state.view === 'week' && d.getDate() === 15 && document.getElementById('month-view').hidden && getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('date-label').textContent.includes('15日'); })()"));
+    check('月の予定: 日のマスをクリックすると、その日(15日)の予定作成フォームが開く。月の表示のまま', await br.evaluate("(() => document.getElementById('f-date') && document.getElementById('f-date').value.endsWith('-15') && document.getElementById('form-box').textContent.includes('予定を作成') && state.view === 'month' && !document.getElementById('month-view').hidden)()"));
+    await br.evaluate("closeForm()");
+    await br.evaluate("(async () => { [...document.querySelectorAll('#month-grid .mv-cell:not(.mv-other) .mv-num')][14].click(); await new Promise(r => setTimeout(r, 400)); })()");
+    check('月の予定: 日付の数字をクリックすると、その日を選んで「日・週」の画面に戻る(フォームは開かない)', await br.evaluate("(() => { const d = state.date; return state.view === 'week' && d.getDate() === 15 && document.getElementById('month-view').hidden && getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('date-label').textContent.includes('15日'); })()"));
     // ---- 複数の日程(作成フォーム。2026-11-17・ユーザー指示) ----
     const SET = (sel, v, ev) => `(() => { const e = document.querySelector('${sel}'); e.value = '${v}'; e.dispatchEvent(new Event('${ev || 'change'}', { bubbles: true })); })()`;
     await br.evaluate("(async () => { openCreateForm(); await new Promise(r => setTimeout(r, 200)); })()");
@@ -255,6 +230,7 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('複数の日程: 「毎月」で、「毎月◯日」と「第◯◯曜日」を選べる', await br.evaluate("[...document.getElementById('f-monthly-kind').options].length === 2 && /毎月[0-9]+日/.test(document.getElementById('f-monthly-kind').options[0].textContent) && /第[0-9].曜日/.test(document.getElementById('f-monthly-kind').options[1].textContent)"));
     await br.evaluate(SET('#f-rep-kind', 'weekly'));
     await br.evaluate("document.querySelector('[data-wd]:checked').click()");
+    check('月の予定: 初めの表示で「日・週」のボタンが選択済み(青)、「月」は白', await br.evaluate("getComputedStyle(document.getElementById('view-week')).backgroundColor === 'rgb(30, 95, 168)' && getComputedStyle(document.getElementById('view-month')).backgroundColor === 'rgb(255, 255, 255)'"));
     await br.evaluate(SET('#f-title', 'テスト', 'input'));
     await br.evaluate("document.getElementById('f-submit').click()");
     check('複数の日程: 毎週で曜日が1つも無いと、作成せずにエラー(自分の予定も作らない)', await br.evaluate("(async () => { await new Promise(r => setTimeout(r, 200)); return document.getElementById('f-error').textContent.includes('曜日を1つ以上'); })()"));
@@ -304,6 +280,34 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       await br.setPreScript(null);
       // 「最新の情報に更新」を押しても、jinjerを呼ぶ取り込みAPIは使わず、保存済みデータの読み直し(GET)だけ
       await br.setPreScript("window.__calls = []; (() => { const f = window.fetch; window.fetch = (u, o) => { window.__calls.push((o && o.method || 'GET') + ' ' + String(u)); return f(u, o); }; })();");
+    // ---- スタッフ予定: タブ(吉村一建設は2行固定) ----
+    // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-26・ユーザー指示)
+    await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
+    check('予定の編集画面: 内容のURLがリンクとして出る(新しいタブ)。内容を書き換えるとリンクも変わる。URLが無ければ出ない。予定のカードには内容を出さない', await br.evaluate("(() => { openEditForm({ id: 'x1', date: '2026-10-26', start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '資料 https://example.com/a?x=1&y=2 です' }); const links = () => [...document.querySelectorAll('#f-content-links a')]; const a = links()[0]; const first = !!a && a.target === '_blank' && a.rel.includes('noopener') && a.textContent === 'https://example.com/a?x=1&y=2' && links().length === 1; const ta = document.getElementById('f-content'); ta.value = 'x https://b.example/p https://c.example/q'; ta.dispatchEvent(new Event('input')); const two = links().length === 2; ta.value = 'URLなし'; ta.dispatchEvent(new Event('input')); const none = links().length === 0; return first && two && none && !document.querySelector('#personal-events a[target]'); })()"));
+    await br.open(`${sb.base}/yoshimuraichi-schedule.html`, 1280, 900, "document.querySelectorAll('#group-tabs > div').length > 0");
+    const tabRows = JSON.parse(await br.evaluate("JSON.stringify([...document.querySelectorAll('#group-tabs > div')].map(r => [...r.querySelectorAll('button')].map(b => b.textContent.trim())))"));
+    check('吉村一建設スタッフ予定: タブは2行', tabRows.length === 2, JSON.stringify(tabRows));
+    check('吉村一建設スタッフ予定: 大工のタブは出さない', !tabRows.flat().some(t => t.includes('大工')), JSON.stringify(tabRows));
+    check('吉村一建設スタッフ予定: 見出しに並び順の注記', await br.evaluate("document.body.textContent.includes('五十音順')"));
+
+    // ---- 社員名簿の「出勤状況」ボタン: キー未設定では出さない ----
+    await br.open(`${sb.base}/organization.html`, 1280);
+    check('社員名簿: 出勤状況ボタンは、キー未設定では表示されない', await br.evaluate("(() => { const a = document.querySelector('[data-feature=attendance]'); return !!a && a.offsetParent === null; })()"));
+
+    // ---- 通信の失敗・無応答でも画面が表示される(P004) ----
+    await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? Promise.reject(new TypeError('Failed to fetch')) : f(u, o); })();");
+    check('/api/me が失敗しても画面は表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 8000));
+    await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/me') ? new Promise(() => {}) : f(u, o); })();");
+    check('/api/me が無応答でも約10秒以内に画面が表示される', await br.open(`${sb.base}/index.html`, 1280, 900, null, 14000));
+    await br.setPreScript(null);
+
+    // Excel出力のボタンは、ゆめすみかの展示場だけ(吉村一建設の会議室・社用車には出さない。2026-11-06・ユーザー指示)
+    const excelBtn = {};
+    for (const v of ['yumesumika', 'yoshimura', 'cars']) {
+      await br.open(sb.base + '/rooms.html' + (v === 'yumesumika' ? '' : '?view=' + v), 1280);
+      await sleep(600);
+      excelBtn[v] = await br.evaluate("!!document.getElementById('export-excel')");
+    }
       await br.open(`${sbk.base}/attendance.html`, 1280);
       await br.evaluate("document.getElementById('att-sync').click()");
       await sleep(800);

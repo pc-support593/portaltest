@@ -359,12 +359,12 @@ function renderMonth() {
       const time = e.isAllDay ? '' : `<span class="mv-time">${esc(e.start || '')}</span> `;
       return `<div class="mv-ev" ${e.editable ? `data-month-event="${i}"` : ''} title="${esc((e.isAllDay ? '終日' : e.time) + ' ' + e.title)}${e.editable ? '(クリックで変更)' : ''}" style="border-left:3px solid ${e.color};background:${e.bg}${e.editable ? ';cursor:pointer' : ''}">${time}<span class="mv-title">${esc(e.title)}</span></div>`;
     }).join('');
-    const more = idxs.length > shown.length ? `<div class="mv-more">+${idxs.length - shown.length}件</div>` : '';
+    const more = idxs.length > shown.length ? `<div class="mv-more" data-month-goto="${key}" title="この日の予定をすべて表示(日・週の画面へ)">+${idxs.length - shown.length}件</div>` : '';
     const dow = d.getDay();
     const other = d.getMonth() !== first.getMonth();
     const numColor = dow === 0 ? '#d64545' : dow === 6 ? '#1e5fa8' : '#1c2b3a';
-    return `<div class="mv-cell${other ? ' mv-other' : ''}${key === selectedKey ? ' mv-selected' : ''}" data-month-day="${key}" title="クリックでこの日の予定を表示">
-      <div class="mv-num" style="color:${numColor}"><span${key === todayKey ? ' class="mv-today"' : ''}>${d.getDate()}</span></div>
+    return `<div class="mv-cell${other ? ' mv-other' : ''}${key === selectedKey ? ' mv-selected' : ''}" data-month-day="${key}" title="クリックでこの日の予定を作成">
+      <div class="mv-num" data-month-goto="${key}" title="この日の予定を表示(日・週の画面へ)" style="color:${numColor}"><span${key === todayKey ? ' class="mv-today"' : ''}>${d.getDate()}</span></div>
       ${items}${more}
     </div>`;
   }).join('');
@@ -374,10 +374,18 @@ function renderMonth() {
     ev.stopPropagation(); // 日のマスのクリック(日付の選択)とは別に、予定の編集画面を開く
     openEditForm(state.monthEvents[Number(item.dataset.monthEvent)]);
   }));
+  // 日のマスのクリック: その日の予定作成フォームを開く(会議室・社用車の予約もここから。作成後は月を読み直す)。
+  // 日付の数字と「+N件」のクリック: その日を選んで「日・週」の画面へ(その日の予定をすべて見る)
+  const dateOf = key => { const [y, m, dd] = key.split('-').map(Number); return new Date(y, m - 1, dd); };
   grid.querySelectorAll('[data-month-day]').forEach(cell => cell.addEventListener('click', () => {
-    const [y, m, dd] = cell.dataset.monthDay.split('-').map(Number);
-    state.date = new Date(y, m - 1, dd);
-    setView('week'); // その日の「自分の予定」・週の予定・会議室の画面へ
+    state.date = dateOf(cell.dataset.monthDay);
+    renderMonth(); // 選んだ日の枠を更新(フォームを閉じたあとも、選んだ日が分かる)
+    openCreateForm(state.date);
+  }));
+  grid.querySelectorAll('[data-month-goto]').forEach(el => el.addEventListener('click', ev => {
+    ev.stopPropagation(); // 日のマスのクリック(予定の作成)とは別
+    state.date = dateOf(el.dataset.monthGoto);
+    setView('week');
   }));
 }
 
@@ -678,8 +686,8 @@ async function fetchResourceBusy(date, type) {
   return fetchCalendarViewBusy(isoDate(date), master.rooms, token);
 }
 
-function openCreateForm() {
-  const d = state.date;
+function openCreateForm(date) { // date=月の表示で日のマスを選んだときの日付(ボタンのクリックでは Event が渡るので、Date のときだけ使う)
+  const d = date instanceof Date ? date : state.date;
   formState = {
     eventId: null, orig: null,
     date: isoDate(d),
