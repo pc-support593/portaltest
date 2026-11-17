@@ -101,7 +101,7 @@ function renderModal() {
       <div style="display:flex;align-items:flex-start;gap:12px;padding:22px 26px 16px;border-bottom:1px solid #e4ebf2">
         <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
           <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:11px;font-weight:700;color:${m.tagColor};background:${m.tagBg};border-radius:4px;padding:2px 8px">${esc(m.tag)}</span>
+            <span${m.isNews ? ' class="news-tag"' : ''} style="font-size:11px;font-weight:700;color:${m.tagColor};background:${m.tagBg};border-radius:4px;padding:2px 8px">${esc(m.tag)}</span>
             <span style="font-size:12px;color:#6b7d8f">${esc(m.date)}</span>
           </div>
           <h3 style="margin:0;font-size:19px;font-weight:700;line-height:1.4">${esc(m.title)}</h3>
@@ -152,7 +152,7 @@ window.addEventListener('portal:me-updated', e => { if (e.detail) renderGreeting
 /** お知らせ1件の詳細モーダルを開く */
 function openNewsDetail(n) {
   const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
-  openModal({ tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部', attachments: n.attachments || [] });
+  openModal({ isNews: true, tag: n.tag, tagColor: ts[0], tagBg: ts[1], date: `${fmtMD(n.date)} 掲載`, title: n.title, body: n.body, owner: n.owner || '総務部', attachments: n.attachments || [] });
 }
 
 // ---- お知らせの「重要」「固定」を上に・「NEW」バッジ(2026-10-13・ユーザー指示。トップのお知らせだけ。過去のお知らせは変更なし) ----
@@ -183,7 +183,7 @@ function renderNews(news, todayIso) {
     const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
     return `
     <button class="hv-row" data-news="${i}" style="display:flex;align-items:center;gap:12px;padding:11px 20px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
-      <span style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
+      <span class="news-tag" style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
       <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>${isNewNews(n, todayIso) ? '<span style="font-size:10px;font-weight:700;color:#ffffff;background:#e8801a;border-radius:4px;padding:1px 6px;white-space:nowrap">NEW</span>' : ''}
       <span style="margin-left:auto;font-size:12px;color:#8a99a8;white-space:nowrap">${esc(fmtMD(n.date))}</span>
     </button>`;
@@ -211,7 +211,7 @@ function openNewsListModal(allNews) {
           const ts = TAG_STYLES[n.tag] || DEFAULT_TAG;
           return `
           <button class="hv-row" data-all-news="${i}" style="display:flex;align-items:center;gap:12px;padding:12px 26px;border:none;border-bottom:1px solid #f2f5f9;background:transparent;text-align:left;cursor:pointer;font-family:inherit;width:100%">
-            <span style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
+            <span class="news-tag" style="font-size:11px;font-weight:700;color:${ts[0]};background:${ts[1]};border-radius:4px;padding:2px 8px;white-space:nowrap">${esc(n.tag)}</span>
             <span style="font-size:13px;color:#1c2b3a">${esc(n.title)}</span>
             <span style="margin-left:auto;font-size:12px;color:#8a99a8;white-space:nowrap">${esc(fmtMD(n.date))}</span>
           </button>`;
@@ -468,12 +468,32 @@ function applyLayout(layout) {
   });
 }
 
+// 前回の配置をこのブラウザに覚えておき、サーバーの応答を待たずに先に適用する(開いた直後に並びが切り替わって見えるのを防ぐ。
+// 正はサーバーの配置で、応答が来たら置き換える。保存できない・読めないブラウザでは従来どおり応答を待つ。人ごとに別のキー)
+let layoutCacheKey = '';
+function readCachedLayout() {
+  try {
+    const v = layoutCacheKey && JSON.parse(localStorage.getItem(layoutCacheKey) || 'null');
+    return v && Array.isArray(v.left) && Array.isArray(v.right) ? v : null;
+  } catch { return null; }
+}
+function writeCachedLayout(layout) {
+  try {
+    if (layoutCacheKey) localStorage.setItem(layoutCacheKey, JSON.stringify({ left: layout.left, right: layout.right, custom: !!layout.custom }));
+  } catch { /* 保存できなくても動作に影響しない */ }
+}
+
 async function saveLayout() {
   const colLeft = document.getElementById('col-left');
   const colRight = document.getElementById('col-right');
+  const layout = { left: sectionIdsOf(colLeft), right: sectionIdsOf(colRight) };
   try {
-    await api('/api/layout', { method: 'PUT', body: { left: sectionIdsOf(colLeft), right: sectionIdsOf(colRight) } });
-    document.querySelector('.top-grid').classList.add('layout-custom');
+    const r = await api('/api/layout', { method: 'PUT', body: layout });
+    // スマホの並びの切り替えは、サーバーの判定(初期配置に戻した人は並べ替えていない扱い)に合わせる
+    // 応答に custom が無い(反映の途中で古いサーバーが応えた)ときは、以前の動き(保存した人=並べ替えた人)に合わせる
+    layout.custom = r && typeof r.custom === 'boolean' ? r.custom : true;
+    document.querySelector('.top-grid').classList.toggle('layout-custom', layout.custom);
+    writeCachedLayout(layout);
   } catch (e) {
     console.error('レイアウトの保存に失敗しました', e);
   }
@@ -646,8 +666,13 @@ async function renderShiftBadge() {
     // 配置(保存済みの並び)の適用とドラッグ操作の有効化は、お知らせ・予定・リンク等の読み込み(Graphなど外部呼び出しを含む)を
     // **待たずに先に行う**。以前は読み込みの後ろにあり、読み込みが遅い・止まっている間は、各枠をドラッグで動かせなかった
     // (2026-10-08修正)。配置の取得に失敗しても、既定の並びのままドラッグ操作は有効にする
+    layoutCacheKey = user && user.email ? `portal.topLayout.${String(user.email).toLowerCase()}` : '';
+    const cachedLayout = readCachedLayout();
+    if (cachedLayout) applyLayout(cachedLayout); // 前回の配置を先に出す(応答が来たら下で置き換える)
     try {
-      applyLayout(await api('/api/layout'));
+      const layout = await api('/api/layout');
+      applyLayout(layout);
+      writeCachedLayout(layout);
     } catch (e) {
       console.error('配置の取得に失敗しました', e);
     }

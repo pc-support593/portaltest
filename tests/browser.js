@@ -57,6 +57,47 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('スマホ: 個人が並べ替えた人は、保存した配置(左の列→右の列)のまま', await br.evaluate("(() => { const ids = ['sec-policies','sec-today','sec-links','sec-schedule','sec-news']; const ys = ids.map(id => document.getElementById(id).getBoundingClientRect().top); return ys.every((y, i) => i === 0 || y > ys[i - 1]); })()"));
     await br.evaluate("applyLayout({ left: ['news','schedule','links'], right: ['today','policies','tasks'], custom: false })");
     check('スマホ: 並べ替えていない人は、スマホ用の並びに戻る', await br.evaluate(SP_TOP_ORDER));
+
+    // ---- スマホのトップの並び: 保存→開き直す の一連の流れ(2026-11-11・レビュー指摘5) ----
+    const orderIs = ids => `(() => { const ys = ${JSON.stringify(ids)}.map(id => document.getElementById(id).getBoundingClientRect().top); return ys.every((y, i) => i === 0 || y > ys[i - 1]); })()`;
+    const HAS_CUSTOM = "document.querySelector('.top-grid').classList.contains('layout-custom')";
+    const DEFAULT7 = { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] };
+    await api('PUT', '/api/layout', { left: ['policies', 'today'], right: ['links', 'schedule', 'news', 'tasks', 'tools'] });
+    await br.open(`${sb.base}/index.html`, 390, 900, HAS_CUSTOM);
+    check('スマホ(流れ): 並べ替えて保存した人は、開き直しても保存した配置(左の列→右の列)', await br.evaluate(HAS_CUSTOM) && await br.evaluate(orderIs(['sec-policies', 'sec-today', 'sec-links', 'sec-schedule', 'sec-news'])));
+    // 前回の配置をブラウザに覚えておくので、配置の応答が返らなくても、開いた直後から保存した配置で出る(並びが途中で切り替わらない。指摘4)
+    await br.setPreScript("(() => { const f = window.fetch; window.fetch = (u, o) => /\\/api\\/layout/.test(String(u)) ? new Promise(() => {}) : f(u, o); })();");
+    await br.open(`${sb.base}/index.html`, 390);
+    check('スマホ(流れ): 配置の応答が返らなくても、前回の配置ですぐに表示される', await br.evaluate(HAS_CUSTOM) && await br.evaluate(orderIs(['sec-policies', 'sec-today', 'sec-links', 'sec-schedule', 'sec-news'])));
+    // 前回の配置が無く(ブラウザの保存を消した状態)、配置の取得にも失敗したら、スマホ用の並び
+    await br.setPreScript("(() => { try { localStorage.clear(); } catch {} const f = window.fetch; window.fetch = (u, o) => /\\/api\\/layout/.test(String(u)) ? Promise.reject(new TypeError('Failed to fetch')) : f(u, o); })();");
+    await br.open(`${sb.base}/index.html`, 390);
+    check('スマホ(流れ): 配置の取得に失敗したら、スマホ用の並び', !(await br.evaluate(HAS_CUSTOM)) && await br.evaluate(SP_TOP_ORDER));
+    await br.setPreScript(null);
+    // 以前の初期配置(09-07〜10-08)のまま保存している人は、並べ替えていない扱い(案1)
+    await api('PUT', '/api/layout', { left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks', 'tools'] });
+    await br.open(`${sb.base}/index.html`, 390, 900, `!(${HAS_CUSTOM})`);
+    check('スマホ(流れ): 以前の初期配置のまま保存している人は、スマホ用の並び', !(await br.evaluate(HAS_CUSTOM)) && await br.evaluate(SP_TOP_ORDER));
+    // 保存の直後も、サーバーの判定に合わせる(初期配置に戻して保存したら、スマホ用の並び。指摘3)
+    await api('PUT', '/api/layout', { left: ['policies', 'today'], right: ['links', 'schedule', 'news', 'tasks', 'tools'] });
+    await br.open(`${sb.base}/index.html`, 390, 900, HAS_CUSTOM);
+    await br.evaluate(`(async () => { applyLayout(${JSON.stringify({ ...DEFAULT7, custom: true })}); await saveLayout(); })()`);
+    check('スマホ(流れ): 初期配置に戻して保存した直後に、スマホ用の並びになる', !(await br.evaluate(HAS_CUSTOM)) && await br.evaluate(SP_TOP_ORDER));
+    check('スマホ(流れ): 保存の直後に、ブラウザの前回の配置も「並べ替えていない」に更新される', await br.evaluate("JSON.parse(localStorage.getItem(layoutCacheKey)).custom === false"));
+    // 前回の配置は人ごと: 別の人のキーに並べ替えた配置があっても使わない(共有PC)。応答が返らない状況で確認
+    const myKey = await br.evaluate('layoutCacheKey');
+    const CUSTOM_CACHE = JSON.stringify(JSON.stringify({ left: ['policies', 'today'], right: ['links', 'schedule', 'news', 'tasks', 'tools'], custom: true }));
+    await br.setPreScript(`(() => { try { localStorage.clear(); localStorage.setItem('portal.topLayout.other@example.com', ${CUSTOM_CACHE}); } catch {} const f = window.fetch; window.fetch = (u, o) => /\\/api\\/layout/.test(String(u)) ? new Promise(() => {}) : f(u, o); })();`);
+    await br.open(`${sb.base}/index.html`, 390);
+    check('スマホ(流れ): 別の人の前回の配置は使わない', !!myKey && !(await br.evaluate(HAS_CUSTOM)) && await br.evaluate(SP_TOP_ORDER));
+    // 自分のキーの値が壊れていても止まらず、サーバーの配置で表示する
+    await api('PUT', '/api/layout', { left: ['policies', 'today'], right: ['links', 'schedule', 'news', 'tasks', 'tools'] });
+    await br.setPreScript(`(() => { try { localStorage.clear(); localStorage.setItem(${JSON.stringify(myKey)}, '{broken'); } catch {} })();`);
+    await br.open(`${sb.base}/index.html`, 390, 900, HAS_CUSTOM);
+    check('スマホ(流れ): 前回の配置が壊れていても、サーバーの配置で表示される', await br.evaluate(HAS_CUSTOM) && await br.evaluate(orderIs(['sec-policies', 'sec-today', 'sec-links', 'sec-schedule', 'sec-news'])));
+    await br.setPreScript(null);
+    await api('PUT', '/api/layout', DEFAULT7);
+    await br.evaluate("(() => { try { localStorage.clear(); } catch {} })()");
     await br.open(`${sb.base}/index.html`, 1280);
     check('PC(1280px): トップは従来どおり2列(お知らせの右に今日の予定)', await br.evaluate("(() => { const n = document.getElementById('sec-news').getBoundingClientRect(), t = document.getElementById('sec-today').getBoundingClientRect(); return t.left > n.right && Math.abs(t.top - n.top) < 2; })()"));
     check('PC(1280px): ハンバーガーは表示されない', await br.evaluate("(() => { const b = document.querySelector('.portal-burger'); return !b || getComputedStyle(b).display === 'none'; })()"));
@@ -88,6 +129,18 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('お知らせ: 重要・固定が先頭の2件', new Set(titles.slice(0, 2)).size === 2 && titles.slice(0, 2).every(t => t === 'N-重要' || t === 'N-固定'), titles.join());
     check('お知らせ: その後は掲載日の新しい順', titles.slice(2).join() === 'N-通常新しい,N-通常古い', titles.join());
     check('お知らせ: NEWは掲載7日以内だけ', rows.filter(r => r.includes('NEW')).length === 1 && rows.find(r => r.includes('N-通常新しい')).includes('NEW'), rows.join(' | '));
+    // お知らせのカテゴリ: PCでは出す・スマホでは出さない(トップの一覧・お知らせの詳細・過去のお知らせ。2026-11-17・ユーザー指示)。全社スケジュールの詳細の「全社行事」は出す
+    const tagsShown = "[...document.querySelectorAll('.news-tag')].filter(e => e.getClientRects().length > 0).length";
+    check('お知らせ(PC): カテゴリが出る', await br.evaluate(`document.querySelectorAll('#news-list .news-tag').length === 4 && ${tagsShown} === 4`));
+    await br.open(`${sb.base}/index.html`, 390, 900, "document.querySelectorAll('#news-list [data-news]').length > 0");
+    check('お知らせ(スマホ): 一覧にカテゴリが出ない(タイトル・NEWは出る)', await br.evaluate(`document.querySelectorAll('#news-list .news-tag').length === 4 && ${tagsShown} === 0 && /N-重要/.test(document.getElementById('news-list').textContent) && /NEW/.test(document.getElementById('news-list').textContent)`));
+    await br.evaluate("document.querySelector('#news-list [data-news]').click()");
+    check('お知らせ(スマホ): 詳細にもカテゴリが出ない', await br.evaluate(`!!document.getElementById('modal-box') && document.querySelectorAll('#modal-box .news-tag').length === 1 && ${tagsShown} === 0`));
+    await br.evaluate("closeModal(); openNewsListModal([{ tag: '総務', title: 'N-過去', date: '2026-01-05' }])");
+    check('お知らせ(スマホ): 過去のお知らせの一覧にもカテゴリが出ない', await br.evaluate(`/N-過去/.test(document.body.textContent) && document.querySelectorAll('.news-tag').length >= 1 && ${tagsShown} === 0`));
+    await br.evaluate("closeModal(); openModal({ tag: '全社行事', tagColor: '#2f6f8f', tagBg: '#e5f0f7', date: '1/1', title: 'S-行事', body: '', owner: '総務部', attachments: [] })");
+    check('全社スケジュールの詳細(スマホ): 「全社行事」の表示は残る', await br.evaluate("[...document.querySelectorAll('#modal-box span')].some(s => s.textContent === '全社行事' && s.getClientRects().length > 0)"));
+    await br.evaluate("closeModal()");
 
     // ---- システム案内(案B・案C。枠組み): トップのメニューにリンクがあり、ページが動く ----
     await br.open(`${sb.base}/index.html`, 1280);

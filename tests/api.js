@@ -63,11 +63,24 @@ const files = {
   setSavedLayout({ left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] }); // 追加前の初期配置のまま保存していた人
   const layOldDef = (await json('GET', '/api/layout')).data;
   check('配置: 追加前の初期配置のまま保存していた人は custom=false(新しい初期配置と同じ)', layOldDef.custom === false && layOldDef.right.join() === 'today,policies,tasks,tools', JSON.stringify(layOldDef));
+  // 以前の初期配置(2026-09-07〜10-08)のまま保存していた人は、並べ替えていない扱い(2026-11-11・ユーザー指示=案1)。PCではその配置のまま
+  setSavedLayout({ left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks'] });
+  const layPrev = (await json('GET', '/api/layout')).data;
+  check('配置: 以前の初期配置(09-07〜10-08)のまま保存していた人は custom=false・配置はそのまま', layPrev.custom === false && layPrev.left.join() === 'news,links,policies' && layPrev.right.join() === 'today,schedule,tasks,tools', JSON.stringify(layPrev));
+  setSavedLayout({ left: ['news', 'links', 'tasks', 'policies'], right: ['today', 'schedule'] }); // 以前の初期配置で、見えない枠(tasks)だけ位置が違う
+  check('配置: 以前の初期配置で見えない枠だけ位置が違う人も custom=false', (await json('GET', '/api/layout')).data.custom === false);
+  setSavedLayout({ left: ['links', 'news', 'policies'], right: ['today', 'schedule', 'tasks'] }); // 以前の初期配置から並べ替えた人
+  check('配置: 以前の初期配置から並べ替えた人は custom=true', (await json('GET', '/api/layout')).data.custom === true);
   setSavedLayout({ left: ['news', 'news'], right: ['today', 'policies', 'tasks', 'links'] }); // 壊れた配置(重複・不足)は補っても通さない
   check('配置: 壊れた配置は初期配置に戻す', (await json('GET', '/api/layout')).data.custom === false);
   rawDb.close();
   check('配置: 7枠の保存ができる', (await json('PUT', '/api/layout', { left: ['tools', 'news', 'schedule', 'links'], right: ['today', 'policies', 'tasks'] })).status === 200 && (await json('GET', '/api/layout')).data.left.join() === 'tools,news,schedule,links');
   check('配置: 不明な枠は保存できない', (await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links', 'zzz'], right: ['today', 'policies', 'tools', 'tasks'] })).status === 400);
+  // 保存の応答にも判定(custom)を返す。画面は保存直後もこれでスマホの並びを切り替える(GETと同じ判定)
+  const putCustom = (await json('PUT', '/api/layout', { left: ['today', 'news'], right: ['links', 'schedule', 'policies', 'tasks', 'tools'] })).data;
+  const putDefault = (await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] })).data;
+  const putPrev = (await json('PUT', '/api/layout', { left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks', 'tools'] })).data;
+  check('配置: 保存の応答の custom がGETと同じ判定(並べ替え=true/初期配置=false/以前の初期配置=false)', putCustom.custom === true && putDefault.custom === false && putPrev.custom === false, JSON.stringify([putCustom, putDefault, putPrev]));
   await json('PUT', '/api/layout', { left: ['news', 'schedule', 'links'], right: ['today', 'policies', 'tasks', 'tools'] });
 
   // 便利なツール(2026-11-07): 登録・説明の上限(50文字)・URLの制限・トップ用の取得・個人の並び

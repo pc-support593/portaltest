@@ -291,11 +291,19 @@ function isValidLayout(body) {
   return set.size === LAYOUT_SECTIONS.length && LAYOUT_SECTIONS.every(id => set.has(id));
 }
 
-/** 初期配置と同じ並びか(個人が並べ替えたかの判定。並べ替えて初期配置に戻した人は、並べ替えていない扱い) */
+// 以前の初期配置。このまま保存している人は、並べ替えていない扱いにする(2026-11-11・ユーザー指示=案1)。
+// 初期配置を変えたときに保存されていた配置は、本人が並べ替えたものではない(つまみを押して離しただけでも保存されるため)。
+// 初期配置を変えたら、変える前の配置をここに足す。2026-08-19〜09-07 の初期配置(policies が無い5枠)は、検証で無効=初期配置扱いのため不要
+const PREVIOUS_DEFAULT_LAYOUTS = [
+  { left: ['news', 'links', 'policies'], right: ['today', 'schedule', 'tasks'] }, // 2026-09-07〜10-08
+];
+
+/** 初期配置(今の初期配置、または以前の初期配置)と同じ並びか(個人が並べ替えたかの判定。並べ替えて初期配置に戻した人は、並べ替えていない扱い) */
 function isDefaultLayout(layout) {
   const shown = col => col.filter(id => !MOBILE_HIDDEN.includes(id));
   const same = (a, b) => a.length === b.length && a.every((id, i) => id === b[i]);
-  return same(shown(layout.left), shown(DEFAULT_LAYOUT.left)) && same(shown(layout.right), shown(DEFAULT_LAYOUT.right));
+  return [DEFAULT_LAYOUT, ...PREVIOUS_DEFAULT_LAYOUTS].some(d =>
+    same(shown(layout.left), shown(d.left)) && same(shown(layout.right), shown(d.right)));
 }
 
 // custom: 個人が初期配置から並べ替えて保存しているか。スマホの画面は、custom でなければスマホ用の固定の並び、
@@ -318,7 +326,7 @@ app.put('/api/layout', (req, res) => {
     `INSERT INTO user_layouts (email, layout, updated_at) VALUES (?, ?, datetime('now'))
      ON CONFLICT(email) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at`
   ).run(me(req).email, layout);
-  res.json({ ok: true });
+  res.json({ ok: true, custom: !isDefaultLayout(body) }); // 画面は保存直後もこの判定でスマホの並びを切り替える(GETと同じ判定)
 });
 
 // ---- メンバー個人のリンク並び順(業務システムリンク・社内規程・便利なツール。2026-10-08・ユーザー指示) ----

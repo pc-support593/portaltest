@@ -74,6 +74,9 @@ input::placeholder, textarea::placeholder { color: #8fa3bd; }
   .portal-mobile-link.active { font-weight: 700; color: #9cc4f0; }
   /* トップ画面: タッチ操作ではドラッグが動かないため、並べ替えの表示は隠す。リンクのタイルは3列 */
   .drag-handle, .pc-only { display: none !important; }
+  /* お知らせのカテゴリ(重要・総務など)はスマホでは出さない(2026-11-17・ユーザー指示)。トップの一覧・過去のお知らせ・お知らせの詳細が対象。
+     全社スケジュールの詳細の「全社行事」は対象外。「重要」が一番上に来る並びは変わらない */
+  .news-tag { display: none !important; }
   #quick-links, #policy-links { grid-template-columns: repeat(3, 1fr) !important; padding-left: 14px !important; padding-right: 14px !important; }
   /* トップ画面の枠の並び(2026-11-06・ユーザー指示): スマホの初期の並びは
      お知らせ → 今日の予定 → 業務システムリンク → 全社スケジュール → 社内規程。
