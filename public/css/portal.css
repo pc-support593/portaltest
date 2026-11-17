@@ -135,3 +135,6 @@ input::placeholder, textarea::placeholder { color: #8fa3bd; }
   .mv-time, .mv-title { display: none; }
   .mv-more { font-size: 10px; padding: 0 2px; }
 }
+
+/* 赤いボタン(2026-11-17・ユーザー指示。スケジュール画面の「予定を作成」「…を予約→」) */
+.hv-btn-red:hover { background: #b83232 !important; }
