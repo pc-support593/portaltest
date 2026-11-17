@@ -885,7 +885,7 @@ function scheduleModeHtml(f) {
   const lab = 'font-size:12px;font-weight:700;color:#6b7d8f';
   const sel = (v, opts) => opts.map(([val, text]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${esc(text)}</option>`).join('');
   const modeSel = `
-    <label style="display:flex;flex-direction:column;gap:5px">
+    <label style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:0">
       <span style="${lab}">日程</span>
       <select id="f-mode" class="in-input">${sel(f.mode, [['single', '1日だけ'], ['range', '連続した日(複数日)'], ['repeat', '繰り返し(毎日・毎週・毎月)']])}</select>
     </label>`;
@@ -1030,11 +1030,13 @@ function renderModal() {
           <textarea id="f-content" class="in-input" rows="3" placeholder="打合せの目的・議題など" style="resize:vertical">${esc(f.content)}</textarea>
         </label>
         <div id="f-content-links" style="display:flex;flex-direction:column;gap:2px;margin-top:-6px">${contentLinksHtml(f.content)}</div>
-        ${sm.top}
-        <label style="display:flex;flex-direction:column;gap:5px">
-          <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.mode && f.mode !== 'single' ? '開始日' : '日付'}</span>
-          <input id="f-date" type="date" class="in-input" value="${esc(f.date)}">
-        </label>
+        <div style="display:flex;gap:12px;align-items:flex-end"><!-- 日付と日程は1行(2026-11-17・ユーザー指示) -->
+          <label style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:0">
+            <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.mode && f.mode !== 'single' ? '開始日' : '日付'}</span>
+            <input id="f-date" type="date" class="in-input" value="${esc(f.date)}">
+          </label>
+          ${sm.top}
+        </div>
         <div style="display:flex;gap:12px;align-items:flex-end">
           <label style="display:flex;flex-direction:column;gap:5px;flex:1">
             <span style="font-size:12px;font-weight:700;color:#6b7d8f">開始</span>

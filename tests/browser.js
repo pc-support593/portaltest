@@ -227,10 +227,10 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     await br.evaluate(SET('#f-rep-kind', 'weekly'));
     check('複数の日程: 「毎週」で曜日(7つ)が出て、開始日の曜日が選ばれている', await br.evaluate("document.querySelectorAll('[data-wd]').length === 7 && document.querySelectorAll('[data-wd]:checked').length === 1 && Number(document.querySelector('[data-wd]:checked').dataset.wd) === parseISODate(formState.date).getDay()"));
     await br.evaluate(SET('#f-rep-kind', 'monthly'));
+    check('月の予定: 初めの表示で「日・週」のボタンが選択済み(青)、「月」は白', await br.evaluate("getComputedStyle(document.getElementById('view-week')).backgroundColor === 'rgb(30, 95, 168)' && getComputedStyle(document.getElementById('view-month')).backgroundColor === 'rgb(255, 255, 255)'"));
     check('複数の日程: 「毎月」で、「毎月◯日」と「第◯◯曜日」を選べる', await br.evaluate("[...document.getElementById('f-monthly-kind').options].length === 2 && /毎月[0-9]+日/.test(document.getElementById('f-monthly-kind').options[0].textContent) && /第[0-9].曜日/.test(document.getElementById('f-monthly-kind').options[1].textContent)"));
     await br.evaluate(SET('#f-rep-kind', 'weekly'));
     await br.evaluate("document.querySelector('[data-wd]:checked').click()");
-    check('月の予定: 初めの表示で「日・週」のボタンが選択済み(青)、「月」は白', await br.evaluate("getComputedStyle(document.getElementById('view-week')).backgroundColor === 'rgb(30, 95, 168)' && getComputedStyle(document.getElementById('view-month')).backgroundColor === 'rgb(255, 255, 255)'"));
     await br.evaluate(SET('#f-title', 'テスト', 'input'));
     await br.evaluate("document.getElementById('f-submit').click()");
     check('複数の日程: 毎週で曜日が1つも無いと、作成せずにエラー(自分の予定も作らない)', await br.evaluate("(async () => { await new Promise(r => setTimeout(r, 200)); return document.getElementById('f-error').textContent.includes('曜日を1つ以上'); })()"));
@@ -248,38 +248,12 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('複数の日程: 通常の予定を開いても、「繰り返し全体を削除」は出ない', await br.evaluate("!document.getElementById('f-delete-series') && !!document.getElementById('f-delete')"));
     await br.evaluate("closeForm()");
     await br.open(`${sb.base}/schedule.html`, 390, 800, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
+    check('複数の日程: 日付と日程は同じ1行に並ぶ(日付が左・日程が右)', await br.evaluate("(() => { const d = document.getElementById('f-date').getBoundingClientRect(), m = document.getElementById('f-mode').getBoundingClientRect(); return Math.abs(d.top - m.top) < 2 && d.left < m.left; })()"));
     await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
+    check('複数の日程: 連続した日にしても、開始日と日程は1行のまま', await br.evaluate("(() => { const d = document.getElementById('f-date').getBoundingClientRect(), m = document.getElementById('f-mode').getBoundingClientRect(); return Math.abs(d.top - m.top) < 2; })()"));
     check('月の予定(390px): 横にはみ出さない', await br.evaluate(noOverflow));
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
 
-    check('Excel出力のボタン: ゆめすみか展示場にはあり、吉村一建設の会議室・社用車には無い', excelBtn.yumesumika === true && excelBtn.yoshimura === false && excelBtn.cars === false, JSON.stringify(excelBtn));
-    // ---- jinjerキーがある環境(ダミー)では、出勤状況のページとボタンが出る ----
-    const sbk = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });
-    try {
-      for (const w of [1280, 390]) {
-        const shown = await br.open(`${sbk.base}/attendance.html`, w);
-        check(`attendance.html (${w}px): キーありでは表示される`, shown);
-        if (shown) { await sleep(500); check(`attendance.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
-      }
-      // 月間の休み表: 横にはみ出さない(表は枠の中でスクロール)。サーバーの応答を差し替えて、名字だけ・振休の色・休日・申請中・出勤日は空欄を確認する
-      const stData = { month: '2026-11', days: 30, today: '2026-11-04', stale: '', fetchedAt: new Date().toISOString(), people: [
-        { email: 'a@x.com', name: '山田 太郎', cells: { '2026-11-02': { t: 'leave', label: '振休', pending: false, furi: true }, '2026-11-03': { t: 'leave', label: '午前休', pending: true, furi: false }, '2026-11-07': { t: 'holiday', label: '休日' } } },
-        { email: 'b@x.com', name: '佐藤 花子', cells: {} } ] };
-      await br.setPreScript(`(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/shift-table') ? Promise.resolve(new Response(JSON.stringify(${JSON.stringify(stData)}), { status: 200, headers: { 'Content-Type': 'application/json' } })) : f(u, o); })();`);
-      for (const w of [1280, 390]) {
-        const shown = await br.open(`${sbk.base}/shift-table.html`, w);
-        check(`shift-table.html (${w}px): キーありでは表示される`, shown);
-        if (shown) { await sleep(700); check(`shift-table.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
-      }
-      await br.open(`${sbk.base}/shift-table.html`, 1280);
-      await sleep(700);
-      const stInfo = await br.evaluate("(() => { const t = [...document.querySelectorAll('#st-body td')].map(td => [td.textContent, getComputedStyle(td).color]); const names = [...document.querySelectorAll('#st-body td[style*=\"sticky\"]')].map(td => td.textContent); return JSON.stringify({ t, names, title: document.getElementById('st-title').textContent, next: document.getElementById('st-next').disabled }); })()");
-      const si = JSON.parse(stInfo || '{}');
-      check('月間の休み表: 名字だけ表示・振休は別の文字色・申請中に※・休日・出勤日は空欄・現在の月では「次の月」が押せない',
-        si.names && si.names.includes('山田') && si.names.includes('佐藤') && !si.names.includes('山田 太郎') && si.t.some(([x, c]) => x === '振休' && c === 'rgb(123, 63, 160)') && si.t.some(([x, c]) => x === '午前休※' && c === 'rgb(178, 106, 0)') && si.t.some(([x]) => x === '休日') && si.t.filter(([x]) => x === '').length >= 40 && si.title.includes('2026年11月') && si.next === true, stInfo);
-      await br.setPreScript(null);
-      // 「最新の情報に更新」を押しても、jinjerを呼ぶ取り込みAPIは使わず、保存済みデータの読み直し(GET)だけ
-      await br.setPreScript("window.__calls = []; (() => { const f = window.fetch; window.fetch = (u, o) => { window.__calls.push((o && o.method || 'GET') + ' ' + String(u)); return f(u, o); }; })();");
     // ---- スタッフ予定: タブ(吉村一建設は2行固定) ----
     // 予定の編集画面: 「内容(任意)」に書かれたURLを、その下にリンクとして出す(今日の予定・予定のカードには内容を出さない)(2026-10-26・ユーザー指示)
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
@@ -323,3 +297,31 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
   }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error('TEST ERROR', e); process.exit(2); });
+    check('Excel出力のボタン: ゆめすみか展示場にはあり、吉村一建設の会議室・社用車には無い', excelBtn.yumesumika === true && excelBtn.yoshimura === false && excelBtn.cars === false, JSON.stringify(excelBtn));
+    // ---- jinjerキーがある環境(ダミー)では、出勤状況のページとボタンが出る ----
+    const sbk = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });
+    try {
+      for (const w of [1280, 390]) {
+        const shown = await br.open(`${sbk.base}/attendance.html`, w);
+        check(`attendance.html (${w}px): キーありでは表示される`, shown);
+        if (shown) { await sleep(500); check(`attendance.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
+      }
+      // 月間の休み表: 横にはみ出さない(表は枠の中でスクロール)。サーバーの応答を差し替えて、名字だけ・振休の色・休日・申請中・出勤日は空欄を確認する
+      const stData = { month: '2026-11', days: 30, today: '2026-11-04', stale: '', fetchedAt: new Date().toISOString(), people: [
+        { email: 'a@x.com', name: '山田 太郎', cells: { '2026-11-02': { t: 'leave', label: '振休', pending: false, furi: true }, '2026-11-03': { t: 'leave', label: '午前休', pending: true, furi: false }, '2026-11-07': { t: 'holiday', label: '休日' } } },
+        { email: 'b@x.com', name: '佐藤 花子', cells: {} } ] };
+      await br.setPreScript(`(() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/shift-table') ? Promise.resolve(new Response(JSON.stringify(${JSON.stringify(stData)}), { status: 200, headers: { 'Content-Type': 'application/json' } })) : f(u, o); })();`);
+      for (const w of [1280, 390]) {
+        const shown = await br.open(`${sbk.base}/shift-table.html`, w);
+        check(`shift-table.html (${w}px): キーありでは表示される`, shown);
+        if (shown) { await sleep(700); check(`shift-table.html (${w}px): 横にはみ出さない`, await br.evaluate(noOverflow)); }
+      }
+      await br.open(`${sbk.base}/shift-table.html`, 1280);
+      await sleep(700);
+      const stInfo = await br.evaluate("(() => { const t = [...document.querySelectorAll('#st-body td')].map(td => [td.textContent, getComputedStyle(td).color]); const names = [...document.querySelectorAll('#st-body td[style*=\"sticky\"]')].map(td => td.textContent); return JSON.stringify({ t, names, title: document.getElementById('st-title').textContent, next: document.getElementById('st-next').disabled }); })()");
+      const si = JSON.parse(stInfo || '{}');
+      check('月間の休み表: 名字だけ表示・振休は別の文字色・申請中に※・休日・出勤日は空欄・現在の月では「次の月」が押せない',
+        si.names && si.names.includes('山田') && si.names.includes('佐藤') && !si.names.includes('山田 太郎') && si.t.some(([x, c]) => x === '振休' && c === 'rgb(123, 63, 160)') && si.t.some(([x, c]) => x === '午前休※' && c === 'rgb(178, 106, 0)') && si.t.some(([x]) => x === '休日') && si.t.filter(([x]) => x === '').length >= 40 && si.title.includes('2026年11月') && si.next === true, stInfo);
+      await br.setPreScript(null);
+      // 「最新の情報に更新」を押しても、jinjerを呼ぶ取り込みAPIは使わず、保存済みデータの読み直し(GET)だけ
+      await br.setPreScript("window.__calls = []; (() => { const f = window.fetch; window.fetch = (u, o) => { window.__calls.push((o && o.method || 'GET') + ' ' + String(u)); return f(u, o); }; })();");
