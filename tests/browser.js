@@ -199,6 +199,7 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     const MQ = "JSON.stringify({ n: document.querySelectorAll('#month-grid [data-month-day]').length, title: document.getElementById('month-title').textContent, ev: document.querySelectorAll('#month-grid .mv-cell:not(.mv-other) .mv-ev').length, dwHidden: getComputedStyle(document.getElementById('dw-grid')).display === 'none', monthShown: !document.getElementById('month-view').hidden, dayNav: getComputedStyle(document.getElementById('date-label')).display, pressed: document.getElementById('view-month').getAttribute('aria-pressed'), head: [...document.querySelectorAll('#month-grid .mv-head')].map(e => e.textContent).join('') })";
     const dayShown = await br.evaluate("getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('month-view').hidden");
     check('月の予定: 初めは「日・週」の画面(月は隠れている)', dayShown);
+    check('月の予定: 初めの表示で「日・週」のボタンが選択済み(青)、「月」は白', await br.evaluate("getComputedStyle(document.getElementById('view-week')).backgroundColor === 'rgb(30, 95, 168)' && getComputedStyle(document.getElementById('view-month')).backgroundColor === 'rgb(255, 255, 255)'"));
     await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
     const mv = JSON.parse(await br.evaluate(MQ));
     const nowD = new Date();
@@ -222,13 +223,13 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('複数の日程: 作成フォームに「日程」の選択があり、初めは「-」(1日だけ。日付の欄・繰り返しの欄は出ない)', await br.evaluate("document.getElementById('f-mode').value === 'single' && document.getElementById('f-mode').selectedOptions[0].textContent === '-' && !document.getElementById('f-end-date') && !document.getElementById('f-rep-kind')"));
     check('複数の日程: 日付と日程は同じ1行に並ぶ(日付が左・日程が右)', await br.evaluate("(() => { const d = document.getElementById('f-date').getBoundingClientRect(), m = document.getElementById('f-mode').getBoundingClientRect(); return Math.abs(d.top - m.top) < 2 && d.left < m.left; })()"));
     await br.evaluate(SET('#f-mode', 'range'));
+    check('複数の日程: 連続した日にしても、開始日と日程は1行のまま', await br.evaluate("(() => { const d = document.getElementById('f-date').getBoundingClientRect(), m = document.getElementById('f-mode').getBoundingClientRect(); return Math.abs(d.top - m.top) < 2; })()"));
     check('複数の日程: 「連続した日」で、終了日と時間の入れ方(期間ずっと/毎日同じ時間帯)が出て、日付の見出しが「開始日」になる', await br.evaluate("!!document.getElementById('f-end-date') && document.getElementById('f-range-kind').options.length === 2 && document.getElementById('f-end-date').value > document.getElementById('f-date').value && document.getElementById('f-date').previousElementSibling.textContent === '開始日' && document.getElementById('form-box').textContent.includes('最長2か月')"));
     await br.evaluate(SET('#f-mode', 'repeat'));
     check('複数の日程: 「繰り返し」で、毎日・毎週・毎月と、終わり(回数/終了日)が出る', await br.evaluate("[...document.getElementById('f-rep-kind').options].map(o => o.textContent).join() === '毎日,毎週,毎月' && [...document.getElementById('f-end-mode').options].map(o => o.textContent).join() === '回数で指定,終了日で指定' && !!document.getElementById('f-rep-count') && !!document.getElementById('f-weekdays-only')"));
     await br.evaluate(SET('#f-rep-kind', 'weekly'));
     check('複数の日程: 「毎週」で曜日(7つ)が出て、開始日の曜日が選ばれている', await br.evaluate("document.querySelectorAll('[data-wd]').length === 7 && document.querySelectorAll('[data-wd]:checked').length === 1 && Number(document.querySelector('[data-wd]:checked').dataset.wd) === parseISODate(formState.date).getDay()"));
     await br.evaluate(SET('#f-rep-kind', 'monthly'));
-    check('月の予定: 初めの表示で「日・週」のボタンが選択済み(青)、「月」は白', await br.evaluate("getComputedStyle(document.getElementById('view-week')).backgroundColor === 'rgb(30, 95, 168)' && getComputedStyle(document.getElementById('view-month')).backgroundColor === 'rgb(255, 255, 255)'"));
     check('複数の日程: 「毎月」で、「毎月◯日」と「第◯◯曜日」を選べる', await br.evaluate("[...document.getElementById('f-monthly-kind').options].length === 2 && /毎月[0-9]+日/.test(document.getElementById('f-monthly-kind').options[0].textContent) && /第[0-9].曜日/.test(document.getElementById('f-monthly-kind').options[1].textContent)"));
     await br.evaluate(SET('#f-rep-kind', 'weekly'));
     await br.evaluate("document.querySelector('[data-wd]:checked').click()");
@@ -249,7 +250,6 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     check('複数の日程: 通常の予定を開いても、「繰り返し全体を削除」は出ない', await br.evaluate("!document.getElementById('f-delete-series') && !!document.getElementById('f-delete')"));
     await br.evaluate("closeForm()");
     await br.open(`${sb.base}/schedule.html`, 390, 800, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
-    check('複数の日程: 連続した日にしても、開始日と日程は1行のまま', await br.evaluate("(() => { const d = document.getElementById('f-date').getBoundingClientRect(), m = document.getElementById('f-mode').getBoundingClientRect(); return Math.abs(d.top - m.top) < 2; })()"));
     await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
     check('月の予定(390px): 横にはみ出さない', await br.evaluate(noOverflow));
     await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
