@@ -50,6 +50,14 @@ async function fetchAllPages(path, month, deadline, signal) {
   return all;
 }
 
+/** 勤務予定の1行に、出勤か退勤の時刻が入っているか(work_schedule.start / end のどちらかが空でない文字)。
+    時刻が無い・空の行は、出勤予定とみなさない(jinjerの所定休日はAPIで取れないため、空の状態として来る場合に備える) */
+function hasWorkTime(w) {
+  const ws = w && w.work_schedule;
+  if (!ws || typeof ws !== 'object') return false;
+  return [ws.start, ws.end].some(t => typeof t === 'string' && t.trim() !== '');
+}
+
 /** 今日の休みの一覧を求める(純粋な関数。テスト用に切り出し)。
     leaveData: requested-day-offs の data、scheduleData: work-schedules の data、targetDate: 'YYYY-MM-DD'。
     戻り値: [{ employee_id, kind: 'leave'|'holiday', label, status: 'approved'|'pending' }] */
@@ -81,7 +89,7 @@ function computeOffs(leaveData, scheduleData, targetDate) {
     if (out.has(id)) continue;
     const list = Array.isArray(emp.work_schedules) ? emp.work_schedules : [];
     if (!list.length) continue; // 今月の勤務予定が1行も無い人は、未作成の可能性があるため出さない
-    if (list.some(w => w && w.date === targetDate)) continue; // 今日の勤務予定がある=出勤予定
+    if (list.some(w => w && w.date === targetDate && hasWorkTime(w))) continue; // 今日の勤務予定があり、出勤か退勤の時刻が入っている=出勤予定(行があっても時刻が空なら休み。2026-11-17・ユーザー指示)
     out.set(id, { employee_id: id, kind: 'holiday', label: '休み', status: 'approved' });
   }
   return [...out.values()];

@@ -145,6 +145,19 @@ const { check, done } = makeChecker('jinjer');
     check('休みの判定: 全日=休み・半休=午前休(申請中)。否認は休暇にしない', cm['10'] === 'leave:休み:approved' && cm['11'] === 'leave:午前休:pending' && cm['12'] === 'holiday:休み:approved', JSON.stringify(cm));
     check('休みの判定: 勤務予定がない日は休日。今日の勤務予定がある人・月の予定が1行もない人は出さない', cm['15'] === 'holiday:休み:approved' && cm['13'] === 'holiday:休み:approved' && !('14' in cm) && !('16' in cm), JSON.stringify(cm));
     check('休みの判定: 休暇と休日が重なる人は、休暇を優先する', cm['10'].startsWith('leave:') && comp.filter(r => r.employee_id === '10').length === 1);
+    // 勤務予定の行があっても、出勤・退勤の時刻が空なら休み(2026-11-17・ユーザー指示)
+    const row = (d, ws) => ({ date: d, store: { id: '1', name: 's' }, ...(ws === undefined ? {} : { work_schedule: ws }) });
+    const tm = offs.computeOffs([], [
+      { employee_id: '30', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today, { start: '', end: '' })] },          // 今日の行はあるが時刻が空=休み
+      { employee_id: '31', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today, { start: null, end: null })] },      // null=休み
+      { employee_id: '32', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today)] },                                 // work_schedule 自体が無い=休み
+      { employee_id: '33', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today, { start: '9:00:00', end: '' })] },   // 片方だけ入っている=出勤予定(出さない)
+      { employee_id: '34', work_schedules: [row(today, { start: '', end: '' }), row(today, { start: '13:00:00', end: '18:00:00' })] },        // 同じ日に2行(片方は時刻あり)=出勤予定
+      { employee_id: '35', work_schedules: [row(today, { start: '9:00:00', end: '18:00:00' })] }                                             // 通常の出勤予定
+    ], today);
+    const tmm = Object.fromEntries(tm.map(r => [r.employee_id, r.kind]));
+    check('休みの判定: 今日の行があっても出勤・退勤の時刻が空(空文字・null・項目なし)なら休日', tmm['30'] === 'holiday' && tmm['31'] === 'holiday' && tmm['32'] === 'holiday', JSON.stringify(tmm));
+    check('休みの判定: 時刻が入っている行が1つでもあれば出勤予定(片方だけ・同じ日に複数行を含む)', !('33' in tmm) && !('34' in tmm) && !('35' in tmm), JSON.stringify(tmm));
     // 同じ日に複数の休暇があるとき
     const lv = (id, st, span) => ({ employee_id: id, requested_day_offs: [{ date: today, status: st, day_off_classification: { name: 'x' }, duration_classification: span }] });
     const pm = { id: '1', name: '半休', start_time: today + ' 14:00:00', end_time: today + ' 18:00:00' };
