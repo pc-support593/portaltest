@@ -887,7 +887,7 @@ function scheduleModeHtml(f) {
   const modeSel = `
     <label style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:0">
       <span style="${lab}">日程</span>
-      <select id="f-mode" class="in-input">${sel(f.mode, [['single', '1日だけ'], ['range', '連続した日(複数日)'], ['repeat', '繰り返し(毎日・毎週・毎月)']])}</select>
+      <select id="f-mode" class="in-input">${sel(f.mode, [['single', '-'], ['range', '連続した日(複数日)'], ['repeat', '繰り返し(毎日・毎週・毎月)']])}</select>
     </label>`;
   if (f.mode === 'single') return { top: modeSel, afterDate: '' };
   const limit = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? addMonthsISO(f.date, MAX_MONTHS) : '';
