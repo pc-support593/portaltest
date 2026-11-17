@@ -43,6 +43,11 @@
         <h1 id="date-label" style="margin:0;font-size:17px;font-weight:700;min-width:200px"></h1>
         <button id="next-day" class="hv-btn-light" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
         <button id="today-btn" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今日</button>
+        <!-- 表示切り替え(2026-11-17・ユーザー指示): 「日・週」=今までの画面 / 「月」=個人の予定を月のカレンダーで表示(会議室の月表示はなし) -->
+        <div id="view-switch" role="group" aria-label="表示の切り替え" style="display:inline-flex">
+          <button id="view-week" type="button" aria-pressed="true" style="border:1px solid #dfe8f0;background:#ffffff;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit;padding:7px 14px;border-radius:8px 0 0 8px">日・週</button>
+          <button id="view-month" type="button" aria-pressed="false" style="border:1px solid #dfe8f0;background:#ffffff;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit;padding:7px 14px;border-radius:0 8px 8px 0;margin-left:-1px">月</button>
+        </div>
         <button id="create-event" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;margin-left:auto">＋ 予定を作成</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap">
@@ -52,7 +57,7 @@
     </div>
 
     <!-- 個人と拠点別を横並び(2カラム。ポータルトップと同じくauto-fitで狭い画面では自動的に1カラム化) -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:18px;align-items:start">
+    <div id="dw-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:18px;align-items:start">
 
       <!-- 左: 自分の予定(会議室などを伴わない予定の作成)。作成ボタンは枠の外(上)に置く -->
       <div style="display:flex;flex-direction:column;gap:20px"><!-- 「自分の予定」と「今週の予定」の間隔(2026-10-15・ユーザー指示。10pxから20pxへ) -->
@@ -96,6 +101,16 @@
 
     </div>
 
+    <!-- 月の予定(2026-11-17・ユーザー指示)。日曜日始まり。自分の予定だけ。日のマスをクリックすると、その日の「日・週」の画面へ -->
+    <section id="month-view" hidden style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(30,60,100,0.08);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid #e8edf3;flex-wrap:wrap">
+        <button id="month-prev" type="button" class="hv-btn-light" title="前の月" aria-label="前の月" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">‹</button>
+        <h2 id="month-title" style="margin:0;font-size:17px;font-weight:700;min-width:130px;text-align:center"></h2>
+        <button id="month-next" type="button" class="hv-btn-light" title="次の月" aria-label="次の月" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#1e5fa8;font-size:14px;font-family:inherit">›</button>
+        <button id="month-this" type="button" class="hv-btn-plain" style="border:1px solid #dfe8f0;background:#ffffff;border-radius:8px;padding:7px 14px;cursor:pointer;color:#1c2b3a;font-size:12px;font-weight:500;font-family:inherit">今月</button>
+      </div>
+      <div id="month-grid"></div>
+    </section>
   </div>
   <div id="modal-root"></div>
 </div>

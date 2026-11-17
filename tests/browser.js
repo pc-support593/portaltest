@@ -223,6 +223,29 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
       await sleep(600);
       excelBtn[v] = await br.evaluate("!!document.getElementById('export-excel')");
     }
+    // ---- 月の予定(スケジュール画面。2026-11-17・ユーザー指示) ----
+    const MQ = "JSON.stringify({ n: document.querySelectorAll('#month-grid [data-month-day]').length, title: document.getElementById('month-title').textContent, ev: document.querySelectorAll('#month-grid .mv-cell:not(.mv-other) .mv-ev').length, dwHidden: getComputedStyle(document.getElementById('dw-grid')).display === 'none', monthShown: !document.getElementById('month-view').hidden, dayNav: getComputedStyle(document.getElementById('date-label')).display, pressed: document.getElementById('view-month').getAttribute('aria-pressed'), head: [...document.querySelectorAll('#month-grid .mv-head')].map(e => e.textContent).join('') })";
+    const dayShown = await br.evaluate("getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('month-view').hidden");
+    check('月の予定: 初めは「日・週」の画面(月は隠れている)', dayShown);
+    await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
+    const mv = JSON.parse(await br.evaluate(MQ));
+    const nowD = new Date();
+    check('月の予定: 「月」で月のカレンダーに切り替わり、日・週の画面と日付送りは隠れる', mv.dwHidden && mv.monthShown && mv.dayNav === 'none' && mv.pressed === 'true', JSON.stringify(mv));
+    check('月の予定: 見出しが今月・曜日は日曜始まり・日のマスは7の倍数(35か42など)', mv.title === nowD.getFullYear() + '年' + (nowD.getMonth() + 1) + '月' && mv.head === '日月火水木金土' && mv.n % 7 === 0 && mv.n >= 28 && mv.n <= 42, JSON.stringify(mv));
+    check('月の予定: 選択中の日(今日)に、予定(devのダミー3件)が出る', mv.ev === 3, JSON.stringify(mv));
+    await br.evaluate("(async () => { document.getElementById('month-next').click(); await new Promise(r => setTimeout(r, 300)); })()");
+    const nm = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
+    check('月の予定: 「›」で次の月に進む(予定は今月の日にしか無いので、その月には出ない)', JSON.parse(await br.evaluate(MQ)).title === nm.getFullYear() + '年' + (nm.getMonth() + 1) + '月' && JSON.parse(await br.evaluate(MQ)).ev === 0);
+    await br.evaluate("(async () => { document.getElementById('month-this').click(); await new Promise(r => setTimeout(r, 300)); })()");
+    check('月の予定: 「今月」で今月に戻る', JSON.parse(await br.evaluate(MQ)).title === nowD.getFullYear() + '年' + (nowD.getMonth() + 1) + '月');
+    // 日のマスのクリック: その日を選んで「日・週」の画面へ(今月の15日をクリックして確かめる)
+    await br.evaluate("(async () => { [...document.querySelectorAll('#month-grid .mv-cell:not(.mv-other)')][14].click(); await new Promise(r => setTimeout(r, 400)); })()");
+    check('月の予定: 日のマスをクリックすると、その日を選んで「日・週」の画面に戻る', await br.evaluate("(() => { const d = state.date; return state.view === 'week' && d.getDate() === 15 && document.getElementById('month-view').hidden && getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('date-label').textContent.includes('15日'); })()"));
+    await br.open(`${sb.base}/schedule.html`, 390, 800, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
+    await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
+    check('月の予定(390px): 横にはみ出さない', await br.evaluate(noOverflow));
+    await br.open(`${sb.base}/schedule.html`, 1280, 900, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
+
     check('Excel出力のボタン: ゆめすみか展示場にはあり、吉村一建設の会議室・社用車には無い', excelBtn.yumesumika === true && excelBtn.yoshimura === false && excelBtn.cars === false, JSON.stringify(excelBtn));
     // ---- jinjerキーがある環境(ダミー)では、出勤状況のページとボタンが出る ----
     const sbk = await startSandbox({ JINJER_API_KEY: 'dummy', JINJER_SECRET_KEY: 'dummy' });

@@ -69,6 +69,9 @@ const state = {
   roomBusy: null, // { [roomId]: [{start, end, subject}] } 選択中の日の会議室の空き状況(実データ)
   personalEvents: [], // 直近に取得した個人の予定(編集フォームを開く際に参照)
   weekBase: null, // 週の予定で「‹ ›」で動かした週の基準日(null=選択中の日を含む週)。日付を切り替える・予定を保存するとnullに戻る
+  view: 'week', // 表示: 'week'(日・週。会議室も含む今までの画面) | 'month'(自分の予定の月カレンダー。2026-11-17)
+  monthBase: null, // 月の表示で見ている月の1日(null=選択中の日の月)
+  monthEvents: [], // 直近に取得した、月のカレンダー(日曜始まりの6週以内)の自分の予定
   weekEvents: [], // 直近に取得した、選択中の日を含む週(日曜始まり)の自分の予定(週の予定の表示・編集フォームを開く際に参照)
   adminSiteIds: [], // サインイン中のユーザーが削除権限を持つ拠点(Auth.init後に確定)
   adminYoshimuraIds: [], // 同上・吉村一建設会議室の区分け
@@ -289,6 +292,135 @@ async function loadAndRenderWeek() {
     state.weekEvents = [];
     el.innerHTML = `<p style="margin:0;padding:12px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`;
   }
+}
+
+// ---- 月の予定(2026-11-17・ユーザー指示。自分の予定だけ。会議室の月表示はなし) ----
+// 日曜日始まりのカレンダー。1日のマスには、予定を3件まで(終日→開始の早い順)出し、それ以上は「+N件」。
+// 日のマスのクリック(または「+N件」)で、その日を選んで「日・週」の画面へ。予定のクリックは、週の予定と同じ編集画面(変更できる予定だけ)
+const MONTH_MAX_EVENTS = 3;
+
+/** 月の表示で見ている月の1日 */
+function currentMonthFirst() {
+  const b = state.monthBase || state.date;
+  return new Date(b.getFullYear(), b.getMonth(), 1);
+}
+
+/** その月のカレンダーの日付(日曜始まり。前後の月の日も含めて、7の倍数の日数) */
+function monthGridDates(first) {
+  const start = weekStartOf(first);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const n = Math.ceil((Math.round((last - start) / 86400000) + 1) / 7) * 7;
+  return Array.from({ length: n }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
+}
+
+/** 月のカレンダーの範囲の自分の予定を取得する(予定が多い月に備えて、次のページも全て読む)。devモードは、選択中の日にダミーを置く */
+async function fetchMonthEvents(first) {
+  if (Auth.mode !== 'entra') return DUMMY_PERSONAL_EVENTS.map(e => ({ ...e, date: isoDate(state.date), endDate: isoDate(state.date), isAllDay: false, editable: false }));
+  const dates = monthGridDates(first);
+  const end = new Date(dates[dates.length - 1]);
+  end.setDate(end.getDate() + 1);
+  const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+  let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
+    `?startDateTime=${encodeURIComponent(isoDate(dates[0]) + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(isoDate(end) + 'T00:00:00+09:00')}` +
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime&$top=100';
+  const out = [];
+  for (let page = 0; url; page++) {
+    if (page >= 20) throw new Error('月の予定が多すぎて、全て取得できませんでした'); // 無限ループ防止(100件×20ページ)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY } });
+    if (!res.ok) throw new Error(`月の予定の取得に失敗しました(HTTP ${res.status})`);
+    const data = await res.json();
+    out.push(...(data.value || []));
+    url = data['@odata.nextLink'] || null;
+  }
+  return out.map(mapGraphEvent);
+}
+
+/** 月のカレンダーを描く(状態の monthEvents から。純粋に描画だけ) */
+function renderMonth() {
+  const grid = document.getElementById('month-grid');
+  if (!grid) return;
+  const first = currentMonthFirst();
+  const dates = monthGridDates(first);
+  const todayKey = isoDate(new Date()), selectedKey = isoDate(state.date);
+  document.getElementById('month-title').textContent = `${first.getFullYear()}年${first.getMonth() + 1}月`;
+  const head = WDAYS.map((w, i) => `<div class="mv-head" style="color:${i === 0 ? '#d64545' : i === 6 ? '#1e5fa8' : '#6b7d8f'}">${w}</div>`).join('');
+  const cells = dates.map(d => {
+    const key = isoDate(d);
+    const idxs = state.monthEvents.map((e, i) => i).filter(i => eventCoversDay(state.monthEvents[i], key));
+    idxs.sort((a, b) => {
+      const ea = state.monthEvents[a], eb = state.monthEvents[b];
+      return (eb.isAllDay ? 1 : 0) - (ea.isAllDay ? 1 : 0) || (ea.start || '').localeCompare(eb.start || '') || a - b;
+    });
+    const shown = idxs.slice(0, MONTH_MAX_EVENTS);
+    const items = shown.map(i => {
+      const e = state.monthEvents[i];
+      const time = e.isAllDay ? '' : `<span class="mv-time">${esc(e.start || '')}</span> `;
+      return `<div class="mv-ev" ${e.editable ? `data-month-event="${i}"` : ''} title="${esc((e.isAllDay ? '終日' : e.time) + ' ' + e.title)}${e.editable ? '(クリックで変更)' : ''}" style="border-left:3px solid ${e.color};background:${e.bg}${e.editable ? ';cursor:pointer' : ''}">${time}<span class="mv-title">${esc(e.title)}</span></div>`;
+    }).join('');
+    const more = idxs.length > shown.length ? `<div class="mv-more">+${idxs.length - shown.length}件</div>` : '';
+    const dow = d.getDay();
+    const other = d.getMonth() !== first.getMonth();
+    const numColor = dow === 0 ? '#d64545' : dow === 6 ? '#1e5fa8' : '#1c2b3a';
+    return `<div class="mv-cell${other ? ' mv-other' : ''}${key === selectedKey ? ' mv-selected' : ''}" data-month-day="${key}" title="クリックでこの日の予定を表示">
+      <div class="mv-num" style="color:${numColor}"><span${key === todayKey ? ' class="mv-today"' : ''}>${d.getDate()}</span></div>
+      ${items}${more}
+    </div>`;
+  }).join('');
+  grid.innerHTML = `<div class="mv-grid">${head}${cells}</div>`;
+
+  grid.querySelectorAll('[data-month-event]').forEach(item => item.addEventListener('click', ev => {
+    ev.stopPropagation(); // 日のマスのクリック(日付の選択)とは別に、予定の編集画面を開く
+    openEditForm(state.monthEvents[Number(item.dataset.monthEvent)]);
+  }));
+  grid.querySelectorAll('[data-month-day]').forEach(cell => cell.addEventListener('click', () => {
+    const [y, m, dd] = cell.dataset.monthDay.split('-').map(Number);
+    state.date = new Date(y, m - 1, dd);
+    setView('week'); // その日の「自分の予定」・週の予定・会議室の画面へ
+  }));
+}
+
+async function loadAndRenderMonth() {
+  const grid = document.getElementById('month-grid');
+  if (!grid) return;
+  const first = currentMonthFirst();
+  const key = isoDate(first);
+  if (!state.monthEvents.length) { // 先にカレンダーの枠だけ出す(取得を待たせて空白にしない)
+    renderMonth();
+  }
+  const note = document.getElementById('month-note');
+  if (note) note.remove();
+  try {
+    const events = await withTimeout(fetchMonthEvents(first), 20000, '月の予定の取得が時間内に完了しませんでした');
+    if (state.view !== 'month' || isoDate(currentMonthFirst()) !== key) return; // 取得中に別の月・画面へ切り替えられた場合は、古い結果で描き替えない
+    state.monthEvents = events;
+    renderMonth();
+  } catch (e) {
+    console.error(e);
+    if (state.view !== 'month' || isoDate(currentMonthFirst()) !== key) return;
+    state.monthEvents = [];
+    renderMonth();
+    grid.insertAdjacentHTML('afterbegin', `<p id="month-note" style="margin:0;padding:10px 20px;font-size:13px;color:#c05a5a">${esc(e.message || String(e))}</p>`);
+  }
+}
+
+/** 「日・週」と「月」の表示を切り替える。日のマスから戻るときは、選んだ日の画面を出す */
+function setView(view) {
+  state.view = view === 'month' ? 'month' : 'week';
+  const month = state.view === 'month';
+  document.getElementById('dw-grid').style.display = month ? 'none' : 'grid'; // inline の display:grid があるため hidden 属性は効かない
+  document.getElementById('month-view').hidden = !month;
+  ['prev-day', 'date-label', 'next-day', 'today-btn'].forEach(id => { document.getElementById(id).style.display = month ? 'none' : ''; }); // 日付送りは、月の表示では月の見出しの「‹ ›」を使う
+  [['view-week', !month], ['view-month', month]].forEach(([id, on]) => {
+    const b = document.getElementById(id);
+    b.setAttribute('aria-pressed', String(on));
+    b.style.background = on ? '#1e5fa8' : '#ffffff';
+    b.style.color = on ? '#ffffff' : '#1c2b3a';
+    b.style.fontWeight = on ? '700' : '500';
+  });
+  if (month) state.monthBase = new Date(state.date.getFullYear(), state.date.getMonth(), 1);
+  else state.monthBase = null;
+  render();
 }
 
 // ---- 拠点別 会議室スケジュール(実データ。会議室自身の予定表を直接取得) ----
@@ -996,6 +1128,11 @@ function shiftDay(n) {
 
 async function render() {
   state.weekBase = null; // 日付の切り替え・予定の保存のあとは、選択中の日を含む週に戻す
+  if (state.view === 'month') { // 月の表示中は、月のカレンダーだけを読み直す(予定の保存・削除のあとも、ここを通る)
+    state.monthEvents = [];
+    await loadAndRenderMonth();
+    return;
+  }
   renderDateNav();
   renderGridTabs();
   await Promise.all([loadAndRenderPersonal(), loadAndRenderSiteGrid(), loadAndRenderWeek()]);
@@ -1004,6 +1141,15 @@ async function render() {
 // 自動リフレッシュ(共通方針: 2分間隔・モーダル表示中と非表示タブはスキップ・差分があるときだけ静かに差し替え)
 async function autoRefresh() {
   if (formState || document.hidden) return;
+  if (state.view === 'month') { // 月の表示中は、月の予定だけを静かに更新する
+    const key = isoDate(currentMonthFirst());
+    try {
+      const events = await withTimeout(fetchMonthEvents(currentMonthFirst()), 20000, '月の予定の取得が時間内に完了しませんでした');
+      if (formState || state.view !== 'month' || isoDate(currentMonthFirst()) !== key) return;
+      if (JSON.stringify(events) !== JSON.stringify(state.monthEvents)) { state.monthEvents = events; renderMonth(); }
+    } catch { /* 次回に再試行 */ }
+    return;
+  }
   const dateKey = isoDate(state.date); // 取得中に日付が切り替わったら結果を破棄するためのガード
   const tabKey = state.gridTab;       // 取得中にタブが切り替わったら予約状況の描き替えは見送る
   try {
@@ -1073,6 +1219,13 @@ async function autoRefresh() {
     document.getElementById('week-prev').addEventListener('click', () => shiftWeek(-1));
     document.getElementById('week-next').addEventListener('click', () => shiftWeek(1));
     document.getElementById('week-this').addEventListener('click', () => { state.weekBase = new Date(); state.weekEvents = []; loadAndRenderWeek(); }); // 今日を含む週へ
+    // 月の表示(2026-11-17): 「‹ ›」は表示する月だけを動かす。「今月」は今日を含む月へ
+    const shiftMonth = n => { const f = currentMonthFirst(); state.monthBase = new Date(f.getFullYear(), f.getMonth() + n, 1); state.monthEvents = []; loadAndRenderMonth(); };
+    document.getElementById('view-week').addEventListener('click', () => { if (state.view !== 'week') setView('week'); });
+    document.getElementById('view-month').addEventListener('click', () => { if (state.view !== 'month') setView('month'); });
+    document.getElementById('month-prev').addEventListener('click', () => shiftMonth(-1));
+    document.getElementById('month-next').addEventListener('click', () => shiftMonth(1));
+    document.getElementById('month-this').addEventListener('click', () => { const n = new Date(); state.monthBase = new Date(n.getFullYear(), n.getMonth(), 1); state.monthEvents = []; loadAndRenderMonth(); });
     document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
     document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
     document.getElementById('today-btn').addEventListener('click', () => { state.date = new Date(); render(); });
