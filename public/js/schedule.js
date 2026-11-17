@@ -112,7 +112,7 @@ async function fetchPersonalEvents(date) {
   const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(dateStr + 'T00:00:00+09:00')}` +
     `&endDateTime=${encodeURIComponent(dateStr + 'T23:59:59+09:00')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories,type,seriesMasterId&$orderby=start/dateTime';
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY }
@@ -143,6 +143,7 @@ function mapGraphEvent(ev, i) {
       type: a.type
     })),
     bodyText: (ev.body && ev.body.contentType === 'text' && ev.body.content) || '',
+    seriesMasterId: ev.seriesMasterId || '', // 繰り返しの予定の1回分のとき、元の予定のID(繰り返し全体の削除に使う)
     categories: ev.categories || [], // Outlookの分類項目(打ち合わせの区分の読み込み・保存で使う)
     ...PERSONAL_COLOR_CYCLE[i % PERSONAL_COLOR_CYCLE.length]
   });
@@ -218,7 +219,7 @@ async function fetchWeekEvents(sunday) {
   let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(isoDate(sunday) + 'T00:00:00+09:00')}` +
     `&endDateTime=${encodeURIComponent(isoDate(next) + 'T00:00:00+09:00')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime&$top=100';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories,type,seriesMasterId&$orderby=start/dateTime&$top=100';
   const out = [];
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: GRAPH_PREFER_TEXT_BODY } });
@@ -323,7 +324,7 @@ async function fetchMonthEvents(first) {
   let url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
     `?startDateTime=${encodeURIComponent(isoDate(dates[0]) + 'T00:00:00+09:00')}` +
     `&endDateTime=${encodeURIComponent(isoDate(end) + 'T00:00:00+09:00')}` +
-    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories&$orderby=start/dateTime&$top=100';
+    '&$select=id,subject,start,end,location,isAllDay,isOrganizer,attendees,body,categories,type,seriesMasterId&$orderby=start/dateTime&$top=100';
   const out = [];
   for (let page = 0; url; page++) {
     if (page >= 20) throw new Error('月の予定が多すぎて、全て取得できませんでした'); // 無限ループ防止(100件×20ページ)
@@ -685,6 +686,8 @@ function openCreateForm() {
     start: '10:00', end: '11:00', title: '', content: '', place: '', members: [], guests: '', error: '',
     resourceType: '', site: '', room: '', // 会議室・社用車は空き一覧のチップから選ぶ(自動選択しない)
     roomBusy: null,
+    // 複数の日程(2026-11-17): mode=single(1日だけ)|range(連続した日)|repeat(繰り返し)
+    mode: 'single', endDate: '', rangeKind: 'continuous', repKind: 'daily', weekdays: [], weekdaysOnly: false, monthlyKind: 'day', endMode: 'count', repEndDate: '', repCount: 4,
     kind: '', origKind: '', origCategories: [] // 打ち合わせの区分(Outlookの分類項目)
   };
   memberCandidates = [];
@@ -747,6 +750,7 @@ function openEditForm(ev) {
     site: matchedRoom ? matchedRoom.site : '',
     room: matchedRoom ? matchedRoom.id : '',
     roomBusy: null,
+    mode: 'single', seriesMasterId: ev.seriesMasterId || '',
     origCategories: ev.categories || [], origKind: null, kind: '' // 区分は、一覧の読み込み後に分類項目から決める(refreshKindsInForm)
   };
   memberCandidates = [];
@@ -788,6 +792,10 @@ async function refreshFormRoomBusy() {
 function roomOptionsHtml(f) {
   const master = resourceMaster(f.resourceType);
   if (!master) return '';
+  if (f.mode && f.mode !== 'single') { // 複数の日程: 1日分の空きでは絞らない(全ての日の空きは、作成するときに確認する)
+    return `<option value="" ${f.room ? '' : 'selected'} disabled>選択してください(空きは作成時に全ての日を確認)</option>` +
+      master.rooms.filter(r => r.site === f.site).map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+  }
   if (!f.roomBusy) return '<option value="">読み込み中…</option>';
   if (f.start >= f.end) return '<option value="">終了時刻は開始時刻より後にしてください</option>';
   const isOwnOriginalSlot = (roomId, it) => f.orig && f.orig.room === roomId && f.orig.date === f.date
@@ -798,6 +806,174 @@ function roomOptionsHtml(f) {
   if (!free.length) return `<option value="">この時間帯に空いている${esc(master.itemLabel)}はありません</option>`;
   return `<option value="" ${f.room ? '' : 'selected'} disabled>選択してください</option>` +
     free.map(r => `<option value="${r.id}" ${r.id === f.room ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+}
+
+// ---- 複数の日程(連続した日・繰り返し。2026-11-17・ユーザー指示。作成のときだけ。計算は recurrence.js) ----
+// 「1日だけ」=従来 / 「連続した日」=期間ずっと(ひと続き)か、毎日同じ時間帯 / 「繰り返し」=毎日・毎週・毎月。最長2か月
+// 会議室・社用車は、作る前に全ての回の空きを調べ、1日でも空いていなければ、予定も予約も作らない(重なる日を一覧で出す)
+
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** 複数日程の入力(formState)から、recurrence.js の expandOccurrences に渡す条件を作る */
+function recurrenceSpecOf(f) {
+  if (f.mode === 'range') return { start: f.date, kind: 'daily', weekdaysOnly: false, endMode: 'date', endDate: f.endDate };
+  return { start: f.date, kind: f.repKind, weekdays: f.weekdays, weekdaysOnly: f.weekdaysOnly, monthly: f.monthlyKind, endMode: f.endMode, endDate: f.repEndDate, count: f.repCount };
+}
+
+/** 作成の前に、予定が入る各回と、Graph に送る開始・終了(と繰り返し)を決める。
+    戻り値: { error } か { firstDate, startDT, endDT, recurrence(なければnull), intervals:[{date,start,end}], lastDate } */
+function planMultiSchedule(f) {
+  if (f.mode === 'range' && f.rangeKind === 'continuous') {
+    if (!f.endDate) return { error: '終了日を入力してください' };
+    if (f.endDate < f.date) return { error: '終了日は開始日以降にしてください' };
+    const limit = addMonthsISO(f.date, MAX_MONTHS);
+    if (f.endDate > limit) return { error: `終了日は開始日から${MAX_MONTHS}か月以内(${limit}まで)にしてください` };
+    const start = `${f.date}T${f.start}`, end = `${f.endDate}T${f.end}`;
+    if (start >= end) return { error: '終了の日時は、開始の日時より後にしてください' };
+    return { firstDate: f.date, startDT: start, endDT: end, recurrence: null, intervals: [{ date: f.date, start, end }], lastDate: f.endDate };
+  }
+  if (f.start >= f.end) return { error: '終了時刻は開始時刻より後にしてください' };
+  const spec = recurrenceSpecOf(f);
+  const r = expandOccurrences(spec);
+  if (r.error) return { error: r.error };
+  const intervals = r.dates.map(d => ({ date: d, start: `${d}T${f.start}`, end: `${d}T${f.end}` }));
+  return {
+    firstDate: r.dates[0], startDT: intervals[0].start, endDT: intervals[0].end,
+    recurrence: r.dates.length > 1 ? buildRecurrence(spec, r.dates) : null, // 1回だけになる場合は、繰り返しにしない
+    intervals, lastDate: r.dates[r.dates.length - 1]
+  };
+}
+
+/** 会議室・社用車1つの、指定した期間(開始日〜最終日)の既存の予約を取得する(日時のまま。次のページも読む)。取得できなければ例外 */
+async function fetchRoomIntervals(room, fromDate, lastDate, token) {
+  let url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(room.email)}/calendarView` +
+    `?startDateTime=${encodeURIComponent(fromDate + 'T00:00:00+09:00')}` +
+    `&endDateTime=${encodeURIComponent(addDaysISO(lastDate, 1) + 'T00:00:00+09:00')}` +
+    '&$select=start,end,isCancelled&$orderby=start/dateTime&$top=100';
+  const out = [];
+  for (let page = 0; url; page++) {
+    if (page >= 20) throw new Error('予約が多すぎて、空き状況を全て取得できませんでした');
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Tokyo Standard Time"' } });
+    if (!res.ok) throw new Error(`${room.name}の空き状況を取得できませんでした(HTTP ${res.status})。予定は作成していません`);
+    const data = await res.json();
+    (data.value || []).filter(ev => !ev.isCancelled).forEach(ev => out.push({ start: ev.start.dateTime.slice(0, 16), end: ev.end.dateTime.slice(0, 16) }));
+    url = data['@odata.nextLink'] || null;
+  }
+  return out;
+}
+
+/** 重なる回の一覧の文(長いときは先頭の数件+「ほかN日」) */
+function conflictMessage(conflicts, itemLabel) {
+  const show = conflicts.slice(0, 8).map(iv => {
+    const [y, m, d] = iv.date.split('-').map(Number);
+    return `${m}/${d}(${WEEKDAY_LABELS[dowOfISO(iv.date)]}) ${iv.start.slice(11)}–${iv.end.slice(11)}`;
+  });
+  const rest = conflicts.length > show.length ? ` ほか${conflicts.length - show.length}回` : '';
+  return `次の日は、${itemLabel}が空いていません。予定も予約も作成していません: ${show.join('、')}${rest}`;
+}
+
+/** 日程の種類の入力欄(作成のときだけ出す。「日付」の欄の前後)。f=formState */
+function scheduleModeHtml(f) {
+  const lab = 'font-size:12px;font-weight:700;color:#6b7d8f';
+  const sel = (v, opts) => opts.map(([val, text]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${esc(text)}</option>`).join('');
+  const modeSel = `
+    <label style="display:flex;flex-direction:column;gap:5px">
+      <span style="${lab}">日程</span>
+      <select id="f-mode" class="in-input">${sel(f.mode, [['single', '1日だけ'], ['range', '連続した日(複数日)'], ['repeat', '繰り返し(毎日・毎週・毎月)']])}</select>
+    </label>`;
+  if (f.mode === 'single') return { top: modeSel, afterDate: '' };
+  const limit = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? addMonthsISO(f.date, MAX_MONTHS) : '';
+  const hint = `<span style="font-size:11px;color:#8a99a8">最長${MAX_MONTHS}か月(開始日から${MAX_MONTHS}か月後の同じ日${limit ? `=${limit}` : ''}まで)。会議室・社用車は、全ての日が空いているときだけ作成します(1日でも空いていなければ、予定も予約も作りません)。</span>`;
+  let body = '';
+  if (f.mode === 'range') {
+    body = `
+      <label style="display:flex;flex-direction:column;gap:5px">
+        <span style="${lab}">終了日</span>
+        <input id="f-end-date" type="date" class="in-input" value="${esc(f.endDate)}">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:5px">
+        <span style="${lab}">時間の入れ方</span>
+        <select id="f-range-kind" class="in-input">${sel(f.rangeKind, [['continuous', '期間ずっと(開始日の開始時刻から、終了日の終了時刻まで、ひと続き)'], ['daily', '毎日同じ時間帯(各日の開始〜終了の時刻)']])}</select>
+      </label>`;
+  } else {
+    const nth = f.date ? nthOfMonth(f.date) : 1;
+    const dow = f.date ? WEEKDAY_LABELS[dowOfISO(f.date)] : '';
+    const dom = f.date ? recParse(f.date).getDate() : '';
+    let kindBody = '';
+    if (f.repKind === 'daily') kindBody = `<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input id="f-weekdays-only" type="checkbox" ${f.weekdaysOnly ? 'checked' : ''}> 平日だけ(土日を除く)</label>`;
+    else if (f.repKind === 'weekly') kindBody = `<div style="display:flex;gap:8px;flex-wrap:wrap">${WEEKDAY_LABELS.map((w, i) => `<label style="display:flex;align-items:center;gap:3px;font-size:13px"><input type="checkbox" data-wd="${i}" ${f.weekdays.includes(i) ? 'checked' : ''}>${w}</label>`).join('')}</div>`;
+    else kindBody = `<select id="f-monthly-kind" class="in-input">${sel(f.monthlyKind, [['day', `毎月${dom}日`], ['nth', `毎月 第${nth}${dow}曜日`]])}</select>`;
+    body = `
+      <label style="display:flex;flex-direction:column;gap:5px">
+        <span style="${lab}">繰り返し</span>
+        <select id="f-rep-kind" class="in-input">${sel(f.repKind, [['daily', '毎日'], ['weekly', '毎週'], ['monthly', '毎月']])}</select>
+      </label>
+      ${kindBody}
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:5px;flex:1">
+          <span style="${lab}">終わり</span>
+          <select id="f-end-mode" class="in-input">${sel(f.endMode, [['count', '回数で指定'], ['date', '終了日で指定']])}</select>
+        </label>
+        ${f.endMode === 'count'
+          ? `<label style="display:flex;flex-direction:column;gap:5px;flex:1"><span style="${lab}">回数</span><input id="f-rep-count" type="number" min="1" max="62" class="in-input" value="${esc(String(f.repCount))}"></label>`
+          : `<label style="display:flex;flex-direction:column;gap:5px;flex:1"><span style="${lab}">終了日</span><input id="f-rep-end" type="date" class="in-input" value="${esc(f.repEndDate)}"></label>`}
+      </div>`;
+  }
+  return { top: modeSel, afterDate: `<div style="display:flex;flex-direction:column;gap:12px;padding:12px 14px;background:#f7f9fc;border:1px solid #e4ebf2;border-radius:10px">${body}${hint}</div>` };
+}
+
+/** 複数日程の入力欄のイベント(renderModal の最後で呼ぶ) */
+function bindScheduleMode(root, f) {
+  const on = (id, ev, fn) => { const el = root.querySelector(id); if (el) el.addEventListener(ev, fn); };
+  on('#f-mode', 'change', e => {
+    f.mode = e.target.value;
+    f.room = ''; f.roomBusy = null; // 空きの出し方が変わるので、会議室は選び直す
+    if (f.mode === 'range' && !f.endDate) f.endDate = addDaysISO(f.date, 1);
+    if (f.mode === 'repeat' && f.repKind === 'weekly' && !f.weekdays.length && f.date) f.weekdays = [dowOfISO(f.date)];
+    if (f.mode === 'single' && f.resourceType && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
+    renderModal();
+  });
+  on('#f-end-date', 'change', e => { f.endDate = e.target.value; });
+  on('#f-range-kind', 'change', e => { f.rangeKind = e.target.value; });
+  on('#f-rep-kind', 'change', e => {
+    f.repKind = e.target.value;
+    if (f.repKind === 'weekly' && !f.weekdays.length && f.date) f.weekdays = [dowOfISO(f.date)];
+    renderModal();
+  });
+  on('#f-weekdays-only', 'change', e => { f.weekdaysOnly = e.target.checked; });
+  root.querySelectorAll('[data-wd]').forEach(cb => cb.addEventListener('change', () => {
+    const i = Number(cb.dataset.wd);
+    f.weekdays = cb.checked ? [...new Set([...f.weekdays, i])] : f.weekdays.filter(x => x !== i);
+  }));
+  on('#f-monthly-kind', 'change', e => { f.monthlyKind = e.target.value; });
+  on('#f-end-mode', 'change', e => { f.endMode = e.target.value; renderModal(); });
+  on('#f-rep-count', 'input', e => { f.repCount = e.target.value; });
+  on('#f-rep-end', 'change', e => { f.repEndDate = e.target.value; });
+}
+
+/** 繰り返しの予定(の1回分を開いたとき)を、繰り返し全体まとめて削除する(主催者のみ。会議室・参加者にはキャンセル通知が送られる) */
+async function deleteSeries() {
+  const f = formState;
+  if (!f || !f.seriesMasterId) return;
+  if (!confirm('繰り返しの予定を、すべて削除しますか?(この1回分だけでなく、全ての回が消えます。会議室や参加者には取消の通知が送られます)')) return;
+  const btn = document.getElementById('f-delete-series');
+  const errEl = document.getElementById('f-error');
+  btn.disabled = true;
+  btn.textContent = '削除中…';
+  try {
+    const token = await Auth.getGraphToken(['Calendars.ReadWrite']);
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/events/${f.seriesMasterId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok && res.status !== 404) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error?.message || `予定の削除に失敗しました(HTTP ${res.status})`);
+    }
+    closeForm();
+    render();
+  } catch (e) {
+    errEl.textContent = e.message || String(e);
+    btn.disabled = false;
+    btn.textContent = '繰り返し全体を削除';
+  }
 }
 
 function renderModal() {
@@ -815,6 +991,7 @@ function renderModal() {
     </span>`).join('');
 
   const activeMaster = resourceMaster(f.resourceType);
+  const sm = f.eventId ? { top: '', afterDate: '' } : scheduleModeHtml(f); // 複数の日程の入力欄(作成のときだけ)
   const roomSection = activeMaster ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       <label style="display:flex;flex-direction:column;gap:5px">
@@ -835,7 +1012,7 @@ function renderModal() {
         <button class="hv-close" data-close style="margin-left:auto;border:none;background:#f0f4f8;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b7d8f;font-size:15px;flex-shrink:0">✕</button>
       </div>
       <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;overflow-y:auto">
-        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると、あなたの予定に反映されます。' : '作成すると、あなたの予定に反映されます。'}${activeMaster ? `${esc(activeMaster.itemLabel)}は招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
+        <p style="margin:0;font-size:12px;color:#8a99a8">${f.eventId ? '変更を保存すると、あなたの予定に反映されます。' : '作成すると、あなたの予定に反映されます。'}${f.seriesMasterId ? '繰り返しの予定です。変更・削除は、この1回分だけに反映されます(全体を消すときは「繰り返し全体を削除」)。' : ''}${activeMaster ? `${esc(activeMaster.itemLabel)}は招待され、空いていれば自動承諾、埋まっていれば自動辞退されます。` : ''}</p>
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">件名/お客様名</span>
           <input id="f-title" class="in-input" value="${esc(f.title)}" placeholder="例: 営業企画 定例MTG">
@@ -845,8 +1022,9 @@ function renderModal() {
           <textarea id="f-content" class="in-input" rows="3" placeholder="打合せの目的・議題など" style="resize:vertical">${esc(f.content)}</textarea>
         </label>
         <div id="f-content-links" style="display:flex;flex-direction:column;gap:2px;margin-top:-6px">${contentLinksHtml(f.content)}</div>
+        ${sm.top}
         <label style="display:flex;flex-direction:column;gap:5px">
-          <span style="font-size:12px;font-weight:700;color:#6b7d8f">日付</span>
+          <span style="font-size:12px;font-weight:700;color:#6b7d8f">${f.mode && f.mode !== 'single' ? '開始日' : '日付'}</span>
           <input id="f-date" type="date" class="in-input" value="${esc(f.date)}">
         </label>
         <div style="display:flex;gap:12px;align-items:flex-end">
@@ -860,6 +1038,7 @@ function renderModal() {
             <select id="f-end" class="in-input">${selOpts(f.end)}</select>
           </label>
         </div>
+        ${sm.afterDate}
         <label style="display:flex;flex-direction:column;gap:5px">
           <span style="font-size:12px;font-weight:700;color:#6b7d8f">会議室・社用車(任意)</span>
           <select id="f-resource-type" class="in-input">
@@ -893,6 +1072,7 @@ function renderModal() {
       </div>
       <div style="padding:16px 26px;border-top:1px solid #e4ebf2;display:flex;gap:10px;align-items:center">
         ${f.eventId ? '<button id="f-delete" class="hv-btn-danger" style="border:1px solid #f0d5d5;background:#fbeeee;color:#c05a5a;font-weight:500;border-radius:9px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit">この予定を削除</button>' : ''}
+        ${f.seriesMasterId ? '<button id="f-delete-series" class="hv-btn-danger" style="border:1px solid #f0d5d5;background:#fbeeee;color:#c05a5a;font-weight:500;border-radius:9px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit">繰り返し全体を削除</button>' : ''}
         <span style="margin-left:auto;display:flex;gap:10px">
           <button class="hv-btn-plain" data-close style="border:1px solid #dfe8f0;background:#ffffff;color:#6b7d8f;font-weight:500;border-radius:9px;padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit">キャンセル</button>
           <button id="f-submit" class="hv-btn-primary" style="border:none;background:#1e5fa8;color:#ffffff;font-weight:700;border-radius:9px;padding:10px 24px;font-size:13px;cursor:pointer;font-family:inherit">${f.eventId ? '変更を保存' : '作成する'}</button>
@@ -908,7 +1088,7 @@ function renderModal() {
   root.querySelector('#f-content').addEventListener('input', e => { f.content = e.target.value; root.querySelector('#f-content-links').innerHTML = contentLinksHtml(f.content); });
   root.querySelector('#f-date').addEventListener('change', e => {
     f.date = e.target.value;
-    if (f.resourceType && Auth.mode === 'entra') refreshFormRoomBusy();
+    if (f.resourceType && Auth.mode === 'entra' && f.mode === 'single') refreshFormRoomBusy();
     else renderModal();
   });
   root.querySelector('#f-start').addEventListener('change', e => {
@@ -926,6 +1106,9 @@ function renderModal() {
   root.querySelector('#f-submit').addEventListener('click', submitCreateForm);
   const deleteBtn = root.querySelector('#f-delete');
   if (deleteBtn) deleteBtn.addEventListener('click', deleteEvent);
+  const seriesBtn = root.querySelector('#f-delete-series');
+  if (seriesBtn) seriesBtn.addEventListener('click', deleteSeries);
+  bindScheduleMode(root, f);
 
   const kindSel = root.querySelector('#f-kind');
   if (kindSel) kindSel.addEventListener('change', e => { f.kind = e.target.value; });
@@ -936,7 +1119,7 @@ function renderModal() {
     // f.siteを空のままにすると表示上の選択と内部状態がずれ、会議室一覧が出ない不具合になっていた)
     f.site = newMaster ? newMaster.sites[0].id : '';
     f.room = ''; f.roomBusy = null;
-    if (f.resourceType && Auth.mode === 'entra') { refreshFormRoomBusy(); return; }
+    if (f.resourceType && Auth.mode === 'entra' && f.mode === 'single') { refreshFormRoomBusy(); return; }
     renderModal();
   });
   const siteSel = root.querySelector('#f-site');
@@ -999,7 +1182,8 @@ async function submitCreateForm() {
   const f = formState;
   const errEl = document.getElementById('f-error');
   if (!f.title.trim()) { errEl.textContent = '件名/お客様名を入力してください'; return; }
-  if (f.start >= f.end) { errEl.textContent = '終了時刻は開始時刻より後にしてください'; return; }
+  const multi = !f.eventId && f.mode && f.mode !== 'single'; // 複数の日程(連続した日・繰り返し)。開始・終了の前後の確認は、planMultiSchedule で行う
+  if (!multi && f.start >= f.end) { errEl.textContent = '終了時刻は開始時刻より後にしてください'; return; }
   const activeMaster = resourceMaster(f.resourceType);
   if (activeMaster && !f.room) { errEl.textContent = `${activeMaster.itemLabel}を選択してください`; return; }
 
@@ -1012,7 +1196,19 @@ async function submitCreateForm() {
   try {
     // 会議室・社用車の重複を事前チェック(最新の空き状況を取り直して判定)。重複していたら予定自体を作らない。
     // なお同時刻に他の人が予約した直後などチェックをすり抜けた場合は、従来どおりExchange側が最終判定して自動辞退する
-    if (room && Auth.mode === 'entra') {
+    let plan = null; // 複数の日程のときの、各回の日時・繰り返し
+    if (multi) {
+      plan = planMultiSchedule(f);
+      if (plan.error) throw new Error(plan.error);
+      if (room && Auth.mode === 'entra') { // 全ての回の空きを確認し、1回でも重なれば、予定も予約も作らない
+        submitBtn.textContent = '空き状況を確認中…';
+        const tk = await Auth.getGraphToken(['Calendars.ReadWrite', 'Calendars.ReadWrite.Shared']);
+        const busyList = await fetchRoomIntervals(room, plan.firstDate, plan.lastDate, tk);
+        const conflicts = findRangeConflicts(plan.intervals, busyList);
+        if (conflicts.length) throw new Error(conflictMessage(conflicts, activeMaster.itemLabel));
+        submitBtn.textContent = '作成中…';
+      }
+    } else if (room && Auth.mode === 'entra') {
       submitBtn.textContent = '空き状況を確認中…';
       const busy = (await fetchResourceBusy(parseISODate(f.date), f.resourceType))[room.id] || [];
       const isOwnOriginalSlot = it => f.orig && f.orig.room === room.id && f.orig.date === f.date
@@ -1031,10 +1227,11 @@ async function submitCreateForm() {
 
     const body = {
       subject: f.title.trim(),
-      start: { dateTime: `${f.date}T${f.start}:00`, timeZone: 'Tokyo Standard Time' },
-      end: { dateTime: `${f.date}T${f.end}:00`, timeZone: 'Tokyo Standard Time' },
+      start: { dateTime: plan ? `${plan.startDT}:00` : `${f.date}T${f.start}:00`, timeZone: 'Tokyo Standard Time' },
+      end: { dateTime: plan ? `${plan.endDT}:00` : `${f.date}T${f.end}:00`, timeZone: 'Tokyo Standard Time' },
       attendees
     };
+    if (plan && plan.recurrence) body.recurrence = plan.recurrence; // 繰り返し(毎日・毎週・毎月。終わりは最後の日)
     // 場所の設定。会議室の場合はメールアドレスで会議室本体と紐づける(文字列だけだと
     // Exchangeが同一の会議室と認識できず、自動承諾時に場所が二重に追記されてしまう)。
     // locations(複数形)も同時に送って場所一覧を丸ごと置き換える(変更時の古い場所の残留・重複を掃除するため)
@@ -1073,7 +1270,7 @@ async function submitCreateForm() {
     }
 
     // 作成した予定を含む日付に切り替えて再読み込み(会議室の自動承諾/辞退の反映には数秒かかる場合がある)
-    const [yy, mm, dd] = f.date.split('-').map(Number);
+    const [yy, mm, dd] = (plan ? plan.firstDate : f.date).split('-').map(Number);
     state.date = new Date(yy, mm - 1, dd);
     closeForm();
     render();

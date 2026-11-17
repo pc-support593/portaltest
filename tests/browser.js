@@ -241,6 +241,36 @@ const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return 
     // 日のマスのクリック: その日を選んで「日・週」の画面へ(今月の15日をクリックして確かめる)
     await br.evaluate("(async () => { [...document.querySelectorAll('#month-grid .mv-cell:not(.mv-other)')][14].click(); await new Promise(r => setTimeout(r, 400)); })()");
     check('月の予定: 日のマスをクリックすると、その日を選んで「日・週」の画面に戻る', await br.evaluate("(() => { const d = state.date; return state.view === 'week' && d.getDate() === 15 && document.getElementById('month-view').hidden && getComputedStyle(document.getElementById('dw-grid')).display !== 'none' && document.getElementById('date-label').textContent.includes('15日'); })()"));
+    // ---- 複数の日程(作成フォーム。2026-11-17・ユーザー指示) ----
+    const SET = (sel, v, ev) => `(() => { const e = document.querySelector('${sel}'); e.value = '${v}'; e.dispatchEvent(new Event('${ev || 'change'}', { bubbles: true })); })()`;
+    await br.evaluate("(async () => { openCreateForm(); await new Promise(r => setTimeout(r, 200)); })()");
+    check('複数の日程: 作成フォームに「日程」の選択があり、初めは「1日だけ」(日付の欄・繰り返しの欄は出ない)', await br.evaluate("document.getElementById('f-mode').value === 'single' && !document.getElementById('f-end-date') && !document.getElementById('f-rep-kind')"));
+    await br.evaluate(SET('#f-mode', 'range'));
+    check('複数の日程: 「連続した日」で、終了日と時間の入れ方(期間ずっと/毎日同じ時間帯)が出て、日付の見出しが「開始日」になる', await br.evaluate("!!document.getElementById('f-end-date') && document.getElementById('f-range-kind').options.length === 2 && document.getElementById('f-end-date').value > document.getElementById('f-date').value && document.getElementById('f-date').previousElementSibling.textContent === '開始日' && document.getElementById('form-box').textContent.includes('最長2か月')"));
+    await br.evaluate(SET('#f-mode', 'repeat'));
+    check('複数の日程: 「繰り返し」で、毎日・毎週・毎月と、終わり(回数/終了日)が出る', await br.evaluate("[...document.getElementById('f-rep-kind').options].map(o => o.textContent).join() === '毎日,毎週,毎月' && [...document.getElementById('f-end-mode').options].map(o => o.textContent).join() === '回数で指定,終了日で指定' && !!document.getElementById('f-rep-count') && !!document.getElementById('f-weekdays-only')"));
+    await br.evaluate(SET('#f-rep-kind', 'weekly'));
+    check('複数の日程: 「毎週」で曜日(7つ)が出て、開始日の曜日が選ばれている', await br.evaluate("document.querySelectorAll('[data-wd]').length === 7 && document.querySelectorAll('[data-wd]:checked').length === 1 && Number(document.querySelector('[data-wd]:checked').dataset.wd) === parseISODate(formState.date).getDay()"));
+    await br.evaluate(SET('#f-rep-kind', 'monthly'));
+    check('複数の日程: 「毎月」で、「毎月◯日」と「第◯◯曜日」を選べる', await br.evaluate("[...document.getElementById('f-monthly-kind').options].length === 2 && /毎月[0-9]+日/.test(document.getElementById('f-monthly-kind').options[0].textContent) && /第[0-9].曜日/.test(document.getElementById('f-monthly-kind').options[1].textContent)"));
+    await br.evaluate(SET('#f-rep-kind', 'weekly'));
+    await br.evaluate("document.querySelector('[data-wd]:checked').click()");
+    await br.evaluate(SET('#f-title', 'テスト', 'input'));
+    await br.evaluate("document.getElementById('f-submit').click()");
+    check('複数の日程: 毎週で曜日が1つも無いと、作成せずにエラー(自分の予定も作らない)', await br.evaluate("(async () => { await new Promise(r => setTimeout(r, 200)); return document.getElementById('f-error').textContent.includes('曜日を1つ以上'); })()"));
+    await br.evaluate(SET('#f-rep-kind', 'daily'));
+    await br.evaluate(SET('#f-end-mode', 'date'));
+    await br.evaluate(SET('#f-rep-end', '2099-12-31'));
+    await br.evaluate("document.getElementById('f-submit').click()");
+    check('複数の日程: 終了日が2か月を超えると、作成せずにエラー', await br.evaluate("(async () => { await new Promise(r => setTimeout(r, 200)); return document.getElementById('f-error').textContent.includes('2か月以内'); })()"));
+    await br.evaluate(SET('#f-mode', 'single'));
+    check('複数の日程: 「1日だけ」に戻すと、複数日程の欄は消える', await br.evaluate("!document.getElementById('f-end-date') && !document.getElementById('f-rep-kind')"));
+    // 繰り返しの1回分を開いたとき: 注意書きと「繰り返し全体を削除」のボタン(通常の予定には出ない)
+    await br.evaluate("openEditForm({ id: 'x', seriesMasterId: 'm', editable: true, isAllDay: false, date: isoDate(new Date()), endDate: isoDate(new Date()), start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '', categories: [] })");
+    check('複数の日程: 繰り返しの1回分を開くと、「繰り返し全体を削除」のボタンと注意書きが出る。複数日程の入力欄は出ない', await br.evaluate("!!document.getElementById('f-delete-series') && document.getElementById('form-box').textContent.includes('この1回分だけ') && !document.getElementById('f-mode')"));
+    await br.evaluate("openEditForm({ id: 'y', seriesMasterId: '', editable: true, isAllDay: false, date: isoDate(new Date()), endDate: isoDate(new Date()), start: '10:00', end: '11:00', title: 't', place: '', attendees: [], bodyText: '', categories: [] })");
+    check('複数の日程: 通常の予定を開いても、「繰り返し全体を削除」は出ない', await br.evaluate("!document.getElementById('f-delete-series') && !!document.getElementById('f-delete')"));
+    await br.evaluate("closeForm()");
     await br.open(`${sb.base}/schedule.html`, 390, 800, "document.querySelectorAll('#week-events [data-week-day]').length === 7");
     await br.evaluate("(async () => { document.getElementById('view-month').click(); await new Promise(r => setTimeout(r, 400)); })()");
     check('月の予定(390px): 横にはみ出さない', await br.evaluate(noOverflow));

@@ -475,5 +475,34 @@ check('メンバー順: 順位の小さい順→順位なしは五十音順', me
     ctx2.Auth.mode = 'dev';
     check('姓名: devモードでは何も取得しない', (await ctx2.resolveFullNames(['zz@x.com'])).size === 0);
   }
+
+  // ---- 複数の日程(連続した日・繰り返し。recurrence.js。2026-11-17・ユーザー指示) ----
+  {
+    const rc = load(['recurrence.js'], ['expandOccurrences', 'buildRecurrence', 'findRangeConflicts', 'addMonthsISO', 'addDaysISO', 'nthOfMonth']);
+    const ex = o => rc.expandOccurrences({ endMode: 'date', ...o });
+    check('日程: 2か月後の同じ日(月末は末日に丸める)', rc.addMonthsISO('2026-11-20', 2) === '2027-01-20' && rc.addMonthsISO('2026-12-31', 2) === '2027-02-28' && rc.addMonthsISO('2026-12-29', 2) === '2027-02-28');
+    const d1 = ex({ start: '2026-11-20', kind: 'daily', endDate: '2026-11-22' });
+    check('日程: 毎日(3日間)=11/20・21・22', d1.dates.join() === '2026-11-20,2026-11-21,2026-11-22' && !d1.error, JSON.stringify(d1));
+    const d2 = ex({ start: '2026-11-20', kind: 'daily', weekdaysOnly: true, endDate: '2026-11-30' });
+    check('日程: 毎日(平日だけ)は土日を除く(11/20金・23月〜27金・30月)', d2.dates.join() === '2026-11-20,2026-11-23,2026-11-24,2026-11-25,2026-11-26,2026-11-27,2026-11-30', d2.dates.join());
+    const d3 = ex({ start: '2026-11-20', kind: 'weekly', weekdays: [1, 3], endDate: '2026-12-02' });
+    check('日程: 毎週(月・水)。開始日(金)が当たらなくても、最初の該当日から', d3.dates.join() === '2026-11-23,2026-11-25,2026-11-30,2026-12-02', d3.dates.join());
+    const d4 = rc.expandOccurrences({ start: '2026-11-02', kind: 'weekly', weekdays: [1], endMode: 'count', count: 4 });
+    check('日程: 毎週(月)を4回', d4.dates.join() === '2026-11-02,2026-11-09,2026-11-16,2026-11-23', d4.dates.join());
+    const d5 = ex({ start: '2026-11-20', kind: 'monthly', monthly: 'day', endDate: '2027-01-20' });
+    check('日程: 毎月20日(2か月先まで)=11/20・12/20・1/20', d5.dates.join() === '2026-11-20,2026-12-20,2027-01-20', d5.dates.join());
+    const d6 = ex({ start: '2026-11-11', kind: 'monthly', monthly: 'nth', endDate: '2027-01-11' });
+    check('日程: 毎月 第2水曜(11/11は第2水曜)=11/11・12/9・1/13は範囲外', d6.dates.join() === '2026-11-11,2026-12-09' && rc.nthOfMonth('2026-11-11') === 2, d6.dates.join());
+    check('日程: 終了日が2か月を超えるとエラー', /2か月以内/.test(ex({ start: '2026-11-20', kind: 'daily', endDate: '2027-01-21' }).error));
+    check('日程: 終了日が開始日より前・未入力はエラー', /開始日以降/.test(ex({ start: '2026-11-20', kind: 'daily', endDate: '2026-11-19' }).error) && /終了日を入力/.test(ex({ start: '2026-11-20', kind: 'daily', endDate: '' }).error));
+    check('日程: 回数が2か月に収まらないとエラー(毎月を4回)', /収まりません/.test(rc.expandOccurrences({ start: '2026-11-20', kind: 'monthly', monthly: 'day', endMode: 'count', count: 4 }).error));
+    check('日程: 毎週で曜日が無い・回数0・29日以降の毎月◯日・第5曜日はエラー', /曜日を1つ/.test(ex({ start: '2026-11-20', kind: 'weekly', weekdays: [], endDate: '2026-11-30' }).error) && /回数/.test(rc.expandOccurrences({ start: '2026-11-20', kind: 'daily', endMode: 'count', count: 0 }).error) && /29/.test(ex({ start: '2026-11-30', kind: 'monthly', monthly: 'day', endDate: '2026-12-30' }).error) && /第5/.test(ex({ start: '2026-12-29', kind: 'monthly', monthly: 'nth', endDate: '2027-02-01' }).error));
+    const rcr = rc.buildRecurrence({ start: '2026-11-23', kind: 'weekly', weekdays: [3, 1] }, ['2026-11-23', '2026-11-30']);
+    check('日程: Graphの繰り返し(毎週・曜日はmonday,wednesday・開始日と終了日)', JSON.stringify(rcr) === JSON.stringify({ pattern: { type: 'weekly', interval: 1, daysOfWeek: ['monday', 'wednesday'], firstDayOfWeek: 'sunday' }, range: { type: 'endDate', startDate: '2026-11-23', endDate: '2026-11-30', recurrenceTimeZone: 'Tokyo Standard Time' } }), JSON.stringify(rcr));
+    check('日程: Graphの繰り返し(毎日・平日だけ・毎月日・毎月第N曜日)', rc.buildRecurrence({ start: '2026-11-20', kind: 'daily' }, ['2026-11-20']).pattern.type === 'daily' && rc.buildRecurrence({ start: '2026-11-20', kind: 'daily', weekdaysOnly: true }, ['2026-11-20']).pattern.daysOfWeek.length === 5 && rc.buildRecurrence({ start: '2026-11-20', kind: 'monthly', monthly: 'day' }, ['2026-11-20']).pattern.dayOfMonth === 20 && JSON.stringify(rc.buildRecurrence({ start: '2026-11-11', kind: 'monthly', monthly: 'nth' }, ['2026-11-11']).pattern) === JSON.stringify({ type: 'relativeMonthly', interval: 1, daysOfWeek: ['wednesday'], index: 'second' }));
+    const ivs = [{ date: '2026-11-20', start: '2026-11-20T10:00', end: '2026-11-20T11:00' }, { date: '2026-11-21', start: '2026-11-21T10:00', end: '2026-11-21T11:00' }];
+    check('日程: 会議室の既存の予約と重なる回だけを返す(隣り合うだけ=終了と開始が同じ は重ならない)', rc.findRangeConflicts(ivs, [{ start: '2026-11-21T10:30', end: '2026-11-21T12:00' }, { start: '2026-11-20T11:00', end: '2026-11-20T12:00' }]).map(x => x.date).join() === '2026-11-21' && rc.findRangeConflicts(ivs, []).length === 0);
+    check('日程: 連続した日(期間ずっと)は、途中の日をまたぐ予約とも重なる', rc.findRangeConflicts([{ date: '2026-11-20', start: '2026-11-20T09:00', end: '2026-11-22T17:00' }], [{ start: '2026-11-21T13:00', end: '2026-11-21T14:00' }]).length === 1);
+  }
   process.exit(done() ? 1 : 0);
 })().catch(e => { console.error('TEST ERROR', e); process.exit(2); });
