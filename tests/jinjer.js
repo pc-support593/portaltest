@@ -123,7 +123,7 @@ const { check, done } = makeChecker('jinjer');
     const offs = require(path.join(ROOT, 'src', 'jinjerOffs.js'));
     const today = client.jstNow().date;
     const other = today.slice(0, 8) + (today.endsWith('-01') ? '02' : '01'); // 今日ではない日付
-    const sched = d => [{ date: d, store: { id: '1', name: 's' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }];
+    const sched = d => [{ date: d, store: { id: '1', name: '吉村一建設' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }];
     const leaveFull = { id: '0', name: '全日' };
     const leaveAm = { id: '1', name: '半休', start_time: today + ' 09:00:00', end_time: today + ' 13:00:00' };
     const leaveData = [
@@ -146,7 +146,7 @@ const { check, done } = makeChecker('jinjer');
     check('休みの判定: 勤務予定がない日は休日。今日の勤務予定がある人・月の予定が1行もない人は出さない', cm['15'] === 'holiday:休み:approved' && cm['13'] === 'holiday:休み:approved' && !('14' in cm) && !('16' in cm), JSON.stringify(cm));
     check('休みの判定: 休暇と休日が重なる人は、休暇を優先する', cm['10'].startsWith('leave:') && comp.filter(r => r.employee_id === '10').length === 1);
     // 勤務予定の行があっても、出勤・退勤の時刻が空なら休み(2026-11-17・ユーザー指示)
-    const row = (d, ws) => ({ date: d, store: { id: '1', name: 's' }, ...(ws === undefined ? {} : { work_schedule: ws }) });
+    const row = (d, ws) => ({ date: d, store: { id: '1', name: '吉村一建設' }, ...(ws === undefined ? {} : { work_schedule: ws }) });
     const tm = offs.computeOffs([], [
       { employee_id: '30', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today, { start: '', end: '' })] },          // 今日の行はあるが時刻が空=休み
       { employee_id: '31', work_schedules: [row(other, { start: '9:00:00', end: '18:00:00' }), row(today, { start: null, end: null })] },      // null=休み
@@ -158,6 +158,22 @@ const { check, done } = makeChecker('jinjer');
     const tmm = Object.fromEntries(tm.map(r => [r.employee_id, r.kind]));
     check('休みの判定: 今日の行があっても出勤・退勤の時刻が空(空文字・null・項目なし)なら休日', tmm['30'] === 'holiday' && tmm['31'] === 'holiday' && tmm['32'] === 'holiday', JSON.stringify(tmm));
     check('休みの判定: 時刻が入っている行が1つでもあれば出勤予定(片方だけ・同じ日に複数行を含む)', !('33' in tmm) && !('34' in tmm) && !('35' in tmm), JSON.stringify(tmm));
+    // 見る店舗(吉村一建設・ゆめすみか・来夢エンジニア)の行だけを使う(2026-11-18・ユーザー指示)
+    const srow = (d, name) => ({ date: d, store: name === undefined ? undefined : { id: '9', name }, work_schedule: { start: '9:00:00', end: '18:00:00' } });
+    const st = offs.computeOffs([], [
+      { employee_id: '40', work_schedules: [srow(other, '吉村一建設'), srow(today, '設計企画部')] },                       // 今日の行は古い店舗(設計企画部)だけ=休み
+      { employee_id: '41', work_schedules: [srow(other, '吉村一建設'), srow(today, 'ゆめすみか')] },                       // ゆめすみか=出勤予定
+      { employee_id: '42', work_schedules: [srow(other, '吉村一建設'), srow(today, '来夢エンジニア')] },                   // 来夢エンジニア=出勤予定
+      { employee_id: '43', work_schedules: [srow(today, '設計企画部'), srow(today, '吉村一建設')] },                       // 同じ日に古い店舗と見る店舗=出勤予定
+      { employee_id: '44', work_schedules: [srow(today, '設計企画部'), srow(other, '工務部(本社)')] },                     // 見る店舗の行が1つも無い=未作成扱いで出さない
+      { employee_id: '45', work_schedules: [srow(other, '吉村一建設'), srow(today)] },                                     // 店舗の情報が無い行は、判断できないので含める=出勤予定
+      { employee_id: '46', work_schedules: [srow(other, '吉村一建設'), srow(today, ' 吉村一建設 ')] }                      // 前後の空白は無視=出勤予定
+    ], today);
+    const stm = Object.fromEntries(st.map(r => [r.employee_id, r.kind]));
+    check('休みの判定(店舗): 今日の行が見る店舗以外(設計企画部など)だけなら休日', stm['40'] === 'holiday', JSON.stringify(stm));
+    check('休みの判定(店舗): ゆめすみか・来夢エンジニアの行は出勤予定。古い店舗と並んでいても、見る店舗の行があれば出勤予定', !('41' in stm) && !('42' in stm) && !('43' in stm), JSON.stringify(stm));
+    check('休みの判定(店舗): 見る店舗の行が1つも無い人は出さない。店舗の情報が無い行・前後に空白のある名前は出勤予定', !('44' in stm) && !('45' in stm) && !('46' in stm), JSON.stringify(stm));
+    check('休みの判定(店舗): workRowsOf は見る店舗の行だけを返す', offs.workRowsOf({ work_schedules: [srow(today, '設計企画部'), srow(today, '吉村一建設'), srow(today, 'ライトウエスト')] }).length === 1 && offs.WORK_STORE_NAMES.join() === '吉村一建設,ゆめすみか,来夢エンジニア');
     // 同じ日に複数の休暇があるとき
     const lv = (id, st, span) => ({ employee_id: id, requested_day_offs: [{ date: today, status: st, day_off_classification: { name: 'x' }, duration_classification: span }] });
     const pm = { id: '1', name: '半休', start_time: today + ' 14:00:00', end_time: today + ' 18:00:00' };
@@ -187,7 +203,7 @@ const { check, done } = makeChecker('jinjer');
     const shift = require(path.join(ROOT, 'src', 'jinjerShift.js'));
     const month = today.slice(0, 7);
     const dayN = n => month + '-' + String(n).padStart(2, '0');
-    const sch = ds => ds.map(d => ({ date: dayN(d), store: { id: '1', name: 's' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }));
+    const sch = ds => ds.map(d => ({ date: dayN(d), store: { id: '1', name: '吉村一建設' }, work_schedule: { start: '9:00:00', end: '18:00:00' } }));
     const furi = { name: '振休' }, nenkyu = { name: '年次有休' };
     const lv2 = (d, st, cls, span) => ({ date: dayN(d), status: st, day_off_classification: cls, duration_classification: span });
     const cm2 = shift.computeMonth(

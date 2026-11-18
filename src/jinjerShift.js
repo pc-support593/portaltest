@@ -8,7 +8,7 @@
 'use strict';
 
 const { jstNow, isConfigured } = require('./jinjerClient');
-const { computeOffs, fetchAllPages } = require('./jinjerOffs');
+const { computeOffs, fetchAllPages, workRowsOf } = require('./jinjerOffs');
 const { resolveEmployees, MONTH_WAIT_CODE, MONTH_WAIT_MESSAGE } = require('./jinjerAttendance');
 
 const DEADLINE_MS = 3 * 60 * 1000;
@@ -57,7 +57,7 @@ function computeMonth(leaveData, scheduleData, month) {
 /** 勤務予定のある・休暇のある社員の一覧(休みの無い人も、表に出すために)。employee_id の配列 */
 function listEmployeeIds(leaveData, scheduleData) {
   const ids = new Set();
-  for (const e of scheduleData || []) if (Array.isArray(e.work_schedules) && e.work_schedules.length) ids.add(String(e.employee_id));
+  for (const e of scheduleData || []) if (workRowsOf(e).length) ids.add(String(e.employee_id));
   for (const e of leaveData || []) if ((e.requested_day_offs || []).length) ids.add(String(e.employee_id));
   return [...ids];
 }

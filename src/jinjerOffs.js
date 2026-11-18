@@ -5,7 +5,8 @@
 //   - GET /v1/employees?employee-ids=... … 社員番号→社用メールアドレス・氏名(jinjerAttendance の resolveEmployees を共用)
 // 判定(今日・日本時間。休暇を優先する):
 //   ① 今日の休暇がある(承認済み・申請中。否認は除く) → 全日=「休み」、午前半休=「午前休」、午後半休=「午後休」、時間休=そのまま
-//   ② 休暇が無く、今月の勤務予定が1行以上あるのに、今日の行が無い → 「休み」(所定休日・法定休日・祝日)。月の勤務予定が1行も無い人は、未作成の可能性があるため出さない
+//   ② 休暇が無く、今月の勤務予定が1行以上あるのに、今日の行が無い、または今日の行に出勤・退勤の時刻が入っていない → 「休み」(所定休日・法定休日・祝日)。月の勤務予定が1行も無い人は、未作成の可能性があるため出さない
+//   勤務予定は、見る店舗(打刻グループ。WORK_STORE_NAMES=吉村一建設・ゆめすみか・来夢エンジニア)の行だけを使う(2026-11-18。構築中に別の店舗名で作った古い予定が残っていても、出勤予定とみなさない)
 // 画面側(attendance.js)が、出勤の打刻がある人の「休み」を外す・部門に入らない人の「休日」を外す(出勤状況のデータと合わせて判定するため)。
 // 休暇の理由・休暇名(年次有休など)は保存も表示もしない(ユーザー指示。氏名のみ)。取り込みは jinjerAttendance と同様、失敗しても例外を投げない(→ E001)。
 'use strict';
@@ -50,6 +51,25 @@ async function fetchAllPages(path, month, deadline, signal) {
   return all;
 }
 
+/** 勤務予定として見る店舗(jinjerの打刻グループ)の名前。2026-11-18・ユーザー指示。
+    これ以外の店舗(構築中に「設計企画部」で作った古い予定など)の行は、休みの判定に使わない。
+    名前で照合する(「来夢エンジニア」は店舗IDが2つあるが、名前は同じ)。店舗が増えたらここに足す */
+const WORK_STORE_NAMES = ['吉村一建設', 'ゆめすみか', '来夢エンジニア'];
+const WORK_STORE_SET = new Set(WORK_STORE_NAMES.map(n => n.normalize('NFKC')));
+
+/** 勤務予定の1行が、見る店舗のものか。店舗の情報が無い行は、判断できないので含める(休みと誤判定しないため) */
+function isWorkStoreRow(w) {
+  const s = w && w.store;
+  const name = s && typeof s === 'object' ? String(s.name || '').normalize('NFKC').trim() : '';
+  if (!name) return true;
+  return WORK_STORE_SET.has(name);
+}
+
+/** 社員の勤務予定のうち、見る店舗の行だけ */
+function workRowsOf(emp) {
+  return (Array.isArray(emp && emp.work_schedules) ? emp.work_schedules : []).filter(isWorkStoreRow);
+}
+
 /** 勤務予定の1行に、出勤か退勤の時刻が入っているか(work_schedule.start / end のどちらかが空でない文字)。
     時刻が無い・空の行は、出勤予定とみなさない(jinjerの所定休日はAPIで取れないため、空の状態として来る場合に備える) */
 function hasWorkTime(w) {
@@ -87,8 +107,8 @@ function computeOffs(leaveData, scheduleData, targetDate) {
   for (const emp of scheduleData || []) {
     const id = String(emp.employee_id);
     if (out.has(id)) continue;
-    const list = Array.isArray(emp.work_schedules) ? emp.work_schedules : [];
-    if (!list.length) continue; // 今月の勤務予定が1行も無い人は、未作成の可能性があるため出さない
+    const list = workRowsOf(emp); // 見る店舗(WORK_STORE_NAMES)の行だけ
+    if (!list.length) continue; // 今月の勤務予定が1行も無い人(見る店舗の行が無い人を含む)は、未作成の可能性があるため出さない
     if (list.some(w => w && w.date === targetDate && hasWorkTime(w))) continue; // 今日の勤務予定があり、出勤か退勤の時刻が入っている=出勤予定(行があっても時刻が空なら休み。2026-11-17・ユーザー指示)
     out.set(id, { employee_id: id, kind: 'holiday', label: '休み', status: 'approved' });
   }
@@ -184,4 +204,4 @@ function getToday(db) {
   };
 }
 
-module.exports = { sync, startScheduler, getToday, computeOffs, offLabelOf, fetchAllPages };
+module.exports = { sync, startScheduler, getToday, computeOffs, offLabelOf, fetchAllPages, workRowsOf, WORK_STORE_NAMES };
