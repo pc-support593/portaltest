@@ -533,15 +533,15 @@ function renderGridTabs() {
     if (state.gridTab === 'cars') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=cars';
-      roomsLink.textContent = '社用車を予約する →';
+      roomsLink.textContent = '社用車の空きを予約する →';
     } else if (state.gridTab === 'yoshimura') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=yoshimura';
-      roomsLink.textContent = '吉村一建設会議室を予約する →';
+      roomsLink.textContent = '吉村一建設会議室の空きを確認し予約する →';
     } else {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html';
-      roomsLink.textContent = 'ゆめすみか展示場を予約する →';
+      roomsLink.textContent = 'ゆめすみか展示場の空きを確認し予約する →';
     }
   }
   // 「吉村一建設スタッフ予定へ」「ゆめすみかスタッフ予定へ」は、切り替えに関わらず常に2つとも表示する(上の操作行。ユーザー指示 2026-10-10)
