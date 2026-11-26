@@ -533,7 +533,7 @@ function renderGridTabs() {
     if (state.gridTab === 'cars') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=cars';
-      roomsLink.textContent = '社用車の空きを予約する →';
+      roomsLink.textContent = '社用車の空きを確認し予約する →';
     } else if (state.gridTab === 'yoshimura') {
       roomsLink.style.display = '';
       roomsLink.href = 'rooms.html?view=yoshimura';
